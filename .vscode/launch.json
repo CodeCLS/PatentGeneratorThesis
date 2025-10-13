@@ -1,0 +1,32 @@
+{
+  // See https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Debug current file (with .venv + Gemini)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+
+      // Make sure VS Code uses your project venv
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+
+      // Optional: set working dir to project root
+      "cwd": "${workspaceFolder}",
+
+      // Load vars from .env (create a file named .env in the workspace)
+      "envFile": "${workspaceFolder}/.env",
+      "internalConsoleOptions": "neverOpen",
+
+      // Or set the key inline (remove if you use envFile)
+      "env": {
+        // "GOOGLE_API_KEY": "PUT_YOUR_KEY_HERE"
+      },
+      "showReturnValue": true,
+      "subProcess": true,
+      // Helpful for seeing full stack traces in libs while debugging
+      "justMyCode": false
+    }
+  ]
+}
