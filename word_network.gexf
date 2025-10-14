@@ -1,0 +1,152 @@
+<?xml version='1.0' encoding='utf-8'?>
+<gexf xmlns="http://www.gexf.net/1.2draft" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.gexf.net/1.2draft http://www.gexf.net/1.2draft/gexf.xsd" version="1.2">
+  <meta lastmodifieddate="2025-10-13">
+    <creator>NetworkX 3.5</creator>
+  </meta>
+  <graph defaultedgetype="undirected" mode="static" name="">
+    <attributes mode="static" class="edge">
+      <attribute id="2" title="w_coocc" type="long" />
+      <attribute id="3" title="w_dep" type="long" />
+    </attributes>
+    <attributes mode="static" class="node">
+      <attribute id="0" title="freq" type="long" />
+      <attribute id="1" title="pos" type="string" />
+    </attributes>
+    <nodes>
+      <node id="text" label="text">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'NOUN': 1}" />
+        </attvalues>
+      </node>
+      <node id="report" label="report">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'NOUN': 1}" />
+        </attvalues>
+      </node>
+      <node id="paper" label="paper">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'NOUN': 1}" />
+        </attvalues>
+      </node>
+      <node id="scrape" label="scrape">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'VERB': 1}" />
+        </attvalues>
+      </node>
+      <node id="build" label="build">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'VERB': 1}" />
+        </attvalues>
+      </node>
+      <node id="graph" label="graph">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'NOUN': 1}" />
+        </attvalues>
+      </node>
+      <node id="lemmatize" label="lemmatize">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'VERB': 1}" />
+        </attvalues>
+      </node>
+      <node id="word" label="word">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'NOUN': 1}" />
+        </attvalues>
+      </node>
+      <node id="entity" label="entity">
+        <attvalues>
+          <attvalue for="0" value="2" />
+          <attvalue for="1" value="{'NOUN': 2}" />
+        </attvalues>
+      </node>
+      <node id="connect" label="connect">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'VERB': 1}" />
+        </attvalues>
+      </node>
+      <node id="term" label="term">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'NOUN': 1}" />
+        </attvalues>
+      </node>
+      <node id="name" label="name">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'VERB': 1}" />
+        </attvalues>
+      </node>
+      <node id="sentence" label="sentence">
+        <attvalues>
+          <attvalue for="0" value="2" />
+          <attvalue for="1" value="{'NOUN': 2}" />
+        </attvalues>
+      </node>
+      <node id="prose" label="prose">
+        <attvalues>
+          <attvalue for="0" value="1" />
+          <attvalue for="1" value="{'NOUN': 1}" />
+        </attvalues>
+      </node>
+    </nodes>
+    <edges>
+      <edge source="report" target="paper" id="0" weight="2">
+        <attvalues>
+          <attvalue for="2" value="1" />
+          <attvalue for="3" value="1" />
+        </attvalues>
+      </edge>
+      <edge source="paper" target="scrape" id="1" weight="2">
+        <attvalues>
+          <attvalue for="2" value="1" />
+          <attvalue for="3" value="1" />
+        </attvalues>
+      </edge>
+      <edge source="build" target="graph" id="2" weight="2">
+        <attvalues>
+          <attvalue for="2" value="1" />
+          <attvalue for="3" value="1" />
+        </attvalues>
+      </edge>
+      <edge source="graph" target="lemmatize" id="3" weight="2">
+        <attvalues>
+          <attvalue for="2" value="1" />
+          <attvalue for="3" value="1" />
+        </attvalues>
+      </edge>
+      <edge source="lemmatize" target="word" id="4" weight="2">
+        <attvalues>
+          <attvalue for="2" value="1" />
+          <attvalue for="3" value="1" />
+        </attvalues>
+      </edge>
+      <edge source="word" target="entity" id="5" weight="2">
+        <attvalues>
+          <attvalue for="2" value="1" />
+          <attvalue for="3" value="1" />
+        </attvalues>
+      </edge>
+      <edge source="entity" target="name" id="6" weight="2">
+        <attvalues>
+          <attvalue for="2" value="1" />
+          <attvalue for="3" value="1" />
+        </attvalues>
+      </edge>
+      <edge source="connect" target="term" id="7" weight="2">
+        <attvalues>
+          <attvalue for="2" value="1" />
+          <attvalue for="3" value="1" />
+        </attvalues>
+      </edge>
+    </edges>
+  </graph>
+</gexf>
