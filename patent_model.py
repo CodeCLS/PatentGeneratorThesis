@@ -31,6 +31,8 @@ edge_weights = [G[u][v]["weight"] * 4 for u, v in G.edges()]
 
 fig, ax = plt.subplots(figsize=(8, 6))
 
+##test
+
 nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=sizes, alpha=0.9, ax=ax)
 nx.draw_networkx_edges(G, pos, width=edge_weights, arrows=True, arrowstyle='-|>', alpha=0.6, ax=ax)
 nx.draw_networkx_labels(G, pos, font_size=10, font_color="white", font_weight="bold", ax=ax)
