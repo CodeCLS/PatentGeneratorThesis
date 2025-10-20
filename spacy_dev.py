@@ -219,7 +219,7 @@ def build_concept_graph(nodes: Set[str], edges: List[Tuple[str, str, str, float]
         else:
             G.add_edge(src, dst, weight=w, rel=rel)
     return G
-#I want to have two parts to this project 1. Information extraction from the Text into a Graph 2. Graph to a claim
+#I want to have two parts to this project 1. Information extraction from the Text into a Graph 2. Graph to a claim -- 
 def derive_concept_tree(G: nx.DiGraph, root_hint: str | None = None) -> tuple[nx.DiGraph, str]:
     # choose a root
     root = root_hint
