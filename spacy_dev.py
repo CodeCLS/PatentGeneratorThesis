@@ -27,7 +27,7 @@ air bubble generating member is so installed that it can
 lead the air bubble inside of a water pipe in the peripheral portion of said other end of said water pipe and a
 display device for appreciation using said water tank for
 appreciation are used."""
-##research
+##research2
 
 # --------------------------
 # Config (extend anytime)
