@@ -110,7 +110,6 @@ def extract_concepts_and_relations(doc: spacy.tokens.Doc):
                     nodes.add(p)
                     edges.append((whole, p, "part-of", REL_WEIGHTS["part-of"]))
 
-    # 2) function-of: adjectival "X configured/adapted/operable to VERB ..." or verbal with xcomp/to VERB
     for tok in doc:
         # adjectival marker attached to an NP: "member configured to lead ..."
         if tok.text.lower() in FUNCTION_ADJ_MARKERS and tok.dep_ in {"amod", "acl"}:
