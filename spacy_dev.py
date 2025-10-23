@@ -47,9 +47,9 @@ FUNCTION_ADJ_MARKERS: Set[str] = {"configured", "adapted", "operable"}
 SPATIAL_PREPS: Set[str] = {"in", "on", "between", "through", "from", "to", "into", "at", "of", "with", "upwardly", "adjacent"}
 CONDITION_MARKERS: Set[str] = {"wherein", "when", "if", "so that", "such that"}  # handled lightly
 
-# ---------------------------
+# ----------------------------
 # Utilities
-# ---------------------------
+# ----------------------------
 def clean_whitespace(s: str) -> str:
     return re.sub(r"\s+", " ", s.replace("\n", " ")).strip()
 
