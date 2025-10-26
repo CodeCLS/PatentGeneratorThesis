@@ -201,9 +201,9 @@ def extract_concepts_and_relations(doc: spacy.tokens.Doc):
 
     return nodes, edges
 
-# --------------------------
+# ---------------------------
 # Build concept graph & tree
-# --------------------------
+# ---------------------------
 def build_concept_graph(nodes: Set[str], edges: List[Tuple[str, str, str, float]]) -> nx.DiGraph:
     G = nx.DiGraph()
     for n in nodes:
