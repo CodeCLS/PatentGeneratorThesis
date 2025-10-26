@@ -27,6 +27,7 @@ air bubble generating member is so installed that it can
 lead the air bubble inside of a water pipe in the peripheral portion of said other end of said water pipe and a
 display device for appreciation using said water tank for
 appreciation are used."""
+##research2
 
 # --------------------------
 # Config (extend anytime)
@@ -46,9 +47,9 @@ FUNCTION_ADJ_MARKERS: Set[str] = {"configured", "adapted", "operable"}
 SPATIAL_PREPS: Set[str] = {"in", "on", "between", "through", "from", "to", "into", "at", "of", "with", "upwardly", "adjacent"}
 CONDITION_MARKERS: Set[str] = {"wherein", "when", "if", "so that", "such that"}  # handled lightly
 
-# --------------------------
+# -----------------------------
 # Utilities
-# --------------------------
+# -----------------------------
 def clean_whitespace(s: str) -> str:
     return re.sub(r"\s+", " ", s.replace("\n", " ")).strip()
 
@@ -109,7 +110,6 @@ def extract_concepts_and_relations(doc: spacy.tokens.Doc):
                     nodes.add(p)
                     edges.append((whole, p, "part-of", REL_WEIGHTS["part-of"]))
 
-    # 2) function-of: adjectival "X configured/adapted/operable to VERB ..." or verbal with xcomp/to VERB
     for tok in doc:
         # adjectival marker attached to an NP: "member configured to lead ..."
         if tok.text.lower() in FUNCTION_ADJ_MARKERS and tok.dep_ in {"amod", "acl"}:
