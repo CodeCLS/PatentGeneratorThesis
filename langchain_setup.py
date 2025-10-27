@@ -23,9 +23,9 @@ def mask(v: str, keep=6):
 
 print("ENV SNAPSHOT:")
 print("  GOOGLE_API_KEY        =", mask(os.getenv("GOOGLE_API_KEY")))
-print("  LANGCHAIN_TRACING_V2  =", os.getenv("LANGCHAIN_TRACING_V2"))
-print("  LANGCHAIN_API_KEY     =", mask(os.getenv("LANGCHAIN_API_KEY")))
-print("  LANGCHAIN_PROJECT     =", os.getenv("LANGCHAIN_PROJECT") or "(unset)")
+print("  LANGSMITH_ENDPOINT  =", os.getenv("LANGSMITH_ENDPOINT"))
+print("  LANGSMITH_API_KEY     =", mask(os.getenv("LANGSMITH_API_KEY")))
+print("  LANGSMITH_PROJECT     =", os.getenv("LANGSMITH_PROJECT") or "(unset)")
 print("  LANGCHAIN_ENDPOINT    =", os.getenv("LANGCHAIN_ENDPOINT") or "(default)")
 
 # --- 2) Ping LangSmith & ensure project exists
