@@ -1,25 +1,29 @@
-# pip install -qU "langchain[anthropic]" to call the model
+import anthropic
+from langsmith import traceable
+from langsmith.wrappers import wrap_anthropic
+from dotenv import load_dotenv
+load_dotenv()
+client = wrap_anthropic(anthropic.Anthropic())
 
-from langchain.agents import create_agent
-from vertexai import init
-import os
-print("LangSmith tracing on:", os.getenv("LANGCHAIN_TRACING_V2"))
-print("LangSmith key loaded:", bool(os.getenv("LANGCHAIN_API_KEY")))
-print("LangSmith project:", os.getenv("LANGCHAIN_PROJECT"))
-print("Anthropic key loaded:", bool(os.environ.get("ANTHROPIC_API_KEY")))
-init(project="gen-lang-client-0744523860", location="us-central1")
+# You can also wrap the async client as well
+# async_client = wrap_anthropic(anthropic.AsyncAnthropic())
 
-def get_weather(city: str) -> str:
-    """Get weather for a given city."""
-    return f"It's always sunny in {city}!"
+@traceable(run_type="tool", name="Retrieve Context")
+def my_tool(question: str) -> str:
+    return "During this morning's meeting, we solved all world conflict."
 
-agent = create_agent(
-    model="claude-3-5-sonnet-latest",
-    tools=[get_weather],
-    system_prompt="You are a helpful assistant",
-)
+@traceable(name="Chat Pipeline")
+def chat_pipeline(question: str):
+    context = my_tool(question)
+    messages = [
+        { "role": "user", "content": f"Question: {question}\nContext: {context}"}
+    ]
+    messages = client.messages.create(
+      model="claude-sonnet-4-20250514",
+      messages=messages,
+      max_tokens=1024,
+      system="You are a helpful assistant. Please respond to the user's request only based on the given context."
+    )
+    return messages
 
-# Run the agent
-agent.invoke(
-    {"messages": [{"role": "user", "content": "what is the weather in sf"}]}
-)
+chat_pipeline("Can you summarize this morning's meetings?")
