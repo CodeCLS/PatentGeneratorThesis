@@ -12,7 +12,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 class PatentTextFormatter:
     def __init__(self,text,spacy,client):
         # Initialize with the raw patent description text
-        self.text = text
+        self.text = text.replace("\n", " ") 
         self.sentence_sequence_pre_formatted = text.split('.')
         self.sentence_sequence_post_formatted = []
         self.spacy = spacy
