@@ -4,7 +4,9 @@ class ChatResult:
     def __init__(self, input : str):
         self._input = input
 class LLmApi_Repo:
-   def __init__(self, llm_client: LLMModel = AnthropicModel()):
+   def __init__(self, llm_client: AnthropicModel = AnthropicModel()):
         self.client = llm_client
    def chat(self, message: str, **kwargs) -> ChatResult:
-        self.client.send(message)
+
+               return self.client.send(message)["content"]
+

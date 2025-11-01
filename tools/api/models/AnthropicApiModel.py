@@ -1,6 +1,6 @@
 # models/AnthropicApiModel.py
 import anthropic
-
+import json 
 
 class AnthropicModel:
     def __init__(self, model: str = "claude-3-5-sonnet-20241022", max_tokens: int = 200):
@@ -30,4 +30,4 @@ class AnthropicModel:
             if getattr(block, "type", None) == "text":
                 text += getattr(block, "text", "")
 
-        return text
+        return json.loads(text)["content"]
