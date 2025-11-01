@@ -7,7 +7,7 @@ import anthropic
 import pysbd
 
 
-class SentenceSplitterLLM:
+class SentenceSplitterAgent:
     """
     Anthropic-backed splitter that NEVER rewrites content.
     It only asks the model for sub-sentences and accepts boundaries.
@@ -18,12 +18,10 @@ class SentenceSplitterLLM:
         self,
         client: anthropic.Anthropic,
         *,
-        max_len: int = 80,
+        max_len: int = 130,
         model: str = "claude-haiku-4-5",
-        tracer: Optional[Callable[[str, Dict[str, Any]], None]] = None,
-        ls_client: Optional[object] = None,  # e.g., your LSClient()
         max_refine_iters: int = 3,           # hard cap per segment to avoid loops
-        max_words: int = 18,                 # optional word-count constraint
+        max_words: int = 30,                 # optional word-count constraint
         min_words: int = 6,                  # avoid tiny fragments (e.g., "and", "member")
     ):
         self.client = client
@@ -31,8 +29,6 @@ class SentenceSplitterLLM:
         self.max_words = max_words
         self.min_words = min_words
         self.model = model
-        self.tracer = tracer
-        self.ls_client = ls_client
         self.max_refine_iters = max_refine_iters
 
     # ---------------- public API ----------------
@@ -59,8 +55,8 @@ class SentenceSplitterLLM:
                     continue
 
                 # If already within constraints, accept
-                if self._fits_constraints(current) and not self._is_fragment(current):
-                    self._append_or_merge(results, current)
+                if self._fits_constraints(current):
+                    results.append(current)
                     continue
 
                 # Cap refinement
@@ -71,8 +67,9 @@ class SentenceSplitterLLM:
                         ch = ch.strip()
                         if not ch:
                             continue
-                        if self._fits_constraints(ch) and not self._is_fragment(ch):
-                            self._append_or_merge(results, ch)
+                        if self._fits_constraints(ch):
+                            results.append(ch)
+
                     continue
 
                 # Ask the LLM for split suggestions (sentences)
@@ -92,18 +89,14 @@ class SentenceSplitterLLM:
                     cand = cand.strip()
                     if not cand:
                         continue
-                    if self._fits_constraints(cand) and not self._is_fragment(cand):
-                        self._append_or_merge(results, cand)
+                    if self._fits_constraints(cand):
+                        results.append(cand)
                     else:
                         queue.append((cand, iters + 1))
                         any_pushed = True
 
-                self._trace("refine_step", {
-                    "iters": iters,
-                    "original": current,
-                    "candidates": candidates,
-                    "pushed_for_refine": any_pushed,
-                })
+             
+            
 
         return results
 
@@ -157,7 +150,6 @@ TEXT:
             block = resp.content[0]
             raw = getattr(block, "text", "") or (getattr(block, "input_text", "") or "")
         out = self._salvage_json(raw)
-        self._trace("llm_raw", {"raw": raw, "parsed_ok": bool(out)})
         return out
 
     @staticmethod
@@ -189,91 +181,4 @@ TEXT:
     def _word_count(t: str) -> int:
         return len([w for w in t.strip().split() if w])
 
-    @staticmethod
-    def _ensure_period(t: str) -> str:
-        t = t.strip()
-        return t if (not t or t.endswith(".")) else t + "."
 
-    def _is_fragment(self, t: str) -> bool:
-        w = [x.strip(",;:") for x in t.strip().split() if x]
-        if len(w) <= 2:
-            return True
-        starters = {"and", "or", "but", "which", "that", "wherein", "whereby"}
-        if w[0].lower() in starters:
-            return True
-        # ultra-light verb heuristic to avoid obvious noun phrases
-        verbish = {
-            "is","are","was","were","be","being","been","has","have","had",
-            "can","may","might","should","would","could","does","do","did",
-            "includes","include","comprises","comprise","provides","provide",
-            "generates","generate","leads","lead","installed","install","used","use"
-        }
-        if not any(tok.lower() in verbish for tok in w) and len(w) < 5:
-            return True
-        return False
-
-    def _append_or_merge(self, results: List[str], cand: str) -> None:
-        """
-        Merge tiny tails into the previous sentence when safe (no rewriting).
-        """
-        cand = cand.strip()
-        if not cand:
-            return
-        cand = self._ensure_period(cand)
-
-        if not results:
-            results.append(cand)
-            return
-
-        prev = results[-1]
-        if not prev:
-            results[-1] = cand
-            return
-
-        # If previous + current still fits constraints and isn't a fragment, merge.
-        prev_core = prev[:-1] if prev.endswith(".") else prev
-        cand_core = cand[:-1] if cand.endswith(".") else cand
-        merged_core = (prev_core + " " + cand_core).strip()
-        if self._fits_constraints(merged_core) and not self._is_fragment(merged_core):
-            results[-1] = self._ensure_period(merged_core)
-        else:
-            results.append(cand)
-
-    def _hard_boundary_split(self, t: str) -> List[str]:
-        """
-        Last-resort split without rewriting:
-        Try to cut at a whitespace boundary close to max_len/word cap.
-        """
-        pieces: List[str] = []
-        remaining = t.strip()
-        while remaining and (len(remaining) > self.max_len or self._word_count(remaining) > self.max_words):
-            cut = min(len(remaining), self.max_len)
-            ws = remaining.rfind(" ", 0, cut)
-            cut = ws if ws > 0 else cut
-            chunk = remaining[:cut].strip()
-            if not chunk:
-                break
-            pieces.append(chunk)
-            remaining = remaining[cut:].strip()
-        if remaining:
-            pieces.append(remaining)
-        # Normalize periods on output
-        return [self._ensure_period(p) for p in pieces]
-
-    def _trace(self, name: str, data: Dict[str, Any]) -> None:
-        if callable(self.tracer):
-            try:
-                self.tracer(name, data)
-                return
-            except Exception:
-                pass
-        if self.ls_client is not None:
-            for method in ("track", "log", "track_event"):
-                fn = getattr(self.ls_client, method, None)
-                if callable(fn):
-                    try:
-                        fn(name, data)
-                        return
-                    except Exception:
-                        return
-        # silent no-op

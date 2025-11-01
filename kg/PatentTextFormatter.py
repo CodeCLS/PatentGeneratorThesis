@@ -8,32 +8,32 @@ from SentenceSplitter import SentenceSplitter
 import spacy
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, AIMessage
-
+from BoilerplateRemover import BoilerplateRemover
+from SentenceStandardiser import SentenceStandardiser
 class PatentTextFormatter:
-    def __init__(self,text,spacy,client):
+    def __init__(self,spacy,client):
         # Initialize with the raw patent description text
-        self.text = text.replace("\n", " ") 
-        self.sentence_sequence_pre_formatted = text.split('.')
-        self.sentence_sequence_post_formatted = []
+        
         self.spacy = spacy
         self.llm_client = client
 
 
     # Split long compound sentences into shorter, self-contained ones
-    def shorten_sentences(self):
-        return SentenceSplitter(text = self.text, nlp=self.spacy, llm = self.llm_client).llm_splitter()
+    def shorten_sentences(self,text):
+        text = text.replace("\n", " ") 
+        return SentenceSplitter(text = text, nlp=self.spacy, llm = self.llm_client).llm_splitter()
 
     # Convert passive voice structures into active voice for clarity
     def convert_passive_to_active(self):
         pass
 
     # Remove generic boilerplate phrases like “The present invention relates to…”
-    def remove_boilerplate_sentences(self):
-        pass
+    def remove_boilerplate_sentences(self,sentence):
+        return BoilerplateRemover(sentences = sentence, nlp=self.spacy, llm = self.llm_client).remove()
 
     # Standardize figure and reference notations (e.g., FIG.1 → <FIG_1>)
-    def standardise_references(self):
-        pass
+    def standardise_references(self,sentences):
+        return SentenceStandardiser(nlp=self.spacy, llm = self.llm_client).standardise(sentences)
 
     # Isolate enumerations such as (i), (ii), (iii) into separate sentences
     def isolate_enumerations(self):

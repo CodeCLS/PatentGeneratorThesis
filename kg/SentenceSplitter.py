@@ -5,7 +5,7 @@ from typing import List, Tuple
 import re
 import nltk
 from nltk.tokenize import sent_tokenize
-from SentenceSplitterLLMTool import SentenceSplitterLLM
+from SentenceSplitterAgent import SentenceSplitterAgent
 import spacy
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, AIMessage
@@ -25,7 +25,7 @@ class SentenceSplitter:
     def shorten(self):
         pass
     def llm_splitter(self, post_alg=None):
-        splitter = SentenceSplitterLLM(self.llm, max_len=MAX_LEN)
+        splitter = SentenceSplitterAgent(self.llm, max_len=MAX_LEN)
         return splitter.shorten(self.text)
 
     def algo_splitter(self):
