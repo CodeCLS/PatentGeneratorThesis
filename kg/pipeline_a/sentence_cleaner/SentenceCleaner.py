@@ -1,0 +1,2 @@
+class SentenceCleaner():
+    pass
