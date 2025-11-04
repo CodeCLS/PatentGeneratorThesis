@@ -1,8 +1,8 @@
 import json
 import sys, os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from langsmith.wrappers import wrap_anthropic  # traces openai calls
+sys.path.append(os.path.abspath(".."))  # adds parent directory
 from tools.api.LLMApi_Repo import LLmApi_Repo
-
 
 PROMPT = """
 You are a linguistic sentence splitter specialized in technical and patent text.
@@ -30,26 +30,24 @@ Input:
 {input_text}
 """
 
-
 class SentenceSplitter:
-    """LLM-based sentence splitter that preserves original wording."""
-
     def __init__(self):
         self.api_repo_llm = LLmApi_Repo()
 
     def commit(self, text: str):
-        """Send the text to the LLM and return a list of split sentences."""
         prompt = PROMPT.replace("{input_text}", text.strip())
-        response = self.api_repo_llm.chat(prompt)  # already a raw JSON string from LLM
+        obj = self.api_repo_llm.chat(message=prompt)  # -> dict: {"sentence1": "...", "sentence2": "..."}
 
         try:
-            data = json.loads(response)  # directly parse the returned string
-            return [s for s in [data.get("sentence1", ""), data.get("sentence2", "")] if s]
+            s1 = obj.get("sentence1", "").strip()
+            s2 = obj.get("sentence2", "").strip()
+            print("s1: " + str(s1) + " " + "s2: " + str(s2))
+            out = [s for s in (s1, s2) if s]
+            return out if out else [text.strip()]
         except Exception as e:
-            print(f"[SentenceSplitter] Warning: failed to parse LLM output ({e})")
-            print("Raw LLM output:", response)
+            print(f"[SentenceSplitter] Warning: failed to use LLM output ({e})")
+            print("Raw LLM output:", obj)
             return [text.strip()]
-
 
 if __name__ == "__main__":
     splitter = SentenceSplitter()

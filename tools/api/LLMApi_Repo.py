@@ -1,12 +1,26 @@
-import models.AnthropicApiModel as AnthropicModel
-import langchain
+# tools/api/LLMApi_Repo.py
+from __future__ import annotations
+
+from uuid import uuid4
+from langsmith import traceable
+
+from langsmith import Client
+from AnthropicModel import AnthropicModel  # adjust import if your paths differ
+
+
+
 class ChatResult:
-    def __init__(self, input : str):
-        self._input = input
+    def __init__(self, data: dict):
+        self._data = data
+
+
 class LLmApi_Repo:
-   def __init__(self, llm_client: AnthropicModel = AnthropicModel()):
-        self.client = llm_client
-   def chat(self, message: str, **kwargs) -> ChatResult:
+        def __init__(self, llm_client: AnthropicModel = AnthropicModel()):
+            self.client = llm_client
+        @traceable
+        def chat(self, message: str, **kwargs) -> dict:
+            return self.client.send(message)
 
-               return self.client.send(message)["content"]
-
+if __name__ == "__main__":
+    repo = LLmApi_Repo()
+    print(repo.chat("I am a dog and I am a cat."))
