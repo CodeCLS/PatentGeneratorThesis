@@ -7,7 +7,7 @@ from tools.api.llm_models.anthropic_model import AnthropicModel
 class RecursivePromptingAgent(ABC):
 
     @abstractmethod
-    def __init__(self, prompt : str):
+    def __init__(self,task: str):
         super().__init__()
     
     @property

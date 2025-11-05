@@ -6,7 +6,7 @@ from langsmith import traceable
 
 from langsmith import Client
 from tools.api.llm_models.anthropic_model import AnthropicModel  # adjust import if your paths differ
-from tools.api.llmModels.gemini_model import GeminiModel  # adjust import if your paths differ
+from tools.api.llm_models.gemini_model import GeminiModel  # adjust import if your paths differ
 
 
 
