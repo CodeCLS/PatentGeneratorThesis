@@ -1,6 +1,6 @@
 
-from sentence_splitter import SentenceSplitter
-from sentence_splitter import SentenceParser
+from kg.pipeline_a.sentence_splitter.sentence_splitter import SentenceSplitter
+from kg.pipeline_a.sentence_splitter.SentenceParser import SentenceParser
 
 class SentenceFormatterManager():
     def __init__(self):

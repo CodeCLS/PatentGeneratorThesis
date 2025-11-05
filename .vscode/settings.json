@@ -1,4 +1,10 @@
 {
-  "python.defaultInterpreterPath": ".venv\\Scripts\\python.exe",
-  "jupyter.jupyterServerType": "local"
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe", // Windows
+  "python.terminal.executeInFileDir": false,
+  "python.envFile": "${workspaceFolder}/.env",
+  "python.analysis.extraPaths": ["${workspaceFolder}"],
+
+  // ✅ Force root as working directory for notebooks
+  "jupyter.notebookFileRoot": "${workspaceFolder}",
+  "jupyter.notebookKernelSource": "Python Environments"
 }
