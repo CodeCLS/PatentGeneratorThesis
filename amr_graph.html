@@ -1,0 +1,163 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script src="lib/bindings/utils.js"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 700px;
+                 background-color: #ffffff;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "#9ddaff", "id": "a", "label": "p p3", "shape": "box", "title": "\u003cb\u003eid\u003c/b\u003e: a\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: and\u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: p p3\u003cbr\u003e\u003cb\u003eroot\u003c/b\u003e: True"}, {"color": "#cbe5b6", "id": "p", "label": "p", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: p\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: p"}, {"color": "#cbe5b6", "id": "a2", "label": "t p2 m", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: a2\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: t p2 m"}, {"color": "#cbe5b6", "id": "t", "label": "t", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: t\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: t"}, {"color": "#cbe5b6", "id": "s", "label": "s", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: s\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: s"}, {"color": "#cbe5b6", "id": "w", "label": "w", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: w\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: w"}, {"color": "#cbe5b6", "id": "p2", "label": "p2", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: p2\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: p2"}, {"color": "#cbe5b6", "id": "w2", "label": "w2", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: w2\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: w2"}, {"color": "#cbe5b6", "id": "m", "label": "m", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: m\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: m"}, {"color": "#cbe5b6", "id": "g", "label": "g", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: g\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: g"}, {"color": "#cbe5b6", "id": "b", "label": "b", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: b\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: b"}, {"color": "#cbe5b6", "id": "a3", "label": "a3", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: a3\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: a3"}, {"color": "#cbe5b6", "id": "a4", "label": "a4", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: a4\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: a4"}, {"color": "#cbe5b6", "id": "w3", "label": "w3", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: w3\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: w3"}, {"color": "#cbe5b6", "id": "p3", "label": "p3", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: p3\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: p3"}, {"color": "#cbe5b6", "id": "p4", "label": "p4", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: p4\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: p4"}, {"color": "#cbe5b6", "id": "o", "label": "o", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: o\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: o"}, {"color": "#cbe5b6", "id": "a5", "label": "p5 ii", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: a5\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: p5 ii"}, {"color": "#cbe5b6", "id": "p5", "label": "p5", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: p5\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: p5"}, {"color": "#cbe5b6", "id": "p6", "label": "p6", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: p6\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: p6"}, {"color": "#cbe5b6", "id": "c", "label": "c", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: c\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: c"}, {"color": "#cbe5b6", "id": "l", "label": "l", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: l\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: l"}, {"color": "#cbe5b6", "id": "t2", "label": "t2", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: t2\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: t2"}, {"color": "#cbe5b6", "id": "w4", "label": "w4", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: w4\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: w4"}, {"color": "#cbe5b6", "id": "p7", "label": "p7", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: p7\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: p7"}, {"color": "#cbe5b6", "id": "c2", "label": "c2", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: c2\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: c2"}, {"color": "#cbe5b6", "id": "a6", "label": "a6", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: a6\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: a6"}, {"color": "#cbe5b6", "id": "ii", "label": "s2 e", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: ii\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: s2 e"}, {"color": "#cbe5b6", "id": "s2", "label": "s2", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: s2\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: s2"}, {"color": "#cbe5b6", "id": "w5", "label": "w5", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: w5\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: w5"}, {"color": "#cbe5b6", "id": "e", "label": "e", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: e\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: e"}, {"color": "#fbe29c", "id": "e:quant1", "label": "1", "shape": "hexagon", "title": "\u003cb\u003eid\u003c/b\u003e: e:quant1\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: 1\u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: 1"}, {"color": "#cbe5b6", "id": "w6", "label": "w6", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: w6\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: w6"}, {"color": "#cbe5b6", "id": "u", "label": "u", "shape": "ellipse", "title": "\u003cb\u003eid\u003c/b\u003e: u\u003cbr\u003e\u003cb\u003econcept\u003c/b\u003e: \u003cbr\u003e\u003cb\u003elabel\u003c/b\u003e: u"}]);
+                  edges = new vis.DataSet([{"arrows": "to", "from": "a", "label": ":op1", "to": "p"}, {"arrows": "to", "from": "a", "label": ":op2", "to": "p3"}, {"arrows": "to", "from": "p", "label": ":ARG1", "to": "a2"}, {"arrows": "to", "from": "p", "label": ":purpose", "to": "a4"}, {"arrows": "to", "from": "a2", "label": ":op1", "to": "t"}, {"arrows": "to", "from": "a2", "label": ":op2", "to": "p2"}, {"arrows": "to", "from": "a2", "label": ":op3", "to": "m"}, {"arrows": "to", "from": "s", "label": ":ARG0", "to": "t"}, {"arrows": "to", "from": "s", "label": ":ARG1", "to": "w"}, {"arrows": "to", "from": "p2", "label": ":mod", "to": "w2"}, {"arrows": "to", "from": "p2", "label": ":part", "to": "e"}, {"arrows": "to", "from": "g", "label": ":ARG0", "to": "m"}, {"arrows": "to", "from": "g", "label": ":ARG1", "to": "b"}, {"arrows": "to", "from": "b", "label": ":mod", "to": "a3"}, {"arrows": "to", "from": "a4", "label": ":ARG1", "to": "w3"}, {"arrows": "to", "from": "p3", "label": ":ARG1", "to": "p4"}, {"arrows": "to", "from": "p3", "label": ":ARG2", "to": "a5"}, {"arrows": "to", "from": "p3", "label": ":direction", "to": "u"}, {"arrows": "to", "from": "o", "label": ":ARG1", "to": "p4"}, {"arrows": "to", "from": "a5", "label": ":op1", "to": "p5"}, {"arrows": "to", "from": "a5", "label": ":op2", "to": "ii"}, {"arrows": "to", "from": "p5", "label": ":ARG1", "to": "p4"}, {"arrows": "to", "from": "p5", "label": ":ARG2", "to": "p6"}, {"arrows": "to", "from": "p6", "label": ":ARG1", "to": "g"}, {"arrows": "to", "from": "p6", "label": ":ARG0", "to": "c"}, {"arrows": "to", "from": "p6", "label": ":ARG1", "to": "c2"}, {"arrows": "to", "from": "p6", "label": ":ARG2", "to": "t2"}, {"arrows": "to", "from": "p6", "label": ":purpose", "to": "a6"}, {"arrows": "to", "from": "c", "label": ":mod", "to": "l"}, {"arrows": "to", "from": "c", "label": ":source", "to": "t2"}, {"arrows": "to", "from": "c", "label": ":path", "to": "p7"}, {"arrows": "to", "from": "t2", "label": ":mod", "to": "w4"}, {"arrows": "to", "from": "ii", "label": ":op1", "to": "s2"}, {"arrows": "to", "from": "ii", "label": ":op2", "to": "e"}, {"arrows": "to", "from": "ii", "label": ":ARG1", "to": "a5"}, {"arrows": "to", "from": "s2", "label": ":mod", "to": "w5"}, {"arrows": "to", "from": "e", "label": ":quant", "to": "e:quant1"}, {"arrows": "to", "from": "e", "label": ":mod", "to": "w6"}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {
+    "configure": {
+        "enabled": false
+    },
+    "edges": {
+        "color": {
+            "inherit": true
+        },
+        "smooth": {
+            "enabled": true,
+            "type": "dynamic"
+        }
+    },
+    "interaction": {
+        "dragNodes": true,
+        "hideEdgesOnDrag": false,
+        "hideNodesOnDrag": false
+    },
+    "physics": {
+        "barnesHut": {
+            "avoidOverlap": 0,
+            "centralGravity": 0.3,
+            "damping": 0.09,
+            "gravitationalConstant": -80000,
+            "springConstant": 0.001,
+            "springLength": 250
+        },
+        "enabled": true,
+        "stabilization": {
+            "enabled": true,
+            "fit": true,
+            "iterations": 1000,
+            "onlyDynamicEdges": false,
+            "updateInterval": 50
+        }
+    }
+};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>
