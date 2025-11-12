@@ -19,7 +19,6 @@ class Sentence:
     # NLP / features
     embedding: Optional[List[float]] = None
     tokens: List[str] = field(default_factory=list)
-    entities: List[str] = field(default_factory=list)  # simple surface strings or ids
     tags: List[str] = field(default_factory=list)      # arbitrary labels ("claim", "boilerplate", ...)
 
     # Scores (0..1)
