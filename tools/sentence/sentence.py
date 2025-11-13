@@ -1,8 +1,9 @@
 # tools/sentence/sentence.py
 from __future__ import annotations
 from dataclasses import dataclass, field, asdict
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 import uuid
+from tools.sentence.entity import Entity
 
 @dataclass(slots=True)
 class Sentence:
@@ -19,6 +20,8 @@ class Sentence:
     # NLP / features
     embedding: Optional[List[float]] = None
     tokens: List[str] = field(default_factory=list)
+    entities: Dict[Tuple[int, int], Entity] = field(default_factory=dict)
+
     tags: List[str] = field(default_factory=list)      # arbitrary labels ("claim", "boilerplate", ...)
 
     # Scores (0..1)

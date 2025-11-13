@@ -44,8 +44,10 @@ class CorefResolver:
 
     def __call__(self, doc: Doc) -> Doc:
         out = self.coref.predict(texts=[doc.text], is_split_into_words=False)[0]
+        raw_clusters = out.get_clusters(as_strings=False)
+
         clusters: List[List[Span]] = []
-        for cl in out.get_clusters():  # list of (char_start, char_end)
+        for cl in raw_clusters:  # list of (char_start, char_end)
             spans = []
             for (start, end) in cl:
                 sp = doc.char_span(start, end, alignment_mode="expand")
@@ -120,3 +122,23 @@ def make_coref_resolver(nlp: Language, name: str, device: str):
 )
 def make_local_entity_linker(nlp: Language, name: str, hash_len: int):
     return LocalEntityLinker(hash_len=hash_len)
+
+# =========================
+# Build pipeline (programmatic)
+# =========================
+nlp = spacy.load("en_core_web_trf")
+nlp.add_pipe("entity_normaliser", after="ner")        # uses factory + default_config
+nlp.add_pipe("fastcoref_resolver")                    # after full-doc components
+nlp.add_pipe("local_entity_linker")
+
+# Demo
+text = "A controlling device regulates pump flow. The controller adjusts the valve timing. It is in the housing."
+doc = nlp(text)
+
+print("Entities:")
+for ent in doc.ents:
+    print(f"{ent.text:25s} norm={ent._.norm_label:12s} kb={ent._.kb_id}")
+
+print("\nCoref clusters:")
+for cl in (doc._.coref_clusters or []):
+    print([sp.text for sp in cl], "→", cl[0]._.kb_id)
