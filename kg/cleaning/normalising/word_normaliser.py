@@ -50,3 +50,14 @@ class WordNormaliser:
             pos = pos_tags[i] if pos_tags else "ALL"
             out.append(self.normalise_token(tok, pos))
         return out
+    def do(self):
+                
+        # Build only VERB index
+        canon_verbs = ["emit", "absorb", "reflect", "refract", "illuminate"]
+        self.fit({"VERB": canon_verbs}, index_type="flat_ip")
+
+        # Optional hard rule: inflection -> lemma
+
+        tests = [("emits", "VERB"), ("shine", "VERB"), ("glow", "VERB")]
+        for tok, pos in tests:
+            print(f"{tok:10s} ({pos}) -> {self.normalise_token(tok, pos)}")
