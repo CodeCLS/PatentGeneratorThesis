@@ -132,12 +132,8 @@ class SpacyPipeline:
             offset += len(s.text)
         return sentence_starts
     def nlp(self,text):
-<<<<<<< HEAD
         nlp =  self.build_nlp()
         return nlp(text)
-=======
-        return self.build_nlp(text)
->>>>>>> 4eec9490a922b26d8df35968d1d7e431807dd75a
     
     def find_sentence_index(self,char_pos, sentence_starts):
         """
@@ -151,11 +147,7 @@ class SpacyPipeline:
             if i == len(sentence_starts) - 1 or char_pos < sentence_starts[i+1]:
                 return i
         return len(sentence_starts) - 1
-<<<<<<< HEAD
     def fill_coref_entities(self,doc,sentence_starts,sentences):
-=======
-    def fill_coref_entities(self,sentence_starts,sentences):
->>>>>>> 4eec9490a922b26d8df35968d1d7e431807dd75a
         clusters = doc._.coref_clusters or []
         for cl in clusters:
             kb_id = cl[0]._.kb_id  # one ID per cluster (set by LocalEntityLinker)
@@ -202,11 +194,7 @@ class SpacyPipeline:
                 for sp in cl
         }
             return cluster_spans
-<<<<<<< HEAD
     def add_entities_from_ner(self, doc,sentence_starts,sentences,cluster_spans = []):
-=======
-    def add_entities_from_ner(self, cluster_spans,sentence_starts,sentences):
->>>>>>> 4eec9490a922b26d8df35968d1d7e431807dd75a
                 
         for ent in doc.ents:
             # skip entities that were already added via coref
@@ -231,7 +219,6 @@ class SpacyPipeline:
                     label = ent.label_ ,
                     sentence_id=f"s{sent_idx}",
                 )
-<<<<<<< HEAD
     def generate_normalised_text(self,sentences):
         for i, s in enumerate(sentences):
             original = s.text
@@ -251,8 +238,6 @@ class SpacyPipeline:
                 print(f"  [{start}:{end}] {ent.name} {ent.label}  ref={ent.ref_short}")
                 print(s.text)
 
-=======
->>>>>>> 4eec9490a922b26d8df35968d1d7e431807dd75a
 
 
 

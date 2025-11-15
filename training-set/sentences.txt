@@ -1,0 +1,51 @@
+{"id": 1, "data": {"text": "The invention relates to a smart irrigation device configured to automatically regulate water flow for indoor plants."}}
+{"id": 2, "data": {"text": "A control unit receives moisture measurements from a plurality of soil sensors and adjusts pump speed accordingly."}}
+{"id": 3, "data": {"text": "The housing comprises a transparent polymer chamber enabling visual inspection of the water level during operation."}}
+{"id": 4, "data": {"text": "An LED illumination module is arranged above the plant container to provide adjustable light intensity and spectrum."}}
+{"id": 5, "data": {"text": "The pump is driven by a brushless DC motor connected to a microcontroller via a pulse width modulation interface."}}
+{"id": 6, "data": {"text": "A detachable reservoir stores a predetermined volume of nutrient solution and is fluidly coupled to the irrigation line."}}
+{"id": 7, "data": {"text": "The system further includes a wireless communication module configured to transmit sensor data to a remote server."}}
+{"id": 8, "data": {"text": "In one embodiment, the device operates in a low power mode when no change in moisture level is detected over a threshold period."}}
+{"id": 9, "data": {"text": "A user interface on a mobile application allows manual override of automatic irrigation schedules."}}
+{"id": 10, "data": {"text": "The microcontroller executes a control algorithm that limits maximum pump duty cycle to prevent overwatering of the plant."}}
+{"id": 11, "data": {"text": "A plurality of nozzles is arranged along the irrigation tube to distribute water uniformly across the substrate surface."}}
+{"id": 12, "data": {"text": "The enclosure is manufactured from corrosion resistant stainless steel to increase durability in high humidity environments."}}
+{"id": 13, "data": {"text": "The device further comprises a temperature sensor for monitoring ambient conditions in the growth chamber."}}
+{"id": 14, "data": {"text": "In another embodiment, the reservoir is mounted via magnetic fasteners to facilitate tool-less replacement and cleaning."}}
+{"id": 15, "data": {"text": "A controller compares the measured moisture value with a target setpoint and generates a control signal for the pump driver circuit."}}
+{"id": 16, "data": {"text": "The system can be powered via a USB-C connector or an external DC supply in the range of 9 to 12 volts."}}
+{"id": 17, "data": {"text": "A valve assembly is positioned upstream of the pump to prevent backflow when the system is in an idle state."}}
+{"id": 18, "data": {"text": "The firmware supports over-the-air updates to modify control parameters without physical access to the device."}}
+{"id": 19, "data": {"text": "An internal memory stores historical sensor data for subsequent analysis of plant growth conditions."}}
+{"id": 20, "data": {"text": "According to one aspect, the system classifies plant types and automatically selects an irrigation profile associated with each type."}}
+{"id": 21, "data": {"text": "The processor periodically calibrates the moisture sensor to compensate for long-term drift in measurement accuracy."}}
+{"id": 22, "data": {"text": "A detachable lighting arm is pivotally connected to the housing, allowing adjustment of illumination angle."}}
+{"id": 23, "data": {"text": "The system comprises a valve that restricts flow beyond a predefined pressure threshold to prevent tubing rupture."}}
+{"id": 24, "data": {"text": "A magnetic coupling mechanism secures the water reservoir to the base unit without requiring screws or tools."}}
+{"id": 25, "data": {"text": "The firmware module executes a diagnostic routine to detect pump blockage and notify the user via the application."}}
+{"id": 26, "data": {"text": "A humidity control subsystem injects air through the enclosure to maintain optimal growth conditions for the plants."}}
+{"id": 27, "data": {"text": "The controller stores user-defined irrigation schedules in non-volatile memory and retrieves them during startup."}}
+{"id": 28, "data": {"text": "A capacitive touch interface positioned on the front panel enables manual activation of watering cycles."}}
+{"id": 29, "data": {"text": "The liquid delivery line includes a microchannel section designed to reduce turbulence and ensure laminar flow."}}
+{"id": 30, "data": {"text": "In one configuration, the device integrates a CO2 sensor to monitor air quality within the growth environment."}}
+{"id": 31, "data": {"text": "The base unit incorporates vibration damping pads that minimize motor-induced noise during pump operation."}}
+{"id": 32, "data": {"text": "A sealing gasket is provided between the reservoir lid and chamber rim to prevent leakage under pressure."}}
+{"id": 33, "data": {"text": "The system supports Bluetooth Low Energy communication for pairing with smartphones and tablets."}}
+{"id": 34, "data": {"text": "A thermal fuse disconnected the power supply when abnormal temperature rise is detected near the motor."}}
+{"id": 35, "data": {"text": "The irrigation control algorithm dynamically adjusts flow duration based on real-time evapotranspiration estimates."}}
+{"id": 36, "data": {"text": "An optical liquid-level sensor emits infrared light into the reservoir and detects reflection changes as water decreases."}}
+{"id": 37, "data": {"text": "The device includes a quick-release connector to simplify attachment of external nutrient supply systems."}}
+{"id": 38, "data": {"text": "A pressure equalization vent is integrated into the reservoir wall to prevent vacuum formation during discharge."}}
+{"id": 39, "data": {"text": "The electronics module is encapsulated in a waterproof resin to protect sensitive components from moisture ingress."}}
+{"id": 40, "data": {"text": "A wireless firmware update protocol verifies cryptographic signatures before applying configuration changes."}}
+{"id": 41, "data": {"text": "The enclosure features an internal baffle that distributes incoming air uniformly across the sensor chamber."}}
+{"id": 42, "data": {"text": "A multi-stage filtration assembly removes impurities from the water supply before it enters the irrigation line."}}
+{"id": 43, "data": {"text": "The system measures electrical conductivity of the nutrient solution to determine concentration levels."}}
+{"id": 44, "data": {"text": "A safety interlock prevents pump activation when the reservoir is not properly seated in the base station."}}
+{"id": 45, "data": {"text": "The user may configure notification parameters, including moisture thresholds and refill reminders, via the app."}}
+{"id": 46, "data": {"text": "The reservoir includes a visual fill indicator that aligns with a window in the housing for easy inspection."}}
+{"id": 47, "data": {"text": "A flexible silicone tube connects the pump outlet to the distribution manifold, allowing vibration isolation."}}
+{"id": 48, "data": {"text": "In another embodiment, the system employs a peristaltic pump to ensure consistent dosing of nutrient solution."}}
+{"id": 49, "data": {"text": "The microcontroller monitors supply voltage and initiates a protective shutdown when undervoltage is detected."}}
+{"id": 50, "data": {"text": "A modular sensor cartridge containing moisture, temperature, and light sensors is removably attached to the device."}}
+
