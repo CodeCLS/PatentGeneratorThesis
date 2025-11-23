@@ -12,12 +12,18 @@ class JsonHelper:
 
     @staticmethod
     def parse_string_list(data: str) -> List[str]:
+        ...
+        # leave this exactly as it is
+
+    @staticmethod
+    def parse_triple_list(data: str) -> list[dict]:
         """
         Accepts:
-          - JSON array: ["a","b"]
-          - fenced JSON: ```json [ "a", "b" ] ```
-          - python-literal list: ['a','b']
-          - dict wrapper: {"sentences": [...]}
+          - JSON array of triples: [{"head": "...", "relation": "...", "tail": "..."}]
+          - fenced JSON: ```json [ {...}, {...} ] ```
+          - python-literal list of dicts
+        Returns:
+          - list of normalized dicts with keys: head, relation, tail
         """
         text = JsonHelper._unfence(data).strip()
         if not text:
@@ -33,12 +39,17 @@ class JsonHelper:
             except Exception:
                 return []
 
-        # normalize shapes
-        if isinstance(val, dict) and "sentences" in val:
-            val = val["sentences"]
+        if not isinstance(val, list):
+            return []
 
-        if isinstance(val, list):
-            out = [s.strip() for s in val if isinstance(s, str) and s.strip()]
-            return out
+        triples: list[dict] = []
+        for item in val:
+            if not isinstance(item, dict):
+                continue
+            head = str(item.get("head", "")).strip()
+            rel = str(item.get("relation", "")).strip()
+            tail = str(item.get("tail", "")).strip()
+            if head and rel and tail:
+                triples.append({"head": head, "relation": rel, "tail": tail})
 
-        return []
+        return triples

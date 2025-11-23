@@ -55,22 +55,9 @@ class NodeGenerator:
         Generate KG triples from a single annotated sentence,
         parse the LLM JSON response, and return readable triples.
         """
-        raw = self.agent.run(sentence)
+        triples = self.agent.run(sentence)
 
-        print("RAW TRIPLE: " + raw)
 
-        # 1. Parse JSON returned by the LLM
-        try:
-            triples_json = json.loads(raw)
-        except Exception:
-            raise ValueError(f"TripleGenerator: LLM did not return valid JSON: {raw}")
+    
 
-        # 2. Convert each triple object to a readable tuple format
-        readable = []
-        for t in triples_json:
-            head = t.get("head", "")
-            rel = t.get("relation", "")
-            tail = t.get("tail", "")
-            readable.append(f"({head}, {rel}, {tail})")
-
-        return readable
+        return triples
