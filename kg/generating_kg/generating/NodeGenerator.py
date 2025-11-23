@@ -57,6 +57,8 @@ class NodeGenerator:
         """
         raw = self.agent.run(sentence)
 
+        print("RAW TRIPLE: " + raw)
+
         # 1. Parse JSON returned by the LLM
         try:
             triples_json = json.loads(raw)
