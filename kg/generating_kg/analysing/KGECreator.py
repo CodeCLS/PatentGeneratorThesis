@@ -169,10 +169,23 @@ class KGECreator:
     def triple_importance_ids(self, h_id: int, r_id: int, t_id: int) -> float:
         """
         Convert TransE score to an importance in [0,1]:
-        lower score -> closer to 1.
+        higher TransE score -> closer to 1.
         """
-        score = self._triple_score_ids(h_id, r_id, t_id)
-        return 1.0 / (1.0 + max(score, 0.0))  # simple monotonic transform
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
+
+        self.model.eval()
+        with torch.no_grad():
+            h = torch.tensor([h_id], device=self.device)
+            r = torch.tensor([r_id], device=self.device)
+            t = torch.tensor([t_id], device=self.device)
+            score = self.model(h, r, t)[0].item()  # scalar
+
+        # Simple sigmoid squashing to [0,1]
+        # (You could also do a global min-max, but sigmoid is local & cheap)
+        importance = 1.0 / (1.0 + np.exp(-score))
+        return float(importance)
+
 
     def triple_importance_edge(self, u: Any, v: Any, key: Any, weight_attr: str = "weight") -> float:
         return float(self.graph[u][v][key].get(weight_attr, 1.0))
@@ -230,6 +243,113 @@ class KGECreator:
         """
         for u, v, key, data in self.graph.edges(keys=True, data=True):
             data[weight_attr] = float(score_fn(u, v, data))
+    def score(self) -> Dict[Tuple[Any, Any, Any], float]:
+        """
+        Compute a KGE-based importance score for every edge in the graph.
+
+        Returns
+        -------
+        Dict[(u, v, key), float]
+            Mapping from edge (u, v, key) to importance in [0, 1],
+            where higher = more plausible/important according to TransE.
+        """
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
+
+        if self.h is None or self.r is None or self.t is None:
+            raise RuntimeError("Triples not built.")
+
+        self.model.eval()
+        with torch.no_grad():
+            # Raw TransE scores: higher = more plausible
+            scores = self.model(self.h, self.r, self.t).cpu().numpy()
+
+        s_min = float(scores.min())
+        s_max = float(scores.max())
+
+        if s_max == s_min:
+            importances = np.ones_like(scores, dtype=float)
+        else:
+            # Normalize to [0,1]: lowest score -> 0, highest -> 1
+            importances = (scores - s_min) / (s_max - s_min)
+
+        edge_scores: Dict[Tuple[Any, Any, Any], float] = {}
+        for (u, v, key), idx in self.edge_to_idx.items():
+            edge_scores[(u, v, key)] = float(importances[idx])
+
+        return edge_scores
+    def predict_tails(
+    self,
+    head: Any,
+    relation: str,
+    top_k: int = 10,
+    ):
+        """
+        Given a head entity and a relation, rank all possible tail entities.
+
+        Parameters
+        ----------
+        head : Any
+            Node label in your original graph (e.g. "Alice").
+        relation : str
+            Relation label (e.g. "friend_of").
+        top_k : int
+            How many top tails to return.
+
+        Returns
+        -------
+        List[Tuple[Any, float]]
+            List of (tail_entity_label, score), sorted by descending plausibility.
+        """
+        if self.model is None:
+            raise RuntimeError("Model not initialized.")
+
+        if head not in self.entity_to_id:
+            raise ValueError(f"Unknown head entity: {head}")
+        if relation not in self.relation_to_id:
+            raise ValueError(f"Unknown relation: {relation}")
+
+        h_id = self.entity_to_id[head]
+        r_id = self.relation_to_id[relation]
+
+        num_entities = len(self.entity_to_id)
+
+        self.model.eval()
+        with torch.no_grad():
+            # Build batches: (h, r, all possible t)
+            h_batch = torch.full(
+                (num_entities,),
+                h_id,
+                dtype=torch.long,
+                device=self.device,
+            )
+            r_batch = torch.full(
+                (num_entities,),
+                r_id,
+                dtype=torch.long,
+                device=self.device,
+            )
+            t_batch = torch.arange(num_entities, device=self.device, dtype=torch.long)
+
+            scores = self.model(h_batch, r_batch, t_batch)  # shape: [num_entities]
+
+            # Higher score = more plausible
+            scores = scores.cpu().numpy()
+
+        # Get top-k indices
+        top_k = min(top_k, num_entities)
+        top_idx = np.argsort(-scores)[:top_k]  # sort descending
+
+        # Map back to entity labels
+        results = []
+        for idx in top_idx:
+            tail_label = self.id_to_entity[int(idx)]
+            tail_score = float(scores[idx])
+            results.append((tail_label, tail_score))
+
+        return results
+
+
 
     # ------------------------------------------------------------------
     # 6. Minimum spanning tree (on undirected projection)
