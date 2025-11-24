@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AMR Graph Explorer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      display: flex;
+      min-height: 100vh;
+      background: #f4f5f7;
+      color: #222;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 320px;
+      max-width: 100%;
+      background: #ffffff;
+      border-right: 1px solid #d0d7de;
+      padding: 16px 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .sidebar-header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-header h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+
+    .sidebar-header p {
+      font-size: 0.85rem;
+      color: #57606a;
+    }
+
+    .section {
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid #e1e5ea;
+      padding: 10px 12px 12px;
+    }
+
+    .section + .section {
+      margin-top: 4px;
+    }
+
+    .section-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #24292f;
+    }
+
+    .section-title span {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #6e7781;
+    }
+
+    .field {
+      margin-bottom: 8px;
+    }
+
+    .field:last-child {
+      margin-bottom: 0;
+    }
+
+    .field label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      margin-bottom: 2px;
+      color: #444;
+    }
+
+    .field span.value {
+      font-size: 0.75rem;
+      color: #6e7781;
+      margin-left: 8px;
+      min-width: 36px;
+      text-align: right;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    input[type="number"],
+    select,
+    input[type="text"] {
+      width: 100%;
+      padding: 4px 6px;
+      border-radius: 4px;
+      border: 1px solid #d0d7de;
+      font-size: 0.8rem;
+      background: #ffffff;
+    }
+
+    input[type="number"]:focus,
+    select:focus,
+    input[type="text"]:focus {
+      outline: 2px solid #2563eb33;
+      border-color: #2563eb;
+    }
+
+    .checkbox-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      font-size: 0.8rem;
+    }
+
+    .checkbox-row label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 0;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    button {
+      font-size: 0.8rem;
+      border-radius: 999px;
+      border: 1px solid #d0d7de;
+      padding: 4px 10px;
+      background: #ffffff;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    button.primary {
+      background: #2563eb;
+      color: white;
+      border-color: #1d4ed8;
+    }
+
+    button.danger {
+      background: #fee2e2;
+      color: #b91c1c;
+      border-color: #fecaca;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    button:hover:not(:disabled) {
+      filter: brightness(0.97);
+    }
+
+    .divider {
+      height: 1px;
+      width: 100%;
+      background: #e1e5ea;
+      margin: 4px 0;
+    }
+
+    .hint {
+      font-size: 0.72rem;
+      color: #6e7781;
+      margin-top: 3px;
+    }
+
+    /* Main area: iframe */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .main-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #d0d7de;
+      background: #f9fafb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      color: #4b5563;
+    }
+
+    .main-header span.status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #22c55e;
+      margin-right: 6px;
+    }
+
+    .main-header .meta {
+      font-size: 0.75rem;
+      color: #6e7781;
+    }
+
+    .graph-container {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .graph-frame {
+      width: 100%;
+      height: calc(100vh - 52px);
+      border: none;
+      display: block;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        border-right: none;
+        border-bottom: 1px solid #d0d7de;
+      }
+      .graph-frame {
+        height: calc(100vh - 52px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- LEFT TOOLBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>Graph Control Panel</h1>
+      <p>Tune clustering, claim generation, layout, and filters for your AMR graph.</p>
+    </div>
+
+    <!-- Clustering -->
+    <section class="section" id="clustering-section">
+      <div class="section-title">
+        <div>Clustering</div>
+        <span id="cluster-summary">auto</span>
+      </div>
+
+      <div class="field">
+        <label>
+          Cluster temperature
+          <span class="value" id="cluster-temp-value">0.50</span>
+        </label>
+        <input
+          type="range"
+          id="cluster-temperature"
+          min="0"
+          max="1"
+          step="0.01"
+          value="0.5"
+        />
+        <div class="hint">Higher = more exploratory, looser clusters.</div>
+      </div>
+
+      <div class="field">
+        <label for="cluster-algorithm">
+          Algorithm
+        </label>
+        <select id="cluster-algorithm">
+          <option value="louvain">Louvain</option>
+          <option value="leiden">Leiden</option>
+          <option value="connected_components">Connected components</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>
+          Min cluster size
+          <span class="value" id="cluster-min-size-value">3</span>
+        </label>
+        <input
+          type="range"
+          id="cluster-min-size"
+          min="1"
+          max="20"
+          step="1"
+          value="3"
+        />
+      </div>
+
+      <div class="btn-row">
+        <button class="primary" id="btn-run-clustering">Re-run clustering</button>
+        <button id="btn-clear-clusters">Clear clusters</button>
+      </div>
+    </section>
+
+    <!-- Claim Generation -->
+    <section class="section" id="claims-section">
+      <div class="section-title">
+        <div>Claim Generation</div>
+        <span id="claims-summary">temp 0.7 · 5 claims</span>
+      </div>
+
+      <div class="field">
+        <label>
+          LM temperature
+          <span class="value" id="claim-temp-value">0.70</span>
+        </label>
+        <input
+          type="range"
+          id="claim-temperature"
+          min="0"
+          max="1"
+          step="0.01"
+          value="0.7"
+        />
+        <div class="hint">Higher = more creative, lower = more deterministic.</div>
+      </div>
+
+      <div class="field">
+        <label>
+          Top-p
+          <span class="value" id="claim-top-p-value">0.95</span>
+        </label>
+        <input
+          type="range"
+          id="claim-top-p"
+          min="0.1"
+          max="1"
+          step="0.01"
+          value="0.95"
+        />
+      </div>
+
+      <div class="field">
+        <label>
+          Number of claims
+          <span class="value" id="claim-count-value">5</span>
+        </label>
+        <input
+          type="range"
+          id="claim-count"
+          min="1"
+          max="20"
+          step="1"
+          value="5"
+        />
+      </div>
+
+      <div class="field">
+        <label for="claim-length">
+          Claim length
+        </label>
+        <select id="claim-length">
+          <option value="short">Short (1–2 sentences)</option>
+          <option value="medium" selected>Medium (2–4 sentences)</option>
+          <option value="long">Long (4–6 sentences)</option>
+        </select>
+      </div>
+
+      <div class="btn-row">
+        <button class="primary" id="btn-generate-claims">Generate claims</button>
+        <button id="btn-export-claims">Export claims</button>
+      </div>
+      <div class="hint">These controls are just a UI layer; wire them to your backend or model as needed.</div>
+    </section>
+
+    <!-- Filtering -->
+    <section class="section" id="filter-section">
+      <div class="section-title">
+        <div>Filtering</div>
+        <span>nodes & edges</span>
+      </div>
+
+      <div class="field">
+        <label>
+          Min edge weight
+          <span class="value" id="edge-weight-value">0.10</span>
+        </label>
+        <input
+          type="range"
+          id="min-edge-weight"
+          min="0"
+          max="1"
+          step="0.01"
+          value="0.1"
+        />
+      </div>
+
+      <div class="field">
+        <label>Visible node kinds</label>
+        <div class="checkbox-row">
+          <label><input type="checkbox" id="kind-concept" checked /> Concept</label>
+          <label><input type="checkbox" id="kind-event" checked /> Event</label>
+          <label><input type="checkbox" id="kind-entity" checked /> Entity</label>
+          <label><input type="checkbox" id="kind-metadata" /> Metadata</label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="node-search">
+          Search node by label
+        </label>
+        <input type="text" id="node-search" placeholder="e.g. 'climate change'" />
+        <div class="btn-row">
+          <button id="btn-search-node">Find & highlight</button>
+          <button id="btn-clear-search">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Layout / physics -->
+    <section class="section" id="layout-section">
+      <div class="section-title">
+        <div>Layout & Physics</div>
+        <span id="layout-summary">stable</span>
+      </div>
+
+      <div class="field">
+        <label>
+          Repulsion strength
+          <span class="value" id="repulsion-value">600</span>
+        </label>
+        <input
+          type="range"
+          id="repulsion-strength"
+          min="0"
+          max="2000"
+          step="50"
+          value="600"
+        />
+      </div>
+
+      <div class="field">
+        <label>
+          Central gravity
+          <span class="value" id="gravity-value">0.30</span>
+        </label>
+        <input
+          type="range"
+          id="central-gravity"
+          min="0"
+          max="1"
+          step="0.01"
+          value="0.3"
+        />
+      </div>
+
+      <div class="field">
+        <div class="checkbox-row">
+          <label><input type="checkbox" id="physics-enabled" checked /> Enable physics</label>
+          <label><input type="checkbox" id="smooth-edges" checked /> Smooth edges</label>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-randomize-layout">Randomize layout</button>
+        <button id="btn-reset-layout">Reset layout</button>
+      </div>
+    </section>
+
+    <!-- Presets & session -->
+    <section class="section" id="presets-section">
+      <div class="section-title">
+        <div>Presets & Session</div>
+        <span>quick setups</span>
+      </div>
+
+      <div class="btn-row">
+        <button id="preset-exploratory">Exploratory mode</button>
+        <button id="preset-conservative">Conservative mode</button>
+        <button id="preset-story">Storytelling mode</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="btn-row">
+        <button id="btn-save-config">Save config</button>
+        <button class="danger" id="btn-reset-all">Reset all</button>
+      </div>
+
+      <div class="hint">
+        Current config is stored in memory. Hook these buttons up to localStorage,
+        a backend, or your graph engine as needed.
+      </div>
+    </section>
+  </aside>
+
+  <!-- RIGHT: GRAPH -->
+  <main class="main">
+    <div class="main-header">
+      <div>
+        <span class="status-dot"></span>
+        <strong>AMR Graph Viewer</strong>
+      </div>
+      <div class="meta" id="status-text">
+        Ready • Controls only affect config in this page for now.
+      </div>
+    </div>
+    <div class="graph-container">
+      <!-- IMPORTANT: amr_graph.html should live in the same folder as this file -->
+      <iframe
+        src="amr_graph.html"
+        class="graph-frame"
+        id="graph-iframe"
+        title="AMR Graph"
+      ></iframe>
+    </div>
+  </main>
+
+  <script>
+    // Utility: keep track of config (you can send this to your backend, etc.)
+    const config = {
+      clustering: {
+        temperature: 0.5,
+        algorithm: "louvain",
+        minSize: 3,
+      },
+      claims: {
+        temperature: 0.7,
+        topP: 0.95,
+        count: 5,
+        length: "medium",
+      },
+      filters: {
+        minEdgeWeight: 0.1,
+        kinds: {
+          concept: true,
+          event: true,
+          entity: true,
+          metadata: false,
+        },
+        search: "",
+      },
+      layout: {
+        repulsion: 600,
+        gravity: 0.3,
+        physics: true,
+        smoothEdges: true,
+      },
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const statusText = $("status-text");
+
+    function setStatus(message) {
+      statusText.textContent = message;
+      // If you want a subtle "flash" you could add a class here and remove it later.
+    }
+
+    // --- Clustering controls ---
+    const clusterTemp = $("cluster-temperature");
+    const clusterTempValue = $("cluster-temp-value");
+    const clusterMinSize = $("cluster-min-size");
+    const clusterMinSizeValue = $("cluster-min-size-value");
+    const clusterAlgorithm = $("cluster-algorithm");
+    const clusterSummary = $("cluster-summary");
+
+    function updateClusterSummary() {
+      clusterSummary.textContent =
+        `temp ${config.clustering.temperature.toFixed(2)}, ` +
+        `${config.clustering.algorithm}, min size ${config.clustering.minSize}`;
+    }
+
+    clusterTemp.addEventListener("input", () => {
+      const val = parseFloat(clusterTemp.value);
+      config.clustering.temperature = val;
+      clusterTempValue.textContent = val.toFixed(2);
+      updateClusterSummary();
+    });
+
+    clusterMinSize.addEventListener("input", () => {
+      const val = parseInt(clusterMinSize.value, 10);
+      config.clustering.minSize = val;
+      clusterMinSizeValue.textContent = String(val);
+      updateClusterSummary();
+    });
+
+    clusterAlgorithm.addEventListener("change", () => {
+      config.clustering.algorithm = clusterAlgorithm.value;
+      updateClusterSummary();
+    });
+
+    $("btn-run-clustering").addEventListener("click", () => {
+      setStatus("Requested clustering with current parameters (send to backend here).");
+      console.log("Run clustering with config:", config.clustering);
+      // Example if you want to talk to the iframe:
+      // const iframeWindow = $("graph-iframe").contentWindow;
+      // iframeWindow.postMessage({ type: "RUN_CLUSTERING", payload: config.clustering }, "*");
+    });
+
+    $("btn-clear-clusters").addEventListener("click", () => {
+      setStatus("Requested clearing of cluster assignments.");
+      console.log("Clear clusters");
+    });
+
+    updateClusterSummary();
+
+    // --- Claim generation controls ---
+    const claimTemp = $("claim-temperature");
+    const claimTempValue = $("claim-temp-value");
+    const claimTopP = $("claim-top-p");
+    const claimTopPValue = $("claim-top-p-value");
+    const claimCount = $("claim-count");
+    const claimCountValue = $("claim-count-value");
+    const claimLength = $("claim-length");
+    const claimsSummary = $("claims-summary");
+
+    function updateClaimsSummary() {
+      claimsSummary.textContent =
+        `temp ${config.claims.temperature.toFixed(2)} · ` +
+        `${config.claims.count} claims`;
+    }
+
+    claimTemp.addEventListener("input", () => {
+      const val = parseFloat(claimTemp.value);
+      config.claims.temperature = val;
+      claimTempValue.textContent = val.toFixed(2);
+      updateClaimsSummary();
+    });
+
+    claimTopP.addEventListener("input", () => {
+      const val = parseFloat(claimTopP.value);
+      config.claims.topP = val;
+      claimTopPValue.textContent = val.toFixed(2);
+    });
+
+    claimCount.addEventListener("input", () => {
+      const val = parseInt(claimCount.value, 10);
+      config.claims.count = val;
+      claimCountValue.textContent = String(val);
+      updateClaimsSummary();
+    });
+
+    claimLength.addEventListener("change", () => {
+      config.claims.length = claimLength.value;
+      updateClaimsSummary();
+    });
+
+    $("btn-generate-claims").addEventListener("click", () => {
+      setStatus("Requested claim generation with current LM parameters.");
+      console.log("Generate claims with config:", config.claims);
+    });
+
+    $("btn-export-claims").addEventListener("click", () => {
+      setStatus("Requested export of generated claims.");
+      console.log("Export claims");
+    });
+
+    updateClaimsSummary();
+
+    // --- Filtering controls ---
+    const edgeWeight = $("min-edge-weight");
+    const edgeWeightValue = $("edge-weight-value");
+
+    edgeWeight.addEventListener("input", () => {
+      const val = parseFloat(edgeWeight.value);
+      config.filters.minEdgeWeight = val;
+      edgeWeightValue.textContent = val.toFixed(2);
+      setStatus("Updated min edge weight filter.");
+    });
+
+    ["concept", "event", "entity", "metadata"].forEach((kind) => {
+      const checkbox = $(`kind-${kind}`);
+      checkbox.addEventListener("change", () => {
+        config.filters.kinds[kind] = checkbox.checked;
+        setStatus("Updated visible node kinds filter.");
+      });
+    });
+
+    const nodeSearch = $("node-search");
+    $("btn-search-node").addEventListener("click", () => {
+      config.filters.search = nodeSearch.value.trim();
+      setStatus(`Search requested for node: "${config.filters.search}"`);
+      console.log("Search node:", config.filters.search);
+    });
+
+    $("btn-clear-search").addEventListener("click", () => {
+      nodeSearch.value = "";
+      config.filters.search = "";
+      setStatus("Cleared node search filter.");
+    });
+
+    // --- Layout controls ---
+    const repulsion = $("repulsion-strength");
+    const repulsionValue = $("repulsion-value");
+    const gravity = $("central-gravity");
+    const gravityValue = $("gravity-value");
+    const physicsEnabled = $("physics-enabled");
+    const smoothEdges = $("smooth-edges");
+    const layoutSummary = $("layout-summary");
+
+    function updateLayoutSummary() {
+      layoutSummary.textContent = config.layout.physics ? "dynamic" : "static";
+    }
+
+    repulsion.addEventListener("input", () => {
+      const val = parseInt(repulsion.value, 10);
+      config.layout.repulsion = val;
+      repulsionValue.textContent = String(val);
+      setStatus("Updated repulsion strength.");
+    });
+
+    gravity.addEventListener("input", () => {
+      const val = parseFloat(gravity.value);
+      config.layout.gravity = val;
+      gravityValue.textContent = val.toFixed(2);
+      setStatus("Updated central gravity.");
+    });
+
+    physicsEnabled.addEventListener("change", () => {
+      config.layout.physics = physicsEnabled.checked;
+      updateLayoutSummary();
+      setStatus(`Physics ${config.layout.physics ? "enabled" : "disabled"}.`);
+    });
+
+    smoothEdges.addEventListener("change", () => {
+      config.layout.smoothEdges = smoothEdges.checked;
+      setStatus("Updated edge smoothing.");
+    });
+
+    $("btn-randomize-layout").addEventListener("click", () => {
+      setStatus("Requested randomization of layout.");
+      console.log("Randomize layout");
+    });
+
+    $("btn-reset-layout").addEventListener("click", () => {
+      setStatus("Requested layout reset to default.");
+      console.log("Reset layout");
+    });
+
+    updateLayoutSummary();
+
+    // --- Presets & session ---
+    $("preset-exploratory").addEventListener("click", () => {
+      // Example "exploratory" preset
+      clusterTemp.value = 0.8;
+      clusterTemp.dispatchEvent(new Event("input"));
+
+      claimTemp.value = 0.9;
+      claimTemp.dispatchEvent(new Event("input"));
+
+      repulsion.value = 800;
+      repulsion.dispatchEvent(new Event("input"));
+
+      gravity.value = 0.2;
+      gravity.dispatchEvent(new Event("input"));
+
+      setStatus("Applied exploratory preset.");
+    });
+
+    $("preset-conservative").addEventListener("click", () => {
+      clusterTemp.value = 0.2;
+      clusterTemp.dispatchEvent(new Event("input"));
+
+      claimTemp.value = 0.3;
+      claimTemp.dispatchEvent(new Event("input"));
+
+      repulsion.value = 500;
+      repulsion.dispatchEvent(new Event("input"));
+
+      gravity.value = 0.4;
+      gravity.dispatchEvent(new Event("input"));
+
+      setStatus("Applied conservative preset.");
+    });
+
+    $("preset-story").addEventListener("click", () => {
+      claimCount.value = 10;
+      claimCount.dispatchEvent(new Event("input"));
+
+      claimLength.value = "long";
+      claimLength.dispatchEvent(new Event("change"));
+
+      setStatus("Applied storytelling preset.");
+    });
+
+    $("btn-save-config").addEventListener("click", () => {
+      console.log("Save config (example):", config);
+      setStatus("Config saved locally (console). Wire this to storage or backend.");
+    });
+
+    $("btn-reset-all").addEventListener("click", () => {
+      // simplest: reload page
+      location.reload();
+    });
+
+    // OPTIONAL: listen for messages from the iframe (if you instrument amr_graph.html)
+    window.addEventListener("message", (event) => {
+      // In a real app, check origin here.
+      console.log("Message from graph iframe:", event.data);
+    });
+  </script>
+</body>
+</html>
