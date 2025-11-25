@@ -12,7 +12,7 @@ response = client.published_data(
 
   # publication, application, priority
   reference_type="publication",
-
+##
   # docdb, epodoc
   input=epo_ops.models.Docdb("1000000", "EP", "A1"),
 
