@@ -1,11 +1,13 @@
 import epo_ops
+from dotenv import load_dotenv
 import os
 import spacy
 import xml.etree.ElementTree as ET
 import json
+load_dotenv()
+
 # Instantiate client.
 client = epo_ops.Client(key=os.getenv("EPO_CONSUMER_KEY"), secret=os.getenv("EPO_CONSUMER_SECRET_KEY"))
-
 print(os.getenv("EPO_CONSUMER_KEY"))
 # Retrieve bibliography data.
 response = client.published_data(
@@ -14,7 +16,7 @@ response = client.published_data(
   reference_type="publication",
 ##
   # docdb, epodoc
-  input=epo_ops.models.Docdb("1000000", "EP", "A1"),
+  input=epo_ops.models.Docdb("1000001", "EP", "A1"),
 
   # optional, defaults to biblio in case of published_data
   endpoint="biblio",
