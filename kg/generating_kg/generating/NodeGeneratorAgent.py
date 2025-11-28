@@ -28,7 +28,7 @@ class NodeGeneratorAgent(RecursivePromptingAgent):
     def build_prompt(self, state: Dict[str, Any]) -> str:
         note = f"\nNote: {state['improvement']}" if state.get("improvement") else ""
 
-        # IMPORTANT: Ask the LLM for a JSON array  of triple objects
+        # IMPORTANT: Ask the LLM for a JSON array   of triple objects
         return (
             f"{self.task}\n"
             f"{note}\n\n"
