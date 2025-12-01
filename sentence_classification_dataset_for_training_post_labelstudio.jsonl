@@ -43,7 +43,14 @@
 {"id": 1060, "text": "In preference the stop members of the frame of the edge-forming means are also provided with these.", "label_name": "OTHER", "label": 2}
 {"id": 1061, "text": "Preferably plastic, stop surfaces.", "label_name": "OTHER", "label": 2}
 {"id": 1062, "text": "The invention is described in more detail hereinbelow with reference to the drawing in which:", "label_name": "OTHER", "label": 2}
+{"id": 1063, "text": "figure 1 shows schematically a preferred embodiment of the apparatus according to the invention;", "label_name": "FIGURE-RELATED", "label": 1}
+{"id": 1064, "text": "figure 2 shows in more detail a perspective view of a part of the apparatus of figure 1 with the edge-forming means therein;", "label_name": "FIGURE-RELATED", "label": 1}
+{"id": 1065, "text": "figure 3 shows the edge-forming means of figure 2 in even more detail;", "label_name": "FIGURE-RELATED", "label": 1}
+{"id": 1066, "text": "figure 4 is a perspective view of a first preferred embodiment of a mould container part which is suitable for use in the apparatus according to the invention;", "label_name": "FIGURE-RELATED", "label": 1}
+{"id": 1067, "text": "figure 5 is a perspective view of a second preferred embodiment of a mould container part; and", "label_name": "FIGURE-RELATED", "label": 1}
+{"id": 1068, "text": "figure 6 shows schematically a part of a wall which has been built using bricks provided with an edge and fired from the green bricks manufactured using the apparatus according to the invention.", "label_name": "FIGURE-RELATED", "label": 1}
 {"id": 1069, "text": "Like components are provided in the figures with like reference numerals.", "label_name": "OTHER", "label": 2}
+{"id": 1070, "text": "Figure 1 shows a preferred embodiment of an apparatus for manufacturing green bricks for the brick manufacturing industry according to the invention.", "label_name": "FIGURE-RELATED", "label": 1}
 {"id": 1071, "text": "Apparatus 1 comprises a conveyor 3.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1072, "text": "Mould containers combined to a unit are placed in the form of a mould container part 4 on the conveyor.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1073, "text": "The mould container parts fit closely against each other.", "label_name": "INFORMATIVE", "label": 0}
@@ -62,6 +69,7 @@
 {"id": 1086, "text": "Edge-forming means 22 are arranged between device 9 and device 11.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1087, "text": "The edge-forming means move each mould container part 4.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1088, "text": "A protruding edge forms on the upper side of the green bricks received therein.", "label_name": "INFORMATIVE", "label": 0}
+{"id": 1089, "text": "[0015] Figure 2 shows in more detail the part of apparatus 1 comprising edge-forming means 22.", "label_name": "FIGURE-RELATED", "label": 1}
 {"id": 1090, "text": "In the shown preferred embodiment, the edge-forming means 22 comprise a frame 26.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1091, "text": "The frame 26 spans mould container part 4.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1092, "text": "Frame 26 is provided on either side with stop members 27.", "label_name": "INFORMATIVE", "label": 0}
@@ -87,6 +95,7 @@
 {"id": 1112, "text": "Chain part 15 of chain conveyor 3 comprises ears 18, 19, 20.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1113, "text": "These ears serve as links of the chain conveyor.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1114, "text": "It is noted that instead of a chain conveyor many other conveyors known in the field can be used.", "label_name": "INFORMATIVE", "label": 0}
+{"id": 1115, "text": "[0018] Figure 3 shows edge-forming means 22 in even more detail.", "label_name": "FIGURE-RELATED", "label": 1}
 {"id": 1116, "text": "So as to prevent damage, stop members 27 are provided with stop surfaces 28.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1117, "text": "Corresponding stop surfaces 29 are arranged on side walls 30 of the mould container parts.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1118, "text": "The stop surfaces are preferably of plastic.", "label_name": "INFORMATIVE", "label": 0}
@@ -96,10 +105,12 @@
 {"id": 1122, "text": "It has been found in practice that the form of green bricks 13, including the edge, is retained after the mould container part has been turned over.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1123, "text": "It has been found in practice that the form of green bricks 13, including the edge, is retained.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1124, "text": "This occurs after the mould container part has been turned over.", "label_name": "INFORMATIVE", "label": 0}
+{"id": 1125, "text": "Figure 4 shows a first preferred embodiment of a mould container part 4 and a chain part 15 in uncoupled situation.", "label_name": "FIGURE-RELATED", "label": 1}
 {"id": 1126, "text": "The different mould containers 21 are combined to a unit on mould container part 4.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1127, "text": "It is noted that the use of edge-forming means 22 has the further important advantage.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1128, "text": "Additional means for releasing the green bricks from the mould containers are no longer necessary.", "label_name": "OTHER", "label": 2}
 {"id": 1129, "text": "An example of such releasing means known in the field are bottoms 23 displaceable by means of ejectors 24.", "label_name": "INFORMATIVE", "label": 0}
+{"id": 1130, "text": "Such ejectors are arranged in the second preferred embodiment shown in figure 5.", "label_name": "FIGURE-RELATED", "label": 1}
 {"id": 1131, "text": "This ejector lies under bias of spring 25.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1132, "text": "Spring 25 centres the ejector.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1133, "text": "No separate guiding is necessary in chain part 15.", "label_name": "INFORMATIVE", "label": 0}
@@ -107,11 +118,14 @@
 {"id": 1135, "text": "The driving device is not shown.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1136, "text": "These releasing means are used by applicant in a number of their apparatuses.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1137, "text": "They are the subject of the patent 1000186 in the name of applicant.", "label_name": "INFORMATIVE", "label": 0}
+{"id": 1138, "text": "Figure 5 shows how with some modifications the mould container parts and chain parts of the known apparatus can be used in combination with the edge-forming means according to the invention.", "label_name": "FIGURE-RELATED", "label": 1}
+{"id": 1139, "text": "Figure 5 shows how with some modifications the mould container parts and chain parts of the known apparatus can be used.", "label_name": "FIGURE-RELATED", "label": 1}
 {"id": 1140, "text": "The edge-forming means according to the invention can be used in combination with these parts.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1141, "text": "The modifications relate to enlargement of the holes 34 for ejectors 24.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1142, "text": "Mould container part 4 is coupled to chain part 15 with some clearance in the direction of movement B.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1143, "text": "Holes 34 can for instance be oval for this purpose.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1144, "text": "It is noted that the multi-part mould container part as described in applicant's non-prepublished patent application 1007600 can also be made suitable in like manner for use in an apparatus provided with the edge-forming means according to the invention.", "label_name": "INFORMATIVE", "label": 0}
+{"id": 1145, "text": "Finally, figure 6 shows a wall 35 which is built from bricks 36 provided with a protruding edge 37.", "label_name": "FIGURE-RELATED", "label": 1}
 {"id": 1146, "text": "The wall is built by using the apparatus according to the invention.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1147, "text": "It is possible to imagine that an exceptional shadow effect can be caused by sunlight incident upon the wall.", "label_name": "INFORMATIVE", "label": 0}
 {"id": 1148, "text": "The present invention is of course not limited to the described and illustrated embodiment.", "label_name": "OTHER", "label": 2}
