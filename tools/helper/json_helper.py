@@ -12,9 +12,38 @@ class JsonHelper:
 
     @staticmethod
     def parse_string_list(data: str) -> List[str]:
-        ...
-        # leave this exactly as it is
+        if not data:
+            return []
 
+        text = data.strip()
+
+        # --- Remove Markdown code fences if present ---
+        # ```json ... ```
+        if text.startswith("```"):
+            # remove starting fence: ```json or ```
+            first_line_end = text.find("\n")
+            if first_line_end != -1:
+                text = text[first_line_end + 1:].strip()
+
+            # remove trailing ```
+            if text.endswith("```"):
+                text = text[:-3].strip()
+
+        # Attempt to parse
+        try:
+            obj = json.loads(text)
+        except Exception as e:
+            print("[parse_string_list] JSON parse exception:", e)
+            print("[parse_string_list] RAW:", repr(data))
+            print("[parse_string_list] CLEANED:", repr(text))
+            return []
+
+        # Must be list
+        if not isinstance(obj, list):
+            return []
+
+        # Keep only strings
+        return [s.strip() for s in obj if isinstance(s, str) and s.strip()]
     @staticmethod
     def parse_triple_list(data: str) -> list[dict]:
         """

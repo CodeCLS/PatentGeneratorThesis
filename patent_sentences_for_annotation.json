@@ -1,0 +1,794 @@
+[
+  {
+    "id": 1,
+    "data": {
+      "text": "[0001] The invention relates to an apparatus for manufacturing green bricks from clay for the brick manufacturing industry."
+    }
+  },
+  {
+    "id": 2,
+    "data": {
+      "text": "The apparatus comprises a circulating conveyor carrying mould containers combined to mould container parts."
+    }
+  },
+  {
+    "id": 3,
+    "data": {
+      "text": "A reservoir for clay is arranged above the mould containers."
+    }
+  },
+  {
+    "id": 4,
+    "data": {
+      "text": "The apparatus includes means for carrying clay out of the reservoir into the mould containers."
+    }
+  },
+  {
+    "id": 5,
+    "data": {
+      "text": "The apparatus includes means for pressing and trimming clay in the mould containers."
+    }
+  },
+  {
+    "id": 6,
+    "data": {
+      "text": "The apparatus includes means for supplying and placing take-off plates for the green bricks."
+    }
+  },
+  {
+    "id": 7,
+    "data": {
+      "text": "The apparatus includes means for discharging green bricks released from the mould containers."
+    }
+  },
+  {
+    "id": 8,
+    "data": {
+      "text": "[0001] The invention relates to an apparatus for manufacturing green bricks from clay."
+    }
+  },
+  {
+    "id": 9,
+    "data": {
+      "text": "The apparatus is for the brick manufacturing industry."
+    }
+  },
+  {
+    "id": 10,
+    "data": {
+      "text": "Such an apparatus is known in the field."
+    }
+  },
+  {
+    "id": 11,
+    "data": {
+      "text": "It is for instance described in the patent 1000186 of applicant."
+    }
+  },
+  {
+    "id": 12,
+    "data": {
+      "text": "The known apparatus is extremely suitable for automated production of large numbers of green bricks."
+    }
+  },
+  {
+    "id": 13,
+    "data": {
+      "text": "This is for the brick manufacturing industry."
+    }
+  },
+  {
+    "id": 14,
+    "data": {
+      "text": "The bricks fired from these green bricks have a substantially smooth, uniform appearance."
+    }
+  },
+  {
+    "id": 15,
+    "data": {
+      "text": "[0002] A recent demand has developed on the market for bricks."
+    }
+  },
+  {
+    "id": 16,
+    "data": {
+      "text": "These bricks appear as if they have been manufactured according to traditional methods."
+    }
+  },
+  {
+    "id": 17,
+    "data": {
+      "text": "[0003] The invention has for its object to adapt the known apparatus such that it can produce in automated manner large numbers of green bricks with a traditional appearance."
+    }
+  },
+  {
+    "id": 18,
+    "data": {
+      "text": "0004"
+    }
+  },
+  {
+    "id": 19,
+    "data": {
+      "text": "For this purpose the apparatus according to the invention has the feature that the apparatus further comprises means for moving the mould container parts filled with green bricks."
+    }
+  },
+  {
+    "id": 20,
+    "data": {
+      "text": "Such that a protruding edge is formed on at least one side of the green bricks."
+    }
+  },
+  {
+    "id": 21,
+    "data": {
+      "text": "The bricks fired from the green bricks produced using the apparatus according to the invention impart beautiful shadow effects to the wall into which they have been built when the sun shines thereon."
+    }
+  },
+  {
+    "id": 22,
+    "data": {
+      "text": "The bricks fired from the green bricks produced using the apparatus according to the invention impart beautiful shadow effects to the wall."
+    }
+  },
+  {
+    "id": 23,
+    "data": {
+      "text": "The wall is one into which they have been built when the sun shines thereon."
+    }
+  },
+  {
+    "id": 24,
+    "data": {
+      "text": "This aesthetic effect is an important commercial advantage."
+    }
+  },
+  {
+    "id": 25,
+    "data": {
+      "text": "The edge-forming means are preferably adapted to move the mould container parts repeatedly for a certain period."
+    }
+  },
+  {
+    "id": 26,
+    "data": {
+      "text": "Repetition a number of times, for instance three times, is found in practice to be sufficient to obtain the intended effect."
+    }
+  },
+  {
+    "id": 27,
+    "data": {
+      "text": "Repetition a number of times, for instance three times, is found in practice to be sufficient."
+    }
+  },
+  {
+    "id": 28,
+    "data": {
+      "text": "to obtain the intended effect."
+    }
+  },
+  {
+    "id": 29,
+    "data": {
+      "text": "[0007] In a practical preferred embodiment the edge-forming means are adapted to move the mould container parts substantially transversely of the transporting direction."
+    }
+  },
+  {
+    "id": 30,
+    "data": {
+      "text": "In a further preferred embodiment the edge-forming means comprise a frame."
+    }
+  },
+  {
+    "id": 31,
+    "data": {
+      "text": "The frame is adapted to engage individually on a mould container part."
+    }
+  },
+  {
+    "id": 32,
+    "data": {
+      "text": "This preferred embodiment has the significant advantage that the edge-forming means can act on one mould container part."
+    }
+  },
+  {
+    "id": 33,
+    "data": {
+      "text": "Another mould container part undergoes another operation."
+    }
+  },
+  {
+    "id": 34,
+    "data": {
+      "text": "It is for instance filled with clay."
+    }
+  },
+  {
+    "id": 35,
+    "data": {
+      "text": "The edge-forming means can therefore be added to the known apparatus."
+    }
+  },
+  {
+    "id": 36,
+    "data": {
+      "text": "This does not affect the production time."
+    }
+  },
+  {
+    "id": 37,
+    "data": {
+      "text": "In yet another preferred embodiment the frame spans the mould container part."
+    }
+  },
+  {
+    "id": 38,
+    "data": {
+      "text": "The frame is provided on both sides with stop members."
+    }
+  },
+  {
+    "id": 39,
+    "data": {
+      "text": "The stop members are situated during operation at the location of the side walls of the mould container part."
+    }
+  },
+  {
+    "id": 40,
+    "data": {
+      "text": "An exceptionally compact embodiment of the invention is hereby realized."
+    }
+  },
+  {
+    "id": 41,
+    "data": {
+      "text": "It utilizes the available space economically."
+    }
+  },
+  {
+    "id": 42,
+    "data": {
+      "text": "It can be arranged without difficulty on the known apparatus."
+    }
+  },
+  {
+    "id": 43,
+    "data": {
+      "text": "In preference the stop members of the frame of the edge-forming means are also provided with these."
+    }
+  },
+  {
+    "id": 44,
+    "data": {
+      "text": "Preferably plastic, stop surfaces."
+    }
+  },
+  {
+    "id": 45,
+    "data": {
+      "text": "The invention is described in more detail hereinbelow with reference to the drawing in which:"
+    }
+  },
+  {
+    "id": 46,
+    "data": {
+      "text": "figure 1 shows schematically a preferred embodiment of the apparatus according to the invention;"
+    }
+  },
+  {
+    "id": 47,
+    "data": {
+      "text": "figure 2 shows in more detail a perspective view of a part of the apparatus of figure 1 with the edge-forming means therein;"
+    }
+  },
+  {
+    "id": 48,
+    "data": {
+      "text": "figure 3 shows the edge-forming means of figure 2 in even more detail;"
+    }
+  },
+  {
+    "id": 49,
+    "data": {
+      "text": "figure 4 is a perspective view of a first preferred embodiment of a mould container part which is suitable for use in the apparatus according to the invention;"
+    }
+  },
+  {
+    "id": 50,
+    "data": {
+      "text": "figure 5 is a perspective view of a second preferred embodiment of a mould container part; and"
+    }
+  },
+  {
+    "id": 51,
+    "data": {
+      "text": "figure 6 shows schematically a part of a wall which has been built using bricks provided with an edge and fired from the green bricks manufactured using the apparatus according to the invention."
+    }
+  },
+  {
+    "id": 52,
+    "data": {
+      "text": "Like components are provided in the figures with like reference numerals."
+    }
+  },
+  {
+    "id": 53,
+    "data": {
+      "text": "Figure 1 shows a preferred embodiment of an apparatus for manufacturing green bricks for the brick manufacturing industry according to the invention."
+    }
+  },
+  {
+    "id": 54,
+    "data": {
+      "text": "Apparatus 1 comprises a conveyor 3."
+    }
+  },
+  {
+    "id": 55,
+    "data": {
+      "text": "Mould containers combined to a unit are placed in the form of a mould container part 4 on the conveyor."
+    }
+  },
+  {
+    "id": 56,
+    "data": {
+      "text": "The mould container parts fit closely against each other."
+    }
+  },
+  {
+    "id": 57,
+    "data": {
+      "text": "Placed above the mould containers is a reservoir 5 for clay."
+    }
+  },
+  {
+    "id": 58,
+    "data": {
+      "text": "The clay is kept in continuous movement by an agitator 6."
+    }
+  },
+  {
+    "id": 59,
+    "data": {
+      "text": "The agitator 6 is driven by the electric motor 7."
+    }
+  },
+  {
+    "id": 60,
+    "data": {
+      "text": "Clay is supplied to reservoir 5 by a circulating conveyor 8."
+    }
+  },
+  {
+    "id": 61,
+    "data": {
+      "text": "The clay is carried out of reservoir 5 into the mould containers."
+    }
+  },
+  {
+    "id": 62,
+    "data": {
+      "text": "Then it is pressed down by pressing device 9."
+    }
+  },
+  {
+    "id": 63,
+    "data": {
+      "text": "Pressing device 9 is pivotable on shaft 10."
+    }
+  },
+  {
+    "id": 64,
+    "data": {
+      "text": "The excess clay is also trimmed."
+    }
+  },
+  {
+    "id": 65,
+    "data": {
+      "text": "Using means which are not drawn."
+    }
+  },
+  {
+    "id": 66,
+    "data": {
+      "text": "The device 11 carries take-off plates 12 onto a mould container part."
+    }
+  },
+  {
+    "id": 67,
+    "data": {
+      "text": "After turning over of the mould container part, the green bricks 13 come to lie on the plates."
+    }
+  },
+  {
+    "id": 68,
+    "data": {
+      "text": "The green bricks 13 are released from the mould containers."
+    }
+  },
+  {
+    "id": 69,
+    "data": {
+      "text": "Edge-forming means 22 are arranged between device 9 and device 11."
+    }
+  },
+  {
+    "id": 70,
+    "data": {
+      "text": "The edge-forming means move each mould container part 4."
+    }
+  },
+  {
+    "id": 71,
+    "data": {
+      "text": "A protruding edge forms on the upper side of the green bricks received therein."
+    }
+  },
+  {
+    "id": 72,
+    "data": {
+      "text": "[0015] Figure 2 shows in more detail the part of apparatus 1 comprising edge-forming means 22."
+    }
+  },
+  {
+    "id": 73,
+    "data": {
+      "text": "In the shown preferred embodiment, the edge-forming means 22 comprise a frame 26."
+    }
+  },
+  {
+    "id": 74,
+    "data": {
+      "text": "The frame 26 spans mould container part 4."
+    }
+  },
+  {
+    "id": 75,
+    "data": {
+      "text": "Frame 26 is provided on either side with stop members 27."
+    }
+  },
+  {
+    "id": 76,
+    "data": {
+      "text": "Stop members 27 are situated at the position of side walls 30 of the mould container part."
+    }
+  },
+  {
+    "id": 77,
+    "data": {
+      "text": "The distance between stop members 27 is greater than the length of the mould container part."
+    }
+  },
+  {
+    "id": 78,
+    "data": {
+      "text": "Frame 26 can be moved reciprocally by means of drive 31."
+    }
+  },
+  {
+    "id": 79,
+    "data": {
+      "text": "This is designated by means of arrow B."
+    }
+  },
+  {
+    "id": 80,
+    "data": {
+      "text": "In preference the direction of movement B of frame 26 lies substantially transversely of the transporting direction T of conveyor 3."
+    }
+  },
+  {
+    "id": 81,
+    "data": {
+      "text": "By moving frame 26 repeatedly the stop members 27 strike alternately against the side walls 30 of the mould container part 4."
+    }
+  },
+  {
+    "id": 82,
+    "data": {
+      "text": "The mould container part 4 is spanned at that moment by frame 26."
+    }
+  },
+  {
+    "id": 83,
+    "data": {
+      "text": "As a result the relevant mould container part is as it were shaken back and forth."
+    }
+  },
+  {
+    "id": 84,
+    "data": {
+      "text": "The green bricks 13 situated during operation in mould containers 21 of mould container part 4 rise a certain distance in the mould containers."
+    }
+  },
+  {
+    "id": 85,
+    "data": {
+      "text": "This results in the intended edge forming on the upper side of each green brick."
+    }
+  },
+  {
+    "id": 86,
+    "data": {
+      "text": "Drive 31 is preferably an eccentric drive."
+    }
+  },
+  {
+    "id": 87,
+    "data": {
+      "text": "It can subject heavy components to a smooth movement."
+    }
+  },
+  {
+    "id": 88,
+    "data": {
+      "text": "This is owing to a good distribution of forces."
+    }
+  },
+  {
+    "id": 89,
+    "data": {
+      "text": "The eccentric drive can for instance be adjusted such that the moment a stop member comes up against one of the side walls of a mould container part, the maximum force is exerted by the drive on this mould container part."
+    }
+  },
+  {
+    "id": 90,
+    "data": {
+      "text": "Each mould container part 4 is coupled with some clearance to conveyor 3 in the direction of movement B."
+    }
+  },
+  {
+    "id": 91,
+    "data": {
+      "text": "In the shown preferred embodiment each mould container part is even disengageably coupled to an associated chain part 15 of chain conveyor 3."
+    }
+  },
+  {
+    "id": 92,
+    "data": {
+      "text": "The coupling of both parts takes place using the bolt-nut connections 16, 17 respectively."
+    }
+  },
+  {
+    "id": 93,
+    "data": {
+      "text": "Bolt holes 33 are given an oval form."
+    }
+  },
+  {
+    "id": 94,
+    "data": {
+      "text": "This is in order to create the necessary clearance."
+    }
+  },
+  {
+    "id": 95,
+    "data": {
+      "text": "Chain part 15 of chain conveyor 3 comprises ears 18, 19, 20."
+    }
+  },
+  {
+    "id": 96,
+    "data": {
+      "text": "These ears serve as links of the chain conveyor."
+    }
+  },
+  {
+    "id": 97,
+    "data": {
+      "text": "It is noted that instead of a chain conveyor many other conveyors known in the field can be used."
+    }
+  },
+  {
+    "id": 98,
+    "data": {
+      "text": "[0018] Figure 3 shows edge-forming means 22 in even more detail."
+    }
+  },
+  {
+    "id": 99,
+    "data": {
+      "text": "So as to prevent damage, stop members 27 are provided with stop surfaces 28."
+    }
+  },
+  {
+    "id": 100,
+    "data": {
+      "text": "Corresponding stop surfaces 29 are arranged on side walls 30 of the mould container parts."
+    }
+  },
+  {
+    "id": 101,
+    "data": {
+      "text": "The stop surfaces are preferably of plastic."
+    }
+  },
+  {
+    "id": 102,
+    "data": {
+      "text": "Each mould container part 4 is further provided at both sides with spacer members 32 on walls 30."
+    }
+  },
+  {
+    "id": 103,
+    "data": {
+      "text": "These spacer members protrude slightly above the mould container part itself."
+    }
+  },
+  {
+    "id": 104,
+    "data": {
+      "text": "Take-off plates 12 can rest thereon without damaging the edge which has just been formed on green bricks 13."
+    }
+  },
+  {
+    "id": 105,
+    "data": {
+      "text": "It has been found in practice that the form of green bricks 13, including the edge, is retained after the mould container part has been turned over."
+    }
+  },
+  {
+    "id": 106,
+    "data": {
+      "text": "It has been found in practice that the form of green bricks 13, including the edge, is retained."
+    }
+  },
+  {
+    "id": 107,
+    "data": {
+      "text": "This occurs after the mould container part has been turned over."
+    }
+  },
+  {
+    "id": 108,
+    "data": {
+      "text": "Figure 4 shows a first preferred embodiment of a mould container part 4 and a chain part 15 in uncoupled situation."
+    }
+  },
+  {
+    "id": 109,
+    "data": {
+      "text": "The different mould containers 21 are combined to a unit on mould container part 4."
+    }
+  },
+  {
+    "id": 110,
+    "data": {
+      "text": "It is noted that the use of edge-forming means 22 has the further important advantage."
+    }
+  },
+  {
+    "id": 111,
+    "data": {
+      "text": "Additional means for releasing the green bricks from the mould containers are no longer necessary."
+    }
+  },
+  {
+    "id": 112,
+    "data": {
+      "text": "An example of such releasing means known in the field are bottoms 23 displaceable by means of ejectors 24."
+    }
+  },
+  {
+    "id": 113,
+    "data": {
+      "text": "Such ejectors are arranged in the second preferred embodiment shown in figure 5."
+    }
+  },
+  {
+    "id": 114,
+    "data": {
+      "text": "This ejector lies under bias of spring 25."
+    }
+  },
+  {
+    "id": 115,
+    "data": {
+      "text": "Spring 25 centres the ejector."
+    }
+  },
+  {
+    "id": 116,
+    "data": {
+      "text": "No separate guiding is necessary in chain part 15."
+    }
+  },
+  {
+    "id": 117,
+    "data": {
+      "text": "Ejector 24 is operated by a per se known driving device during release of the green bricks."
+    }
+  },
+  {
+    "id": 118,
+    "data": {
+      "text": "The driving device is not shown."
+    }
+  },
+  {
+    "id": 119,
+    "data": {
+      "text": "These releasing means are used by applicant in a number of their apparatuses."
+    }
+  },
+  {
+    "id": 120,
+    "data": {
+      "text": "They are the subject of the patent 1000186 in the name of applicant."
+    }
+  },
+  {
+    "id": 121,
+    "data": {
+      "text": "Figure 5 shows how with some modifications the mould container parts and chain parts of the known apparatus can be used in combination with the edge-forming means according to the invention."
+    }
+  },
+  {
+    "id": 122,
+    "data": {
+      "text": "Figure 5 shows how with some modifications the mould container parts and chain parts of the known apparatus can be used."
+    }
+  },
+  {
+    "id": 123,
+    "data": {
+      "text": "The edge-forming means according to the invention can be used in combination with these parts."
+    }
+  },
+  {
+    "id": 124,
+    "data": {
+      "text": "The modifications relate to enlargement of the holes 34 for ejectors 24."
+    }
+  },
+  {
+    "id": 125,
+    "data": {
+      "text": "Mould container part 4 is coupled to chain part 15 with some clearance in the direction of movement B."
+    }
+  },
+  {
+    "id": 126,
+    "data": {
+      "text": "Holes 34 can for instance be oval for this purpose."
+    }
+  },
+  {
+    "id": 127,
+    "data": {
+      "text": "It is noted that the multi-part mould container part as described in applicant's non-prepublished patent application 1007600 can also be made suitable in like manner for use in an apparatus provided with the edge-forming means according to the invention."
+    }
+  },
+  {
+    "id": 128,
+    "data": {
+      "text": "Finally, figure 6 shows a wall 35 which is built from bricks 36 provided with a protruding edge 37."
+    }
+  },
+  {
+    "id": 129,
+    "data": {
+      "text": "The wall is built by using the apparatus according to the invention."
+    }
+  },
+  {
+    "id": 130,
+    "data": {
+      "text": "It is possible to imagine that an exceptional shadow effect can be caused by sunlight incident upon the wall."
+    }
+  },
+  {
+    "id": 131,
+    "data": {
+      "text": "The present invention is of course not limited to the described and illustrated embodiment."
+    }
+  },
+  {
+    "id": 132,
+    "data": {
+      "text": "It comprises all embodiments which fall within the scope of the appended claims."
+    }
+  }
+]

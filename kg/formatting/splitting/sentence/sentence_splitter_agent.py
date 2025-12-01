@@ -76,11 +76,11 @@ class SentenceSplitterAgent(RecursivePromptingAgent):
     def run(self, seed: str) -> List[Sentence]:
         state = self.initial_state(seed)
         iteration = 0
-        print("State")
         while not self.should_stop(state, iteration):
             prompt = self.build_prompt(state)
             raw = self.api_repo.chat(prompt)          # LLM returns text
             state = self.handle_response(state, raw)  # robust JSON parse
             iteration += 1
-            print("Raw: " + str(raw) + " State: " + str(state) + " " + "iteration: " + str(iteration))
+
+   
         return self.result(state)
