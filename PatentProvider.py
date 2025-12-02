@@ -36,6 +36,4 @@ class PatentProvider:
 
             description_text = "\n".join([p.text.strip() for p in paragraphs if p.text])
 
-            print("---- DESCRIPTION ----")
-            print(description_text)
             return description_text

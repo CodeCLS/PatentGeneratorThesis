@@ -1,0 +1,19 @@
+
+from sentence_transformers import SentenceTransformer
+model = SentenceTransformer("all-MiniLM-L6-v2")
+DIM = model.get_sentence_embedding_dimension()
+
+def embed_word(w: str) -> np.ndarray:
+    v = model.encode(w, normalize_embeddings=True)
+    return np.asarray(v, dtype="float32")
+
+norm = WordNormaliser(embed_fn=embed_word, dim=DIM, threshold=0.72)
+
+
+
+from kg.generating_kg.analysing.KGECreator import KGECreator
+kge = KGECreator(G)
+kge.train(epochs=200, batch_size=32)
+score = kge.score()
+
+

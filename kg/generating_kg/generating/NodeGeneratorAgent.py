@@ -43,12 +43,9 @@ class NodeGeneratorAgent(RecursivePromptingAgent):
 
         # parse_triple_list should return List[Dict[str, str]]
         content = JsonHelper.parse_triple_list(response)
-
-        if content:
-            # content is already a list of triples → extend our list
-            state["triples"].extend(content)
-            state["done"] = True   # stop after first successful parse
-        # if content is empty, you might want to set an improvement message here
+        print("CONTENT: " + str(content))
+        state["triples"].extend(content)
+        state["done"] = True   # stop after first successful parse
         return state
 
     def should_stop(self, state: Dict[str, Any], iteration: int) -> bool:

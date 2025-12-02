@@ -7,7 +7,7 @@ from langsmith import traceable
 from langsmith import Client
 from tools.api.llm_models.anthropic_model import AnthropicModel  # adjust import if your paths differ
 from tools.api.llm_models.gemini_model import GeminiModel  # adjust import if your paths differ
-
+from tools.api.base.base_llm_model import LLMModel
 
 
 class ChatResult:
@@ -16,7 +16,7 @@ class ChatResult:
 
 
 class LLmApi_Repo:
-        def __init__(self, llm_client: AnthropicModel = AnthropicModel()):
+        def __init__(self, llm_client: LLMModel = GeminiModel()):
             self.client = llm_client
         @traceable
         def chat(self, message: str, **kwargs) -> dict:

@@ -13,6 +13,7 @@ class JsonHelper:
     @staticmethod
     def parse_string_list(data: str) -> List[str]:
         if not data:
+            print("NOT DATA")
             return []
 
         text = data.strip()
@@ -40,6 +41,7 @@ class JsonHelper:
 
         # Must be list
         if not isinstance(obj, list):
+            print("NOT INSTANCE")
             return []
 
         # Keep only strings

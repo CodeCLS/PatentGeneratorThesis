@@ -26,15 +26,11 @@ class SentenceSplitterAgent(RecursivePromptingAgent):
         }
 
     def build_prompt(self, state: Dict[str, Any]) -> str:
-        prev = state["sentences"]
-        note = f"\nNote: {state['improvement']}" if state.get("improvement") else ""
-        already_json = "[" + ", ".join(f'"{s}"' for s in prev[-10:]) + "]" if prev else "[]"
+     
 
         # Ask STRICTLY for a JSON array of NEW sentences (no prose)
         return (
             f"{self.task}\n\n"
-            f"Note: {note}\n\n"
-            f"already = {already_json}\n"
             f'text = """{state["text"]}"""\n\n'
             "Return:\n"
             '["Sentence one.", "Sentence two.", "..."]')
@@ -42,27 +38,10 @@ class SentenceSplitterAgent(RecursivePromptingAgent):
 
     def handle_response(self, state: Dict[str, Any], response: str) -> Dict[str, Any]:
         new_parts = JsonHelper.parse_string_list(response)
-
-        if not new_parts:
-            # No parse or no content -> likely done
-            state["done"] = True
-            return state
-
-        # Deduplicate against existing
-        existing = set(state["sentences"])
-        new_parts = [s for s in new_parts if s not in existing]
-
+        state["done"] = True
         state["sentences"].extend(new_parts)
 
-        # Feedback if any too long
-        if any(len(s) > 120 for s in new_parts):
-            state["improvement"] = "One or more sentences exceed 120 chars—split further."
-            long = [s for s in new_parts if len(s) > 120]
-            state["text"] = " ".join(long)
-            state["done"] = False
-        else:
-            state["improvement"] = None
-            state["done"] = True
+    
 
 
         return state
