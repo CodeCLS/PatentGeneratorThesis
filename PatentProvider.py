@@ -13,7 +13,7 @@ class PatentProvider:
         # Instantiate client.
         self.client = epo_ops.Client(key=os.getenv("EPO_CONSUMER_KEY"), secret=os.getenv("EPO_CONSUMER_SECRET_KEY"))
         print(os.getenv("EPO_CONSUMER_KEY"))
-    def getRandomDescription(self):
+    def getDescription(self):
             response = self.client.published_data(
             reference_type="publication",
             input=epo_ops.models.Docdb("1000000", "EP", "A1"),
