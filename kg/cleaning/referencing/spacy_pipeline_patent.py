@@ -321,7 +321,7 @@ class EntityMapper:
                 sent.entities[(local_start, local_end)] = Entity(
                     name=ent.text,
                     ref=kb_id,
-                    ref_short=ent.text,  # Initial short reference is the entity text
+                    ref_short=ent.text,  #
                     label=ent.label_, 
                     sentence_id=f"s{sent_idx}",
                 )
