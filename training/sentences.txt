@@ -1,0 +1,10 @@
+{"data": {"text": "The sensor module measures ambient humidity using a capacitive element."}, "label": "INFORMATIVE"}
+{"data": {"text": "In some embodiments, the processing unit may be mounted on a detachable frame."}, "label": "ASSUMPTION"}
+{"data": {"text": "FIG. 2 illustrates the cross-sectional arrangement of the housing."}, "label": "FIGURE_RELATED"}
+{"data": {"text": "The device includes a main control unit, a power interface, and an actuator motor."}, "label": "INFORMATIVE"}
+{"data": {"text": "Preferably, the container may be positioned adjacent to the inner sidewall to reduce vibration."}, "label": "ASSUMPTION"}
+{"data": {"text": "The diagram shown in Fig. 4 provides an exploded view of the assembly."}, "label": "FIGURE_RELATED"}
+{"data": {"text": "The invention relates generally to systems used in industrial automation."}, "label": "OTHER"}
+{"data": {"text": "In another example, the frame can optionally support an auxiliary mounting bracket."}, "label": "ASSUMPTION"}
+{"data": {"text": "The pump rotor is driven by a brushless DC motor coupled via a magnetic transmission."}, "label": "INFORMATIVE"}
+{"data": {"text": "Background information regarding conventional technologies is widely available in the literature."}, "label": "OTHER"}
