@@ -8,6 +8,9 @@ from fastcoref import FCoref
 from tools.sentence.entity import Entity 
 from spacy.language import Language
 from spacy.tokens import Doc, Span
+from transformers import pipeline
+from spacy.language import Language
+from spacy.tokens import Span
 
 from fastcoref import FCoref, LingMessCoref
 from spacy.language import Language
@@ -56,45 +59,83 @@ class EntityNormaliser:
 def make_entity_normaliser(nlp: Language, name: str, mode: str):
     return EntityNormaliser(nlp, name, mode=mode)
 
+from spacy.language import Language
+from transformers import pipeline
+
+@Language.factory("hf_ner")
+class HFNER:
+    def __init__(self, nlp, name):
+        self.ner = pipeline(
+            "ner",
+            model="training/ner/done/hf/ner_model",
+            aggregation_strategy="simple",
+        )
+
+    def __call__(self, doc):
+        candidates = []
+        outputs = self.ner(doc.text)
+
+        # 1. Create candidate spans
+        for o in outputs:
+            span = doc.char_span(
+                o["start"],
+                o["end"],
+                label=o["entity_group"],
+                alignment_mode="contract",
+            )
+            if span is not None:
+                candidates.append(span)
+
+        # 2. Sort spans by length (longest first)
+        candidates.sort(key=lambda s: (s.end_char - s.start_char), reverse=True)
+
+        # 3. Keep largest non-overlapping spans
+        selected = []
+        occupied = set()
+
+        for span in candidates:
+            span_range = set(range(span.start, span.end))
+            if not span_range & occupied:
+                selected.append(span)
+                occupied.update(span_range)
+
+        # 4. Assign entities
+        doc.ents = tuple(selected)
+        return doc
+
 
 @Language.factory(
     "fastcoref_resolver",
     default_config={
         "device": "auto",
-        "model_architecture": "FCoref",  # or "LingMessCoref"
-        "model_path": None,              # e.g. 'biu-nlp/lingmess-coref'
+        "model_architecture": "FCoref",
+        "model_path": None,
     },
 )
 class CorefResolver:
-    """
-    Resolves coreference using fastcoref and stores clusters as spaCy Spans in doc._.coref_clusters.
-    """
-    def __init__(
-        self,
-        nlp: Language,
-        name: str,
-        device: str = "auto",
-        model_architecture: str = "FCoref",
-        model_path: str | None = None,
-    ):
+    def __init__(self, nlp, name, device="auto", model_architecture="FCoref", model_path=None):
         if device == "auto":
             device = "cuda" if spacy.prefer_gpu() else "cpu"
 
         if model_architecture == "LingMessCoref":
-            # larger, more accurate model
-            self.coref = LingMessCoref(
-                device=device,
-                model_name_or_path=model_path or "biu-nlp/lingmess-coref",
-            )
+            self.coref = LingMessCoref(device=device, model_name_or_path=model_path or "biu-nlp/lingmess-coref")
         else:
-            # default fast model
-            self.coref = FCoref(
-                device=device,
-                model_name_or_path=model_path or "biu-nlp/f-coref",
-            )
+            self.coref = FCoref(device=device, model_name_or_path=model_path or "biu-nlp/f-coref")
 
     def __call__(self, doc: Doc) -> Doc:
-        out = self.coref.predict(texts=[doc.text]()
+        predictions = self.coref.predict(texts=[doc.text])
+        pred = predictions[0]
+
+        clusters: list[list[Span]] = []
+        for cluster in pred.get("clusters", []):
+            spans = [doc[start:end+1] for start, end in cluster]
+            if spans:
+                clusters.append(spans)
+
+        doc._.coref_clusters = clusters
+        return doc
+
+
 
 
 @Language.factory(
@@ -176,27 +217,22 @@ class LocalEntityLinker:
 # --- 3. Pipeline Orchestration ---
 
 class PipelineBuilder:
-    """
-    Manages the creation and execution of the custom spaCy NLP pipeline.
-    """
     def __init__(self):
-        # Initialize an attribute to hold the loaded NLP object
         self._nlp: Optional[Language] = None
 
     def _build_nlp(self) -> Language:
-    nlp = spacy.load("en_core_web_trf")
-    nlp.add_pipe("entity_normaliser", after="ner")
-    nlp.add_pipe(
-        "fastcoref_resolver",
-        config={
-            "model_architecture": "LingMessCoref",  # switch here
-            # "device": "cuda",                     # optional override
-        },
-    )
-    nlp.add_pipe("local_entity_linker")
-    self._nlp = nlp
-    return nlp
+        nlp = spacy.load("en_core_web_trf")
 
+        if "ner" in nlp.pipe_names:
+            nlp.remove_pipe("ner")
+
+        nlp.add_pipe("hf_ner", name="ner")              # <-- FIXED
+        nlp.add_pipe("entity_normaliser", after="ner")
+        nlp.add_pipe("fastcoref_resolver", config={"model_architecture": "LingMessCoref"})
+        nlp.add_pipe("local_entity_linker")
+
+        self._nlp = nlp
+        return nlp
 
     def nlp(self, text: str) -> Doc:
         """Processes the input text using the built pipeline."""
