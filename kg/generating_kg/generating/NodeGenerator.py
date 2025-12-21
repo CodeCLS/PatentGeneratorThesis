@@ -1,63 +1,58 @@
 # kg/formatting/splitting/triple_generator.py
-from kg.generating_kg.generating.NodeGeneratorAgent import NodeGeneratorAgent
 import json
+from typing import List, Dict, Any
+
+from kg.generating_kg.generating.NodeGeneratorAgent import NodeGeneratorAgent
 
 
 class NodeGenerator:
     """
-    Extracts knowledge graph triples from a sentence with inline entity markers.
+    Extract KG triples from a sentence + entity inventory (no inline markers required).
 
-    Input format:
-      - Entities are annotated as: [_entityId_label]
-      - Example: "[_caleb123_person] is going to [school123_building]"
+    Input:
+      - sentence: plain text
+      - entities: list of dicts with:
+          id: str
+          label: str
+          span: [start,end]  (sentence-local char offsets)
+          text: str
 
-    Output format:
-      - A JSON array of triples, each as an object:
-        { "head": "...", "relation": "...", "tail": "..." }
-
-      - Example output for the above sentence:
-        [
-          {
-            "head": "_caleb123_person",
-            "relation": "going to",
-            "tail": "school123_building"
-          }
-        ]
+    Output:
+      JSON array of triples:
+        [{"head":"<entity_id>", "relation":"...", "tail":"<entity_id>"}]
     """
 
     def __init__(self):
         self.agent = NodeGeneratorAgent(
-            "Task: Read the following sentence and extract knowledge graph triples.\n"
-            "The sentence contains entities marked as: [_entityId_label].\n"
-            "Entities can be persons, devices, components, actions, etc.\n\n"
-            "Your job is to detect semantic relations between these entities and\n"
-            "represent them as triples (head, relation, tail).\n\n"
-            "Rules:\n"
-            "- Use ONLY entities that appear in the text as [_entityId_label].\n"
-            "- 'head' and 'tail' must be the entity identifiers WITHOUT brackets,\n"
-            "  exactly as written inside, e.g. \"_caleb123_person\" or \"school123_building\".\n"
-            "  between head and tail, using words from the sentence.\n"
-            "- Do NOT invent entities or relations that are not supported by the text.\n"
-            "- If multiple clear relations exist, output multiple triples.\n"
-            "- If no meaningful triple can be formed, return an empty list [].\n"
-            "- Return ONLY a JSON array of objects with keys 'head', 'relation', 'tail'.\n\n"
-            "Input example:\n"
-            "  \"[_caleb123_person is going to [school123_building]]\"\n"
-            "Valid output:\n"
-            "[\n"
-            "  {\"head\": \"_caleb123_person\", \"relation\": \"going to\", \"tail\": \"school123_building\"}\n"
-            "]\n"
+            "Task: Extract knowledge graph triples from a sentence.\n"
+            "You are given:\n"
+            "1) The raw sentence text.\n"
+            "2) A JSON list of entities with ids and spans.\n\n"
+            "Your job:\n"
+            "- Identify semantic relations explicitly supported by the sentence.\n"
+            "- Use ONLY entity ids from the provided entity list.\n"
+            "- 'head' and 'tail' must be EXACT ids from the list.\n"
+            "- 'relation' should be a short phrase grounded in the sentence wording.\n"
+            "- Do NOT invent entities.\n"
+            "- Do NOT invent relations not supported by the sentence.\n"
+            "- If no meaningful triple can be formed, return [].\n"
+            "- Return ONLY a JSON array with keys: head, relation, tail.\n\n"
+            "Important:\n"
+            "- Entities may overlap. Prefer the most specific span if needed.\n"
+            "- Pronouns may appear; if a pronoun has an entity id (coref), you may use it.\n"
         )
 
+    def run(self, sentence: str, entities: List[Dict[str, Any]]):
+        payload = {
+            "sentence": sentence,
+            "entities": entities,
+        }
+        prompt = (
+            "SENTENCE:\n"
+            f"{sentence}\n\n"
+            "ENTITIES (JSON):\n"
+            f"{json.dumps(entities, ensure_ascii=False)}\n"
+        )
 
-    def run(self, sentence: str):
-        """
-        Generate KG triples from a single annotated sentence,
-        parse the LLM JSON response, and return readable triples.
-        """
-        triples = self.agent.run(sentence)
-
-
-    
-
+        triples = self.agent.run(prompt)
         return triples
