@@ -1,8 +1,6 @@
-# tools/agents/sentence_splitter_agent.py
 from typing import Any, Dict, List, Tuple
 from tools.api.base.base_recursive_prompter import RecursivePromptingAgent
 from tools.api.llm_api_repo import LLmApi_Repo
-from tools.sentence.sentence import Sentence
 from tools.helper.json_helper import JsonHelper
 
 
@@ -18,58 +16,57 @@ class NodeGeneratorAgent(RecursivePromptingAgent):
         return "NodeGeneratorAgent"
 
     def initial_state(self, seed: str) -> Dict[str, Any]:
-        return {
-            "text": seed,
-            "triples": [],      # will be: List[Dict[str, str]]
-            "improvement": None,
-            "done": False
-        }
+        return {"text": seed, "triples": [], "improvement": None, "done": False}
 
     def build_prompt(self, state: Dict[str, Any]) -> str:
         note = f"\nNote: {state['improvement']}" if state.get("improvement") else ""
-
-        # IMPORTANT: Ask the LLM for a JSON array   of triple objects
         return (
             f"{self.task}\n"
             f"{note}\n\n"
-            f'text = """{state["text"]}"""\n\n'
-            "Return **only** a valid JSON array of objects in this exact format:\n"
-            '[\n'
-            '  {"head": "ID_of_head", "relation": "relation phrase", "tail": "ID_of_tail"}\n'
-            ']\n'
+            f"{state['text']}\n\n"
+            "Return ONLY a valid JSON array of objects in this exact format:\n"
+            '[{"head":"<entity_id>","relation":"<relation phrase>","tail":"<entity_id>"}]\n'
         )
 
     def handle_response(self, state: Dict[str, Any], response: str) -> Dict[str, Any]:
+        print("RAW:", response)
 
-        # parse_triple_list should return List[Dict[str, str]]
         content = JsonHelper.parse_triple_list(response)
-        print("CONTENT: " + str(content))
-        state["triples"].extend(content)
-        state["done"] = True   # stop after first successful parse
+        print("CONTENT:", content)
+
+        if content and len(content) > 0:
+            state["triples"].extend(content)
+            state["done"] = True
+        else:
+            # keep trying
+            state["improvement"] = (
+                "Your previous response was empty or not valid JSON. "
+                "Return ONLY JSON (no markdown fences, no commentary). "
+                "If truly no relation exists, return []."
+            )
+            state["done"] = False
+
         return state
 
     def should_stop(self, state: Dict[str, Any], iteration: int) -> bool:
         return state.get("done", False) or iteration >= self.max_iter
 
-   
-    def result(self, state: Dict[str, Any]) -> List[tuple]:
-        """
-        Converts the internal list of triple dicts into
-        a list of (head, relation, tail) tuples.
-        """
-        triples: List[tuple] = []
+    from typing import Any, Dict, List
 
+    def result(self, state: Dict[str, Any]) -> List[Dict[str, str]]:
+        # Return dicts, not tuples
+        out: List[Dict[str, str]] = []
         for t in state["triples"]:
             head = t.get("head")
             rel = t.get("relation")
             tail = t.get("tail")
-
             if head and rel and tail:
-                triples.append((head, rel, tail))
+                out.append({"head": head, "relation": rel, "tail": tail})
+        return out
 
-        return triples
 
-    def run(self, seed: str) -> List[Sentence]:
+
+    def run(self, seed: str) -> List[Tuple[str, str, str]]:
         state = self.initial_state(seed)
         iteration = 0
         while not self.should_stop(state, iteration):

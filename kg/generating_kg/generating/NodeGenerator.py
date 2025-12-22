@@ -28,8 +28,8 @@ class NodeGenerator:
             "You are given:\n"
             "1) The raw sentence text.\n"
             "2) A JSON list of entities with ids and spans.\n\n"
-            "Your job:\n"
-            "- Identify semantic relations explicitly supported by the sentence.\n"
+            "Rules:\n"
+            "- Identify relations explicitly supported by the sentence.\n"
             "- Use ONLY entity ids from the provided entity list.\n"
             "- 'head' and 'tail' must be EXACT ids from the list.\n"
             "- 'relation' should be a short phrase grounded in the sentence wording.\n"
@@ -39,20 +39,43 @@ class NodeGenerator:
             "- Return ONLY a JSON array with keys: head, relation, tail.\n\n"
             "Important:\n"
             "- Entities may overlap. Prefer the most specific span if needed.\n"
-            "- Pronouns may appear; if a pronoun has an entity id (coref), you may use it.\n"
+            "- Pronouns may appear; if a pronoun has an entity id (coref), you may use it.\n\n"
+            "Example:\n"
+            "Sentence: The display device is for appreciation regarding pseudo space.\n"
+            'Entities: [{"id":"E1","text":"display device"},{"id":"E2","text":"pseudo space"}]\n'
+            'Output: [{"head":"E1","relation":"is for appreciation regarding","tail":"E2"}]\n'
         )
 
     def run(self, sentence: str, entities: List[Dict[str, Any]]):
-        payload = {
-            "sentence": sentence,
-            "entities": entities,
-        }
+        print("sentence: " + sentence  + " " + str(entities))
+        # ---- Cheap short-circuits (saves tokens + avoids guaranteed []) ----
+        if not sentence or not sentence.strip():
+            return []
+        if not entities or len(entities) < 2:
+            # Can't form a head+tail triple with <2 entities (given your "IDs only" rule)
+            return []
+
+        # Optional: dedupe entities by id to reduce prompt size
+        seen = set()
+        deduped_entities = []
+        for e in entities:
+            eid = e.get("id")
+            if not eid or eid in seen:
+                continue
+            seen.add(eid)
+            deduped_entities.append(e)
+
+        if len(deduped_entities) < 2:
+            return []
+
+        # Structured input is easier for LLMs to follow than freeform blocks
+        payload = {"sentence": sentence, "entities": deduped_entities}
+
         prompt = (
-            "SENTENCE:\n"
-            f"{sentence}\n\n"
-            "ENTITIES (JSON):\n"
-            f"{json.dumps(entities, ensure_ascii=False)}\n"
+            "INPUT JSON (use ONLY these entity ids for head/tail):\n"
+            f"{json.dumps(payload, ensure_ascii=False)}\n\n"
+            "Return ONLY a valid JSON array of triples like:\n"
+            '[{"head":"<entity_id>","relation":"<relation phrase>","tail":"<entity_id>"}]\n'
         )
 
-        triples = self.agent.run(prompt)
-        return triples
+        return self.agent.run(prompt)

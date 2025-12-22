@@ -22,7 +22,8 @@ if not Span.has_extension("norm_label"):
 if not Span.has_extension("kb_id"):
     Span.set_extension("kb_id", default=None)
 
-# normalized clusters live here
+
+
 if not Doc.has_extension("coref_clusters"):
     Doc.set_extension("coref_clusters", default=[])
 
@@ -150,24 +151,46 @@ def _merge_clusters(clusters):
     return [c for c in merged if len(c) >= 2]
 
 
+
+
 @Language.factory(
     "windowed_fastcoref",
-    default_config={"chunk_chars": 12000, "overlap": 1200},
+    default_config={
+        "chunk_chars": 12000,
+        "overlap": 1200,
+        "model_architecture": "LingMessCoref",
+        "model_path": "biu-nlp/lingmess-coref",
+        "device": "cpu",
+    },
 )
-def make_windowed_fastcoref(nlp, name, chunk_chars, overlap):
-    fastcoref = nlp.get_pipe("fastcoref")
+def make_windowed_fastcoref(
+    nlp, name, chunk_chars, overlap, model_architecture, model_path, device
+):
+    # mini pipeline used ONLY for coref on chunks
+    coref_nlp = spacy.blank(nlp.lang)
+    coref_nlp.add_pipe("sentencizer")
+    coref_nlp.add_pipe(
+        "fastcoref",
+        config={
+            "model_architecture": model_architecture,
+            "model_path": model_path,
+            "device": device,
+        },
+    )
 
     def component(doc):
         all_clusters = []
 
         for base, chunk in _char_windows(doc.text, chunk_chars, overlap):
-            cdoc = nlp.make_doc(chunk)
             try:
-                cdoc = fastcoref(cdoc)
+                cdoc = coref_nlp(chunk)
             except Exception:
                 continue
+            print("fastcoref ext keys:", [k for k in cdoc._.extensions])
+            print("coref_clusters type:", type(getattr(cdoc._, "coref_clusters", None)))
 
-            raw = getattr(cdoc._, "coref_clusters", []) or []
+
+            raw = getattr(cdoc._, "coref_clusters", None) or []
             for cl in raw:
                 mentions = cl.mentions if hasattr(cl, "mentions") else cl
                 spans = []
@@ -244,18 +267,22 @@ class PipelineBuilder:
 
         nlp.add_pipe("hf_ner", name="ner")
         nlp.add_pipe("entity_normaliser", after="ner")
-
         nlp.add_pipe(
-            "fastcoref",
+            "windowed_fastcoref",
+            after="entity_normaliser",
             config={
+                "chunk_chars": 12000,
+                "overlap": 1200,
                 "model_architecture": "LingMessCoref",
                 "model_path": "biu-nlp/lingmess-coref",
                 "device": "cpu",
             },
         )
-
-        nlp.add_pipe("windowed_fastcoref", after="fastcoref")
         nlp.add_pipe("local_entity_linker", after="windowed_fastcoref")
+
+
+
+       
 
         self._nlp = nlp
         return nlp
@@ -294,13 +321,31 @@ class EntityMapper:
         self.Sentence = sentence_cls
 
     def map_to_sentences(self, doc, sentences, joined):
-        for cluster in doc._.coref_clusters:
+        # 1) Map NER entities first (uses kb_id if your linker set it)
+        for ent in doc.ents:
+            ref = getattr(ent._, "kb_id", None) or ent.text
+            idx = max(i for i, s in enumerate(joined.starts) if s <= ent.start_char)
+            sent = sentences[idx]
+            start = ent.start_char - joined.starts[idx]
+            end = ent.end_char - joined.starts[idx]
+
+            sent.entities[(start, end)] = Entity(
+                name=ent.text,
+                ref=ref,
+                ref_short=ref[-4:] if isinstance(ref, str) and len(ref) >= 4 else None,
+                label=getattr(ent, "label_", None) or Entity.REFERENCE,
+                sentence_id=f"s{idx}",
+            )
+
+        # 2) If coref clusters exist, unify IDs across mentions (optional)
+        for cluster in (doc._.coref_clusters or []):
             ref = cluster[0]._.kb_id
             for sp in cluster:
                 idx = max(i for i, s in enumerate(joined.starts) if s <= sp.start_char)
                 sent = sentences[idx]
                 start = sp.start_char - joined.starts[idx]
                 end = sp.end_char - joined.starts[idx]
+
                 sent.entities[(start, end)] = Entity(
                     name=sp.text,
                     ref=ref,
@@ -308,4 +353,5 @@ class EntityMapper:
                     label=Entity.REFERENCE,
                     sentence_id=f"s{idx}",
                 )
+
         return doc._.coref_clusters
