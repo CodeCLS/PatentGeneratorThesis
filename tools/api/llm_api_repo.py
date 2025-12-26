@@ -7,14 +7,14 @@ from tools.api.llm_models.anthropic_model import AnthropicModel  # adjust import
 from tools.api.llm_models.gemini_model import GeminiModel  # adjust import if your paths differ
 from tools.api.base.base_llm_model import LLMModel
 
-
+from tools.api.llm_models.deepseek_model import DeepSeekModel
 class ChatResult:
     def __init__(self, data: dict):
         self._data = data
 
 
 class LLmApi_Repo:
-        def __init__(self, llm_client: LLMModel = GeminiModel()):
+        def __init__(self, llm_client: LLMModel = DeepSeekModel()):
             self.client = llm_client
         def chat(self, message: str, **kwargs) -> dict:
             return self.client.send(message)
