@@ -5,8 +5,8 @@ from tools.api.base.base_recursive_prompter import RecursivePromptingAgent
 from tools.api.llm_api_repo import LLmApi_Repo
 from tools.helper.json_helper import JsonHelper
 
-from tools.sentence.triple import Triple
-from tools.sentence.entity import Entity
+from tools.graph.Triple import Triple
+from tools.sentence.entity import Entity,InMemoryEntityRepository
 
 
 class NodeGeneratorAgent(RecursivePromptingAgent):
@@ -33,31 +33,31 @@ class NodeGeneratorAgent(RecursivePromptingAgent):
             '[{"head":"<entity_id>","relation":"<relation phrase>","tail":"<entity_id>"}]\n'
         )
 
-    def _to_triple(self, obj: Dict[str, Any]) -> Triple | None:
-        head_id = obj.get("head")
-        rel = obj.get("relation")
-        tail_id = obj.get("tail")
-
+    def _to_triple(self, obj, repo: InMemoryEntityRepository):
+        head_id = obj.get("head"); rel = obj.get("relation"); tail_id = obj.get("tail")
         if not head_id or not rel or not tail_id:
             return None
 
-        # ✅ Adjust these two lines to match your Entity dataclass/constructor
-        head = Entity(id=str(head_id))  # or Entity(ref=str(head_id)) etc.
-        tail = Entity(id=str(tail_id))  # or Entity(ref=str(tail_id)) etc.
+        try:
+            head = repo.get_by_id(head_id)
+            tail = repo.get_by_id(tail_id)
+            return Triple(head=head, relation=str(rel), tail=tail)
+        except KeyError:
+            # fallback: keep raw ids so you don't lose the triple
+            return Triple(head=head_id, relation=str(rel), tail=tail_id)
 
-        return Triple(head=head, relation=str(rel), tail=tail)
 
-    def handle_response(self, state: Dict[str, Any], response: str) -> Dict[str, Any]:
-        print("RAW:", response)
+
+    def handle_response(self, state: Dict[str, Any], response: str,repo: InMemoryEntityRepository) -> Dict[str, Any]:
 
         parsed = JsonHelper.parse_triple_list(response)  # expected: List[Dict[str,str]]
-        print("CONTENT:", parsed)
+        print("Parsed" + str(parsed))
 
         triples: List[Triple] = []
         if isinstance(parsed, list):
             for item in parsed:
                 if isinstance(item, dict):
-                    t = self._to_triple(item)
+                    t = self._to_triple(item,repo)
                     if t is not None:
                         triples.append(t)
 
@@ -84,12 +84,12 @@ class NodeGeneratorAgent(RecursivePromptingAgent):
                 out.append(t)
         return out
 
-    def run(self, seed: str) -> List[Triple]:
+    def run(self, seed: str,repo: InMemoryEntityRepository) -> List[Triple]:
         state = self.initial_state(seed)
         iteration = 0
         while not self.should_stop(state, iteration):
             prompt = self.build_prompt(state)
             raw = self.api_repo.chat(prompt)
-            state = self.handle_response(state, raw)
+            state = self.handle_response(state, raw,repo)
             iteration += 1
         return self.result(state)

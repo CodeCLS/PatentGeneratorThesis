@@ -34,9 +34,7 @@ class JsonHelper:
         try:
             obj = json.loads(text)
         except Exception as e:
-            print("[parse_string_list] JSON parse exception:", e)
-            print("[parse_string_list] RAW:", repr(data))
-            print("[parse_string_list] CLEANED:", repr(text))
+            
             return []
 
         # Must be list

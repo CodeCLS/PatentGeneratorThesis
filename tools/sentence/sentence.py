@@ -20,7 +20,7 @@ class Sentence:
     # NLP / features
     embedding: Optional[List[float]] = None
     tokens: List[str] = field(default_factory=list)
-    entities: Dict[Tuple[int, int], Entity] = field(default_factory=dict)
+    entities: List[Entity] = field(default_factory=list)
 
     tags: List[str] = field(default_factory=list)      # arbitrary labels ("claim", "boilerplate", ...)
 

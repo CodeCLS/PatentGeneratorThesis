@@ -5,6 +5,8 @@ from uuid import uuid4
 
 from tools.api.llm_models.anthropic_model import AnthropicModel  # adjust import if your paths differ
 from tools.api.llm_models.gemini_model import GeminiModel  # adjust import if your paths differ
+from tools.api.llm_models.gpt_oss_model import GPTOSSModel  # adjust import if your paths differ
+
 from tools.api.base.base_llm_model import LLMModel
 
 from tools.api.llm_models.deepseek_model import DeepSeekModel
@@ -14,7 +16,7 @@ class ChatResult:
 
 
 class LLmApi_Repo:
-        def __init__(self, llm_client: LLMModel = DeepSeekModel()):
+        def __init__(self, llm_client: LLMModel = GPTOSSModel()):
             self.client = llm_client
         def chat(self, message: str, **kwargs) -> dict:
             return self.client.send(message)

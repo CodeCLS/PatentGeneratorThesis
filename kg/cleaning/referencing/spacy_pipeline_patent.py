@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Tuple
 import spacy
 from spacy.language import Language
 from spacy.tokens import Doc, Span
-
+from typing import Dict, List, Optional, Tuple
 from transformers import pipeline as hf_pipeline
 from fastcoref import spacy_component  # registers "fastcoref"
-
+from tools.sentence.sentence import Sentence
 from tools.sentence.entity import Entity
 
 
@@ -314,44 +314,78 @@ def join_sentences(sentences, sep=" "):
             parts.append(sep)
             cur += len(sep)
     return JoinedText("".join(parts), starts)
-
-
 class EntityMapper:
-    def __init__(self, sentence_cls):
+    def __init__(self, sentence_cls, dedupe: bool = True):
         self.Sentence = sentence_cls
+        self.dedupe = dedupe
+
+    @staticmethod
+    def _sent_index(starts: list[int], pos: int) -> int:
+        return max(i for i, s in enumerate(starts) if s <= pos)
+
+    @staticmethod
+    def _ref_short(ref: str | None) -> str:
+        if isinstance(ref, str) and len(ref) >= 4:
+            return ref[-4:]
+        if isinstance(ref, str) and len(ref) > 0:
+            return ref
+        return ""
+
+    def _maybe_add(self, sent, ent: Entity, seen: set) -> None:
+        if not self.dedupe:
+            sent.entities.append(ent)
+            return
+
+        key = (ent.start, ent.end, ent.ref, ent.label, ent.sentence_id)
+        if key in seen:
+            return
+        seen.add(key)
+        sent.entities.append(ent)
 
     def map_to_sentences(self, doc, sentences, joined):
-        # 1) Map NER entities first (uses kb_id if your linker set it)
-        for ent in doc.ents:
-            ref = getattr(ent._, "kb_id", None) or ent.text
-            idx = max(i for i, s in enumerate(joined.starts) if s <= ent.start_char)
+        seen: set = set()
+
+        # 1) NER
+        for sp in doc.ents:
+            ref = getattr(sp._, "kb_id", None) or sp.text
+            idx = self._sent_index(joined.starts, sp.start_char)
             sent = sentences[idx]
-            start = ent.start_char - joined.starts[idx]
-            end = ent.end_char - joined.starts[idx]
 
-            sent.entities[(start, end)] = Entity(
-                name=ent.text,
+            start = sp.start_char - joined.starts[idx]
+            end = sp.end_char - joined.starts[idx]
+
+            ent = Entity(
+                name=sp.text,
+                label=getattr(sp, "label_", None) or "REFERENCE",
+                ref_short=self._ref_short(ref),
+                start=start,
+                end=end,
                 ref=ref,
-                ref_short=ref[-4:] if isinstance(ref, str) and len(ref) >= 4 else None,
-                label=getattr(ent, "label_", None) or Entity.REFERENCE,
                 sentence_id=f"s{idx}",
+                entity_type=getattr(sp, "label_", None),
             )
+            self._maybe_add(sent, ent, seen)
 
-        # 2) If coref clusters exist, unify IDs across mentions (optional)
+        # 2) coref clusters
         for cluster in (doc._.coref_clusters or []):
-            ref = cluster[0]._.kb_id
+            cluster_ref = getattr(cluster[0]._, "kb_id", None) or cluster[0].text
             for sp in cluster:
-                idx = max(i for i, s in enumerate(joined.starts) if s <= sp.start_char)
+                idx = self._sent_index(joined.starts, sp.start_char)
                 sent = sentences[idx]
+
                 start = sp.start_char - joined.starts[idx]
                 end = sp.end_char - joined.starts[idx]
 
-                sent.entities[(start, end)] = Entity(
+                ent = Entity(
                     name=sp.text,
-                    ref=ref,
-                    ref_short=ref[-4:],
-                    label=Entity.REFERENCE,
+                    label="REFERENCE",
+                    ref_short=self._ref_short(cluster_ref),
+                    start=start,
+                    end=end,
+                    ref=cluster_ref,
                     sentence_id=f"s{idx}",
+                    entity_type="COREF",
                 )
+                self._maybe_add(sent, ent, seen)
 
         return doc._.coref_clusters

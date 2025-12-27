@@ -3,8 +3,10 @@ import json
 from typing import List, Dict, Any
 
 from kg.generating_kg.generating.NodeGeneratorAgent import NodeGeneratorAgent
-
-
+from tools.sentence.entity import Entity,InMemoryEntityRepository
+import json
+import re
+from typing import Any, Dict, List
 class NodeGenerator:
     """
     Extract KG triples from a sentence + entity inventory (no inline markers required).
@@ -46,36 +48,42 @@ class NodeGenerator:
             'Output: [{"head":"E1","relation":"is for appreciation regarding","tail":"E2"}]\n'
         )
 
-    def run(self, sentence: str, entities: List[Dict[str, Any]]):
-        print("sentence: " + sentence  + " " + str(entities))
-        # ---- Cheap short-circuits (saves tokens + avoids guaranteed []) ----
-        if not sentence or not sentence.strip():
-            return []
-        if not entities or len(entities) < 2:
-            # Can't form a head+tail triple with <2 entities (given your "IDs only" rule)
-            return []
 
-        # Optional: dedupe entities by id to reduce prompt size
-        seen = set()
-        deduped_entities = []
-        for e in entities:
-            eid = e.get("id")
-            if not eid or eid in seen:
-                continue
-            seen.add(eid)
-            deduped_entities.append(e)
+    def run(self, sentence: str, entities: List[Dict[str, Any]], repo):
+        print("sentence:", sentence, entities)
 
-        if len(deduped_entities) < 2:
+        # Minimal guard: need at least 2 entities to form head+tail
+        if not sentence or not sentence.strip() or not entities or len(entities) < 2:
             return []
 
-        # Structured input is easier for LLMs to follow than freeform blocks
-        payload = {"sentence": sentence, "entities": deduped_entities}
+        payload = {"sentence": sentence, "entities": entities}
 
         prompt = (
-            "INPUT JSON (use ONLY these entity ids for head/tail):\n"
-            f"{json.dumps(payload, ensure_ascii=False)}\n\n"
-            "Return ONLY a valid JSON array of triples like:\n"
-            '[{"head":"<entity_id>","relation":"<relation phrase>","tail":"<entity_id>"}]\n'
+            "Extract entity-to-entity triples from the sentence.\n"
+            "You MUST use ONLY the provided entity 'id' values for head/tail.\n"
+            "Return ONLY JSON (no text, no code fences) as a JSON array like:\n"
+            '[{"head":"<entity_id>","relation":"<relation>","tail":"<entity_id>"}]\n\n'
+            "INPUT:\n"
+            f"{json.dumps(payload, ensure_ascii=False)}"
         )
 
-        return self.agent.run(prompt)
+        raw = self.agent.run(prompt, repo)
+        print("raw:", type(raw), str(raw)[:300])
+
+        # If agent already returns Python list
+        if isinstance(raw, list):
+            return raw
+
+        # If agent returns a string, parse JSON
+        if isinstance(raw, str):
+            txt = raw.strip()
+            # strip ```json ... ``` if the model adds it anyway
+            txt = re.sub(r"^```(?:json)?\s*|\s*```$", "", txt)
+            try:
+                parsed = json.loads(txt)
+                return parsed if isinstance(parsed, list) else []
+            except Exception as e:
+                print("json parse error:", e, "text:", txt[:300])
+                return []
+
+        return []
