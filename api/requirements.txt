@@ -1,0 +1,17 @@
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-multipart>=0.0.6
+# Database (optional, for PostgreSQL/Supabase)
+psycopg2-binary>=2.9.9
+supabase>=2.0.0
+# Existing dependencies from the project
+spacy>=3.7.0
+transformers>=4.35.0
+torch>=2.0.0
+networkx>=3.0
+pyvis>=0.3.2
+faiss-cpu>=1.7.4
+# Add other dependencies as needed
+
