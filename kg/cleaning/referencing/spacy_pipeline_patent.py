@@ -61,6 +61,10 @@ class HFNER:
             aggregation_strategy=aggregation_strategy,
             device=device,
         )
+        print(self.ner("Nathan is in the same family."))
+
+
+
 
     def __call__(self, doc):
         spans = []
