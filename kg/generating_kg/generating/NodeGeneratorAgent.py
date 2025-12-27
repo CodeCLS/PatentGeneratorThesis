@@ -42,7 +42,8 @@ class NodeGeneratorAgent(RecursivePromptingAgent):
             head = repo.get_by_id(head_id)
             tail = repo.get_by_id(tail_id)
             return Triple(head=head, relation=str(rel), tail=tail)
-        except KeyError:
+        except KeyError as e:
+            print("TOTRIPLERROR" + str(e))
             # fallback: keep raw ids so you don't lose the triple
             return Triple(head=head_id, relation=str(rel), tail=tail_id)
 

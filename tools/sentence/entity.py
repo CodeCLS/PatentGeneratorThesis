@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field, asdict
 from typing import Optional, Protocol
 import uuid
@@ -10,8 +12,9 @@ class InMemoryEntityRepository:
         self._entities: Dict[str, Entity] = {
             e.id: e for e in (entities or [])
         }
-
-    def get_by_id(self, entity_id: str) -> Entity
+    def getAll(self):
+        return self._entities
+    def get_by_id(self, entity_id: str) -> Entity:
         try:
             return self._entities[entity_id]
         except KeyError:
