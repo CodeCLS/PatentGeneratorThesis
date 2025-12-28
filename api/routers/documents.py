@@ -1,35 +1,29 @@
 """
 Document management endpoints.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional
 from api.schemas.documents import DocumentCreate, DocumentUpdate, DocumentResponse, DocumentListResponse
-from api.database.repository import LocalDocumentRepository
 from api.database.models import Document
+from api.database.dependencies import get_document_repository, get_sentence_repository, get_triple_repository
+from api.database.dependencies import DocumentRepo, SentenceRepo, TripleRepo
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-def get_document_repo() -> LocalDocumentRepository:
-    """Dependency to get document repository."""
-    from api.main import get_app_state
-    state = get_app_state()
-    if state.document_repo is None:
-        raise RuntimeError("Document repository not initialized")
-    return state.document_repo
-
-
 @router.post("", response_model=DocumentResponse, status_code=201)
-async def create_document(document: DocumentCreate):
+async def create_document(
+    document: DocumentCreate,
+    repo: DocumentRepo = Depends(get_document_repository),
+):
     """Create a new document."""
-    repo = get_document_repo()
     db_document = Document(
         title=document.title,
         text=document.text,
         source=document.source,
         metadata=document.metadata,
     )
-    db_document = repo.create(db_document)
+    db_document = await repo.create(db_document)
     return DocumentResponse(**db_document.to_dict())
 
 
@@ -39,17 +33,18 @@ async def list_documents(
     limit: int = Query(100, ge=1, le=1000),
     status: Optional[str] = None,
     source: Optional[str] = None,
+    repo: DocumentRepo = Depends(get_document_repository),
 ):
     """List documents with pagination and filters."""
-    repo = get_document_repo()
     filters = {}
     if status:
         filters["status"] = status
     if source:
         filters["source"] = source
     
-    documents = repo.list(skip=skip, limit=limit, filters=filters)
-    total = len(repo.list(filters=filters))  # Get total count
+    documents = await repo.list(skip=skip, limit=limit, filters=filters)
+    all_documents = await repo.list(filters=filters)  # Get total count
+    total = len(all_documents)
     
     return DocumentListResponse(
         items=[DocumentResponse(**doc.to_dict()) for doc in documents],
@@ -60,37 +55,44 @@ async def list_documents(
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
-async def get_document(document_id: str):
+async def get_document(
+    document_id: str,
+    repo: DocumentRepo = Depends(get_document_repository),
+):
     """Get a document by ID."""
-    repo = get_document_repo()
-    document = repo.get(document_id)
+    document = await repo.get(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     return DocumentResponse(**document.to_dict())
 
 
 @router.patch("/{document_id}", response_model=DocumentResponse)
-async def update_document(document_id: str, document: DocumentUpdate):
+async def update_document(
+    document_id: str,
+    document: DocumentUpdate,
+    repo: DocumentRepo = Depends(get_document_repository),
+):
     """Update a document."""
-    repo = get_document_repo()
     updates = document.dict(exclude_unset=True)
-    updated = repo.update(document_id, updates)
+    updated = await repo.update(document_id, updates)
     if not updated:
         raise HTTPException(status_code=404, detail="Document not found")
     return DocumentResponse(**updated.to_dict())
 
 
 @router.delete("/{document_id}", status_code=204)
-async def delete_document(document_id: str):
+async def delete_document(
+    document_id: str,
+    repo: DocumentRepo = Depends(get_document_repository),
+    sentence_repo: SentenceRepo = Depends(get_sentence_repository),
+    triple_repo: TripleRepo = Depends(get_triple_repository),
+):
     """Delete a document."""
-    repo = get_document_repo()
     # Also delete related sentences and triples
-    from api.main import get_app_state
-    state = get_app_state()
-    state.sentence_repo.delete_by_document(document_id)
-    state.triple_repo.delete_by_document(document_id)
+    await sentence_repo.delete_by_document(document_id)
+    await triple_repo.delete_by_document(document_id)
     
-    deleted = repo.delete(document_id)
+    deleted = await repo.delete(document_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Document not found")
 

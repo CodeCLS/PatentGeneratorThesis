@@ -273,3 +273,500 @@ class LocalJobRepository(BaseRepository):
 # Import datetime for the repositories
 from datetime import datetime
 
+
+# PostgreSQL/Supabase repositories
+try:
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy import select, update, delete, and_, or_
+    from sqlalchemy.orm import selectinload
+    from api.database.sql_models import (
+        DocumentModel,
+        SentenceModel,
+        TripleModel,
+        ProcessingJobModel,
+    )
+    SQLALCHEMY_AVAILABLE = True
+except ImportError:
+    SQLALCHEMY_AVAILABLE = False
+
+
+class PostgresDocumentRepository(BaseRepository):
+    """PostgreSQL/Supabase document repository."""
+    
+    def __init__(self, session: AsyncSession):
+        self.session = session
+    
+    async def get(self, id: str):
+        """Get document by ID."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        result = await self.session.execute(
+            select(DocumentModel).where(DocumentModel.id == id)
+        )
+        model = result.scalar_one_or_none()
+        if model:
+            return self._model_to_document(model)
+        return None
+    
+    async def list(self, skip: int = 0, limit: int = 100, filters: Optional[Dict[str, Any]] = None) -> List[Document]:
+        """List documents with pagination and filters."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        query = select(DocumentModel)
+        
+        if filters:
+            if "status" in filters:
+                query = query.where(DocumentModel.status == filters["status"])
+            if "source" in filters:
+                query = query.where(DocumentModel.source == filters["source"])
+        
+        query = query.order_by(DocumentModel.created_at.desc()).offset(skip).limit(limit)
+        result = await self.session.execute(query)
+        models = result.scalars().all()
+        return [self._model_to_document(m) for m in models]
+    
+    async def create(self, document: Document) -> Document:
+        """Create new document."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        model = DocumentModel(
+            id=document.id,
+            title=document.title,
+            text=document.text,
+            source=document.source,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+            metadata=document.metadata,
+            status=document.status,
+            processing_error=document.processing_error,
+        )
+        self.session.add(model)
+        await self.session.commit()
+        await self.session.refresh(model)
+        return document
+    
+    async def update(self, id: str, updates: Dict[str, Any]) -> Optional[Document]:
+        """Update document."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        # Build update dict
+        update_dict = {}
+        for key, value in updates.items():
+            if hasattr(DocumentModel, key):
+                update_dict[key] = value
+        
+        if not update_dict:
+            return None
+        
+        update_dict["updated_at"] = datetime.utcnow()
+        
+        stmt = (
+            update(DocumentModel)
+            .where(DocumentModel.id == id)
+            .values(**update_dict)
+            .execution_options(synchronize_session="fetch")
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+        
+        return await self.get(id)
+    
+    async def delete(self, id: str) -> bool:
+        """Delete document."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        stmt = delete(DocumentModel).where(DocumentModel.id == id)
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.rowcount > 0
+    
+    def _model_to_document(self, model: DocumentModel) -> Document:
+        """Convert SQLAlchemy model to Document."""
+        return Document(
+            id=model.id,
+            title=model.title,
+            text=model.text,
+            source=model.source,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+            metadata=model.metadata or {},
+            status=model.status,
+            processing_error=model.processing_error,
+        )
+
+
+class PostgresSentenceRepository(BaseRepository):
+    """PostgreSQL/Supabase sentence repository."""
+    
+    def __init__(self, session: AsyncSession):
+        self.session = session
+    
+    async def get(self, id: str):
+        """Get sentence by ID."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        result = await self.session.execute(
+            select(SentenceModel).where(SentenceModel.id == id)
+        )
+        model = result.scalar_one_or_none()
+        if model:
+            return self._model_to_sentence(model)
+        return None
+    
+    async def list(self, skip: int = 0, limit: int = 100, filters: Optional[Dict[str, Any]] = None) -> List[Sentence]:
+        """List sentences with pagination and filters."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        query = select(SentenceModel)
+        
+        if filters and "document_id" in filters:
+            query = query.where(SentenceModel.document_id == filters["document_id"])
+        
+        query = query.order_by(SentenceModel.document_id, SentenceModel.index).offset(skip).limit(limit)
+        result = await self.session.execute(query)
+        models = result.scalars().all()
+        return [self._model_to_sentence(m) for m in models]
+    
+    async def create(self, sentence: Sentence) -> Sentence:
+        """Create new sentence."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        model = SentenceModel(
+            id=sentence.id,
+            document_id=sentence.document_id,
+            text=sentence.text,
+            index=sentence.index,
+            entities=sentence.entities,
+            created_at=sentence.created_at,
+        )
+        self.session.add(model)
+        await self.session.commit()
+        await self.session.refresh(model)
+        return sentence
+    
+    async def create_batch(self, sentences: List[Sentence]) -> List[Sentence]:
+        """Create multiple sentences at once."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        models = [
+            SentenceModel(
+                id=s.id,
+                document_id=s.document_id,
+                text=s.text,
+                index=s.index,
+                entities=s.entities,
+                created_at=s.created_at,
+            )
+            for s in sentences
+        ]
+        self.session.add_all(models)
+        await self.session.commit()
+        return sentences
+    
+    async def update(self, id: str, updates: Dict[str, Any]) -> Optional[Sentence]:
+        """Update sentence."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        update_dict = {}
+        for key, value in updates.items():
+            if hasattr(SentenceModel, key):
+                update_dict[key] = value
+        
+        if not update_dict:
+            return None
+        
+        stmt = (
+            update(SentenceModel)
+            .where(SentenceModel.id == id)
+            .values(**update_dict)
+            .execution_options(synchronize_session="fetch")
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+        
+        return await self.get(id)
+    
+    async def delete(self, id: str) -> bool:
+        """Delete sentence."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        stmt = delete(SentenceModel).where(SentenceModel.id == id)
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.rowcount > 0
+    
+    async def delete_by_document(self, document_id: str) -> int:
+        """Delete all sentences for a document."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        stmt = delete(SentenceModel).where(SentenceModel.document_id == document_id)
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.rowcount
+    
+    def _model_to_sentence(self, model: SentenceModel) -> Sentence:
+        """Convert SQLAlchemy model to Sentence."""
+        return Sentence(
+            id=model.id,
+            document_id=model.document_id,
+            text=model.text,
+            index=model.index,
+            entities=model.entities or [],
+            created_at=model.created_at,
+        )
+
+
+class PostgresTripleRepository(BaseRepository):
+    """PostgreSQL/Supabase triple repository."""
+    
+    def __init__(self, session: AsyncSession):
+        self.session = session
+    
+    async def get(self, id: str):
+        """Get triple by ID."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        result = await self.session.execute(
+            select(TripleModel).where(TripleModel.id == id)
+        )
+        model = result.scalar_one_or_none()
+        if model:
+            return self._model_to_triple(model)
+        return None
+    
+    async def list(self, skip: int = 0, limit: int = 100, filters: Optional[Dict[str, Any]] = None) -> List[Triple]:
+        """List triples with pagination and filters."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        query = select(TripleModel)
+        
+        if filters:
+            if "document_id" in filters:
+                query = query.where(TripleModel.document_id == filters["document_id"])
+            if "cluster_id" in filters:
+                query = query.where(TripleModel.cluster_id == filters["cluster_id"])
+            if "head_id" in filters:
+                query = query.where(TripleModel.head_id == filters["head_id"])
+            if "tail_id" in filters:
+                query = query.where(TripleModel.tail_id == filters["tail_id"])
+        
+        query = query.order_by(TripleModel.created_at.desc()).offset(skip).limit(limit)
+        result = await self.session.execute(query)
+        models = result.scalars().all()
+        return [self._model_to_triple(m) for m in models]
+    
+    async def create(self, triple: Triple) -> Triple:
+        """Create new triple."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        model = TripleModel(
+            id=triple.id,
+            document_id=triple.document_id,
+            sentence_id=triple.sentence_id,
+            head_id=triple.head_id,
+            head_name=triple.head_name,
+            head_type=triple.head_type,
+            relation=triple.relation,
+            tail_id=triple.tail_id,
+            tail_name=triple.tail_name,
+            tail_type=triple.tail_type,
+            cluster_id=triple.cluster_id,
+            created_at=triple.created_at,
+            updated_at=triple.updated_at,
+            metadata=triple.metadata,
+        )
+        self.session.add(model)
+        await self.session.commit()
+        await self.session.refresh(model)
+        return triple
+    
+    async def create_batch(self, triples: List[Triple]) -> List[Triple]:
+        """Create multiple triples at once."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        models = [
+            TripleModel(
+                id=t.id,
+                document_id=t.document_id,
+                sentence_id=t.sentence_id,
+                head_id=t.head_id,
+                head_name=t.head_name,
+                head_type=t.head_type,
+                relation=t.relation,
+                tail_id=t.tail_id,
+                tail_name=t.tail_name,
+                tail_type=t.tail_type,
+                cluster_id=t.cluster_id,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+                metadata=t.metadata,
+            )
+            for t in triples
+        ]
+        self.session.add_all(models)
+        await self.session.commit()
+        return triples
+    
+    async def update(self, id: str, updates: Dict[str, Any]) -> Optional[Triple]:
+        """Update triple."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        update_dict = {}
+        for key, value in updates.items():
+            if hasattr(TripleModel, key):
+                update_dict[key] = value
+        
+        if not update_dict:
+            return None
+        
+        update_dict["updated_at"] = datetime.utcnow()
+        
+        stmt = (
+            update(TripleModel)
+            .where(TripleModel.id == id)
+            .values(**update_dict)
+            .execution_options(synchronize_session="fetch")
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+        
+        return await self.get(id)
+    
+    async def delete(self, id: str) -> bool:
+        """Delete triple."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        stmt = delete(TripleModel).where(TripleModel.id == id)
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.rowcount > 0
+    
+    async def delete_by_document(self, document_id: str) -> int:
+        """Delete all triples for a document."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        stmt = delete(TripleModel).where(TripleModel.document_id == document_id)
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.rowcount
+    
+    def _model_to_triple(self, model: TripleModel) -> Triple:
+        """Convert SQLAlchemy model to Triple."""
+        return Triple(
+            id=model.id,
+            document_id=model.document_id,
+            sentence_id=model.sentence_id,
+            head_id=model.head_id,
+            head_name=model.head_name,
+            head_type=model.head_type,
+            relation=model.relation,
+            tail_id=model.tail_id,
+            tail_name=model.tail_name,
+            tail_type=model.tail_type,
+            cluster_id=model.cluster_id,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+            metadata=model.metadata or {},
+        )
+
+
+class PostgresJobRepository(BaseRepository):
+    """PostgreSQL/Supabase job repository."""
+    
+    def __init__(self, session: AsyncSession):
+        self.session = session
+    
+    async def get(self, id: str):
+        """Get job by ID."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        result = await self.session.execute(
+            select(ProcessingJobModel).where(ProcessingJobModel.id == id)
+        )
+        model = result.scalar_one_or_none()
+        if model:
+            return self._model_to_job(model)
+        return None
+    
+    async def list(self, skip: int = 0, limit: int = 100, filters: Optional[Dict[str, Any]] = None) -> List[ProcessingJob]:
+        """List jobs with pagination and filters."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        query = select(ProcessingJobModel)
+        
+        if filters:
+            if "document_id" in filters:
+                query = query.where(ProcessingJobModel.document_id == filters["document_id"])
+            if "status" in filters:
+                query = query.where(ProcessingJobModel.status == filters["status"])
+        
+        query = query.order_by(ProcessingJobModel.started_at.desc().nulls_last()).offset(skip).limit(limit)
+        result = await self.session.execute(query)
+        models = result.scalars().all()
+        return [self._model_to_job(m) for m in models]
+    
+    async def create(self, job: ProcessingJob) -> ProcessingJob:
+        """Create new job."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        model = ProcessingJobModel(
+            id=job.id,
+            document_id=job.document_id,
+            status=job.status,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+            error=job.error,
+            progress=job.progress,
+            stage=job.stage,
+        )
+        self.session.add(model)
+        await self.session.commit()
+        await self.session.refresh(model)
+        return job
+    
+    async def update(self, id: str, updates: Dict[str, Any]) -> Optional[ProcessingJob]:
+        """Update job."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        update_dict = {}
+        for key, value in updates.items():
+            if hasattr(ProcessingJobModel, key):
+                update_dict[key] = value
+        
+        if not update_dict:
+            return None
+        
+        stmt = (
+            update(ProcessingJobModel)
+            .where(ProcessingJobModel.id == id)
+            .values(**update_dict)
+            .execution_options(synchronize_session="fetch")
+        )
+        await self.session.execute(stmt)
+        await self.session.commit()
+        
+        return await self.get(id)
+    
+    async def delete(self, id: str) -> bool:
+        """Delete job."""
+        if not SQLALCHEMY_AVAILABLE:
+            raise RuntimeError("SQLAlchemy not available")
+        stmt = delete(ProcessingJobModel).where(ProcessingJobModel.id == id)
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.rowcount > 0
+    
+    def _model_to_job(self, model: ProcessingJobModel) -> ProcessingJob:
+        """Convert SQLAlchemy model to ProcessingJob."""
+        return ProcessingJob(
+            id=model.id,
+            document_id=model.document_id,
+            status=model.status,
+            started_at=model.started_at,
+            completed_at=model.completed_at,
+            error=model.error,
+            progress=model.progress,
+            stage=model.stage,
+        )
+
+

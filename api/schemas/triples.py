@@ -67,3 +67,6 @@ class TripleBatchCreate(BaseModel):
     """Schema for creating multiple triples."""
     triples: list[TripleCreate]
 
+
+
+
