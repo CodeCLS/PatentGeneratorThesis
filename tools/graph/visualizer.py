@@ -130,6 +130,7 @@ class GraphVisualizer:
         self,
         triples: List[Triple] | List[List[Triple]] | Triple,
         node_type_map: Optional[Dict[str, str]] = None,
+        deduplicate: bool = True,
     ) -> nx.MultiDiGraph:
         """
         Build a NetworkX MultiDiGraph from triples.
@@ -137,6 +138,7 @@ class GraphVisualizer:
         Args:
             triples: List of Triple objects, nested list, or single Triple
             node_type_map: Optional mapping from node ID to node type
+            deduplicate: If True, only add unique edges (head, tail, relation) once
 
         Returns:
             NetworkX MultiDiGraph with nodes and edges
@@ -144,6 +146,9 @@ class GraphVisualizer:
         node_type_map = node_type_map or {}
         G = nx.MultiDiGraph()
         flat = self.flatten_triples(triples)
+        
+        # Track unique edges if deduplicating
+        seen_edges = set() if deduplicate else None
 
         for tr in flat:
             h_id = self._entity_key(tr.head)
@@ -152,6 +157,13 @@ class GraphVisualizer:
 
             if not h_id or not t_id or not r:
                 continue
+
+            # Check for duplicates if deduplicating
+            if deduplicate:
+                edge_key = (h_id, t_id, r)
+                if edge_key in seen_edges:
+                    continue  # Skip duplicate edge
+                seen_edges.add(edge_key)
 
             h_type = (node_type_map.get(h_id) or self._entity_type(tr.head) or self.infer_type_from_id(h_id))
             t_type = (node_type_map.get(t_id) or self._entity_type(tr.tail) or self.infer_type_from_id(t_id))
@@ -270,6 +282,56 @@ class GraphVisualizer:
                     id_to_name[ent_id] = name
 
         return id_to_name
+
+    @staticmethod
+    def build_id_to_label_map(sentence_split: List[Any]) -> Dict[str, str]:
+        """
+        Build a mapping from entity ID to label/type from sentence_split.
+
+        Args:
+            sentence_split: List of Sentence objects with entities
+
+        Returns:
+            Dictionary mapping entity ID to label/type
+        """
+        def iter_sentence_entities(sent):
+            """Extract entities from a sentence object."""
+            ents = getattr(sent, "entities", None)
+            if ents is None:
+                return []
+            if isinstance(ents, dict):
+                return list(ents.values())
+            if isinstance(ents, list):
+                return ents
+            try:
+                return list(ents)
+            except Exception:
+                return []
+
+        id_to_label: Dict[str, str] = {}
+        for sent in sentence_split:
+            for ent in iter_sentence_entities(sent):
+                ent_id = None
+                for attr in ("ref", "id", "ref_short"):
+                    if hasattr(ent, attr):
+                        v = getattr(ent, attr)
+                        if v:
+                            ent_id = str(v)
+                            break
+                if not ent_id:
+                    continue
+                # Get label from entity (label or entity_type attribute)
+                label = None
+                if hasattr(ent, "label"):
+                    label = getattr(ent, "label")
+                elif hasattr(ent, "entity_type"):
+                    label = getattr(ent, "entity_type")
+                if label:
+                    # Use the first label we find for this ID (or keep existing if already set)
+                    if ent_id not in id_to_label:
+                        id_to_label[ent_id] = str(label).upper()
+
+        return id_to_label
 
 
 

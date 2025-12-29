@@ -32,7 +32,14 @@ class FAISSEdgeMerger:
             sim_threshold: Cosine similarity threshold for merging (0.0-1.0)
             embed_dim: Dimension of relation embeddings
             ngram: N-gram size for hash embedding
-            keep: Strategy for choosing representative relation ("first", "shortest", "longest")
+                - Controls how the relation text is broken into character sequences for embedding
+                - Example: ngram=3 means 3-character sequences ("abc", "bcd", "cde" for "abcde")
+                - Higher values (e.g., 4-5) capture longer patterns, lower values (e.g., 2-3) are more flexible
+                - Default: 3 (good balance between specificity and generalization)
+            keep: Strategy for choosing representative relation when multiple similar relations are merged
+                - "first": Keep the first relation encountered (default)
+                - "shortest": Keep the shortest relation string (most concise)
+                - "longest": Keep the longest relation string (most descriptive)
         """
         self.sim_threshold = sim_threshold
         self.embed_dim = embed_dim
@@ -90,6 +97,10 @@ class FAISSEdgeMerger:
     ) -> Tuple[List[Triple], Dict[str, any]]:
         """
         Merge similar relations between the same head and tail entities.
+        
+        IMPORTANT: This method ONLY merges relations (edge labels), NOT nodes.
+        Nodes (entities) are preserved exactly as they appear in the input triples.
+        Only relation strings between the same (head, tail) pair are merged.
 
         For each (head, tail) pair, clusters relation strings by cosine similarity
         >= sim_threshold, then merges each cluster into 1 triple.
@@ -100,7 +111,8 @@ class FAISSEdgeMerger:
         Returns:
             Tuple of (merged_triples, stats_dict)
         """
-        # Group triples by (head_id, tail_id)
+        # Group triples by (head_id, tail_id) - NOTE: This groups by entity identity,
+        # but does NOT merge or modify the entities themselves. Only relations are merged.
         by_pair = defaultdict(list)
         for tr in triples or []:
             h = self._entity_key_any(getattr(tr, "head", None))
@@ -177,9 +189,11 @@ class FAISSEdgeMerger:
                     rep_rel = member_rels[0]
 
                 # Pick a base triple to copy head/tail objects from
+                # NOTE: We preserve the original Entity objects (head and tail) exactly as-is.
+                # Only the relation string is changed to the representative relation.
                 base_tr = rel_to_trs[member_rels[0]][0]
 
-                # Create a merged Triple
+                # Create a merged Triple with the same head/tail entities, but merged relation
                 merged_triples.append(
                     Triple(head=base_tr.head, relation=rep_rel, tail=base_tr.tail)
                 )
