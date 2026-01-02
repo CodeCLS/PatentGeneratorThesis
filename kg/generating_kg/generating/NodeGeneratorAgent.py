@@ -10,11 +10,11 @@ from tools.sentence.entity import Entity,InMemoryEntityRepository
 
 
 class NodeGeneratorAgent(RecursivePromptingAgent):
-    def __init__(self, task: str):
+    def __init__(self, task: str, max_iter: int = 3):
         super().__init__(task)
         self.task = task
         self.api_repo = LLmApi_Repo()
-        self.max_iter = 5
+        self.max_iter = max_iter  # Reduced from 5 to 3 to limit API calls
 
     @property
     def name(self) -> str:
@@ -69,7 +69,8 @@ class NodeGeneratorAgent(RecursivePromptingAgent):
             state["improvement"] = (
                 "Your previous response was empty or not valid JSON. "
                 "Return ONLY JSON (no markdown fences, no commentary). "
-                "If truly no relation exists, return []."
+                "If no certain triples exist, return [] (empty array). "
+                "Remember: It is better to return [] than to create uncertain triples."
             )
             state["done"] = False
 

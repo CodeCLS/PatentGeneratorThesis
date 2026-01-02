@@ -24,34 +24,53 @@ class NodeGenerator:
         [{"head":"<entity_id>", "relation":"...", "tail":"<entity_id>"}]
     """
 
-    def __init__(self):
+    def __init__(self, max_iter: int = 3):
+        """
+        Initialize NodeGenerator.
+        
+        Args:
+            max_iter: Maximum number of API calls for recursive prompting (default 3 to limit API usage)
+        """
         self.agent = NodeGeneratorAgent(
             "Task: Extract knowledge graph triples from a sentence.\n"
             "You are given:\n"
             "1) The raw sentence text.\n"
             "2) A JSON list of entities with ids and spans.\n"
             "3) Existing triples connected to entities in this sentence (for context).\n\n"
-            "CRITICAL RULES - BE VERY STRICT:\n"
-            "- ONLY extract triples that are EXPLICITLY and CLEARLY stated in the sentence.\n"
-            "- The relation MUST be directly supported by the sentence wording - do NOT infer or assume.\n"
-            "- If you are not 100% certain a relation exists, DO NOT include it.\n"
+            "CRITICAL RULES - BE EXTREMELY STRICT:\n",
+            max_iter=max_iter
+            "- ONLY extract triples that are EXPLICITLY, CLEARLY, and UNEQUIVOCALLY stated in the sentence.\n"
+            "- The relation MUST be directly and unambiguously supported by the sentence wording.\n"
+            "- DO NOT infer, assume, or guess relationships.\n"
+            "- DO NOT create triples based on common sense or domain knowledge - ONLY what is explicitly stated.\n"
+            "- If you have ANY doubt or uncertainty about a relation, DO NOT include it - return [] instead.\n"
+            "- If the relation is vague, ambiguous, or could be interpreted multiple ways, DO NOT include it.\n"
             "- Use ONLY entity ids from the provided entity list.\n"
             "- 'head' and 'tail' must be EXACT ids from the list.\n"
-            "- 'relation' should be a concise phrase directly from the sentence.\n"
+            "- 'relation' should be a concise phrase DIRECTLY from the sentence text, not paraphrased.\n"
             "- Do NOT invent entities.\n"
             "- Do NOT invent relations not explicitly stated in the sentence.\n"
             "- Do NOT create triples that are redundant with existing triples (check the existing triples list).\n"
             "- Do NOT create triples that contradict existing triples.\n"
-            "- If no meaningful triple can be formed with high confidence, return [].\n"
+            "- If no meaningful triple can be formed with ABSOLUTE certainty, return [] (empty array).\n"
+            "- It is BETTER to return [] than to include uncertain or incorrect triples.\n"
             "- Return ONLY a JSON array with keys: head, relation, tail.\n\n"
             "Quality Standards:\n"
-            "- Each triple must add meaningful, non-redundant information.\n"
-            "- Relations should be specific and informative, not generic (avoid 'related to', 'has', etc. unless explicitly stated).\n"
-            "- Prefer fewer, high-quality triples over many uncertain ones.\n\n"
+            "- Each triple must be 100% correct and explicitly supported by the sentence.\n"
+            "- Relations must be specific and directly stated, not generic or inferred.\n"
+            "- Prefer returning [] over creating uncertain triples.\n"
+            "- Quality over quantity: fewer correct triples is better than many uncertain ones.\n\n"
+            "When to skip a triple:\n"
+            "- If the relation is implied but not explicitly stated\n"
+            "- If you need to infer or guess the relationship\n"
+            "- If the sentence is ambiguous about the relationship\n"
+            "- If the entities' relationship is unclear from the sentence\n"
+            "- If you're not completely certain the triple is correct\n\n"
             "Important:\n"
             "- Entities may overlap. Prefer the most specific span if needed.\n"
-            "- Pronouns may appear; if a pronoun has an entity id (coref), you may use it.\n"
-            "- Review existing triples to avoid duplicates and contradictions.\n\n"
+            "- Pronouns may appear; if a pronoun has an entity id (coref), you may use it ONLY if the relation is explicit.\n"
+            "- Review existing triples to avoid duplicates and contradictions.\n"
+            "- When in doubt, leave it out - return [] rather than risk incorrect triples.\n\n"
             "Example:\n"
             "Sentence: The display device is for appreciation regarding pseudo space.\n"
             'Entities: [{"id":"E1","text":"display device"},{"id":"E2","text":"pseudo space"}]\n'
@@ -109,12 +128,20 @@ class NodeGenerator:
         }
 
         prompt = (
-            "Extract entity-to-entity triples from the sentence.\n"
+            "Extract entity-to-entity triples from the sentence.\n\n"
+            "CRITICAL: ONLY extract triples that are EXPLICITLY and UNEQUIVOCALLY stated.\n"
+            "- If you have ANY doubt or uncertainty, DO NOT create the triple - return [] instead.\n"
+            "- DO NOT infer, assume, or guess relationships.\n"
+            "- DO NOT create triples based on common sense or domain knowledge.\n"
+            "- If the relation is vague, ambiguous, or unclear, DO NOT include it.\n"
+            "- It is BETTER to return [] than to include uncertain or incorrect triples.\n\n"
             "You MUST use ONLY the provided entity 'id' values for head/tail.\n"
             "IMPORTANT: Review the existing_triples list to avoid duplicates and contradictions.\n"
             "Only create NEW triples that are explicitly stated and not already present.\n"
+            "When in doubt, leave it out - return [] rather than risk incorrect triples.\n\n"
             "Return ONLY JSON (no text, no code fences) as a JSON array like:\n"
-            '[{"head":"<entity_id>","relation":"<relation>","tail":"<entity_id>"}]\n\n'
+            '[{"head":"<entity_id>","relation":"<relation>","tail":"<entity_id>"}]\n'
+            'If no certain triples exist, return: []\n\n'
             "INPUT:\n"
             f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
         )

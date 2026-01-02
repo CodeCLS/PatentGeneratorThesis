@@ -11,12 +11,34 @@ This version is tuned for reconstructing claims from knowledge-graph clusters:
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set, Tuple
+from dataclasses import dataclass, field
 import json
 import re
 
-from tools.graph.claim_clusterers import ClaimCluster
 from tools.api.llm_api_repo import LLmApi_Repo
+
+
+@dataclass
+class ClaimCluster:
+    """
+    Minimal ClaimCluster dataclass for compatibility with PatentClaimGenerator.
+    This is a compatibility shim - new code should use ClaimBundle from claim_extractor.
+    """
+    cluster_id: int
+    nodes: Set[str] = field(default_factory=set)
+    edges: Set[Tuple[str, str, str]] = field(default_factory=set)
+    claim_type: str = "dependent"  # "independent" or "dependent"
+    priority: int = 999  # Lower = more important
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def size(self) -> int:
+        """Return the number of edges in this cluster."""
+        return len(self.edges)
+    
+    def node_count(self) -> int:
+        """Return the number of nodes in this cluster."""
+        return len(self.nodes)
 
 
 class PatentClaimGenerator:

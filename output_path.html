@@ -1,0 +1,3469 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Knowledge Graph Explorer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+        :root {
+            color-scheme: light;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f8fafc;
+            color: #0f172a;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            height: 100vh;
+            transition: grid-template-columns 0.3s ease;
+        }
+
+        .layout.sidebar-collapsed {
+            grid-template-columns: 0px 1fr;
+        }
+
+        .layout.sidebar-disabled {
+            grid-template-columns: 1fr;
+            width: 100%;
+        }
+
+        .layout.sidebar-disabled .main {
+            width: 100vw !important;
+        }
+
+        .layout.sidebar-disabled .tab-panel {
+            padding: 0 !important;
+            width: 100vw !important;
+        }
+
+        .layout.sidebar-disabled .network-panel {
+            width: 100vw !important;
+            height: 100vh !important;
+            border-radius: 0;
+            border: none;
+            max-width: none !important;
+        }
+
+        .layout.sidebar-disabled #networkCanvas {
+            width: 100vw !important;
+            height: 100vh !important;
+            max-width: none !important;
+        }
+
+        /* Force canvas to take full iframe space */
+        canvas#networkCanvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .sidebar {
+            background: #ffffff;
+            border-right: 1px solid #e2e8f0;
+            padding: 24px 24px 16px;
+            overflow-y: auto;
+            transition: width 0.3s ease, opacity 0.3s ease;
+            display: block; /* Visible in standalone mode */
+        }
+
+        .sidebar.collapsed {
+            width: 0;
+            padding: 24px 0 16px;
+            overflow: hidden;
+            opacity: 0;
+        }
+
+        .sidebar h1 {
+            margin: 0 0 8px;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .sidebar p {
+            margin: 0 0 20px;
+            color: #475569;
+            font-size: 0.95rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 12px;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .section {
+            margin-bottom: 24px;
+        }
+
+        .section h2 {
+            font-size: 1rem;
+            margin: 0 0 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #1e293b;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #cbd5f5;
+            border-radius: 10px;
+            font-size: 0.95rem;
+        }
+
+        .search-hint {
+            margin-top: 6px;
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+
+        .list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .list-item {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 10px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+
+        .list-item strong {
+            font-weight: 600;
+        }
+
+        .cluster-item,
+        .relation-item {
+            border-left: 4px solid transparent;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.2s ease;
+        }
+
+        .cluster-item:hover,
+        .relation-item:hover {
+            background: #e2e8f0;
+        }
+
+        .cluster-item.active,
+        .relation-item.active {
+            transform: translateX(4px);
+            background: #e2e8f0;
+        }
+
+        .cluster-item .meta,
+        .relation-item .meta {
+            font-size: 0.8rem;
+            color: #475569;
+        }
+
+        .main {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100%;
+        }
+
+        .tab-bar {
+            display: flex;
+            gap: 8px;
+            padding: 16px 20px 0;
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .tab {
+            border: none;
+            background: #e2e8f0;
+            color: #1e293b;
+            padding: 10px 16px;
+            border-radius: 999px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+
+        .tab.active {
+            background: #1d4ed8;
+            color: #ffffff;
+        }
+
+        .sidebar-toggle {
+            position: absolute;
+            top: 16px;
+            right: 20px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            z-index: 10;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: none; /* Hidden when sidebar is disabled */
+        }
+
+        .sidebar-toggle:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+        }
+
+        .sidebar-toggle::before {
+            content: '☰';
+            margin-right: 6px;
+        }
+
+        .sidebar-toggle.collapsed::before {
+            content: '☰';
+        }
+
+        .tab-panel {
+            flex: 1;
+            display: none;
+            padding: 16px 20px;
+            overflow: hidden;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        .network-panel {
+            height: calc(100vh - 74px);
+            background: #ffffff;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+
+        #networkCanvas {
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+            border-radius: 16px;
+        }
+
+        #networkCanvas {
+            cursor: grab;
+        }
+
+        #networkCanvas:active {
+            cursor: grabbing;
+        }
+
+        .selection-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 0.9rem;
+        }
+
+        .selection-card h3 {
+            margin: 0 0 8px;
+            font-size: 1rem;
+        }
+
+        .selection-card ul {
+            list-style: none;
+            padding-left: 0;
+            margin: 0;
+        }
+
+        .selection-card li {
+            margin-bottom: 4px;
+            color: #475569;
+        }
+
+        .table-container {
+            background: #ffffff;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            height: calc(100vh - 90px);
+            overflow: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background: #f8fafc;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 10px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            font-size: 0.75rem;
+            color: #0f172a;
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            color: #475569;
+        }
+
+        .legend-swatch {
+            width: 12px;
+            height: 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(15, 23, 42, 0.25);
+        }
+
+
+        /* Mobile/narrow iframe handling - when sidebar is disabled, use full space */
+        @media (max-width: 800px) {
+            .layout:not(.sidebar-disabled) {
+                grid-template-columns: 1fr;
+            }
+
+            .layout:not(.sidebar-disabled) .sidebar {
+                height: 280px;
+                border-right: none;
+                border-bottom: 1px solid #e2e8f0;
+            }
+
+            .layout:not(.sidebar-disabled) .main {
+                height: calc(100vh - 280px);
+            }
+
+            /* When sidebar is disabled (iframe mode), ensure full viewport usage */
+            .layout.sidebar-disabled .main {
+                width: 100% !important;
+                height: 100vh !important;
+            }
+
+            .layout.sidebar-disabled .tab-panel {
+                padding: 0 !important;
+                width: 100% !important;
+                height: 100vh !important;
+            }
+
+            .layout.sidebar-disabled .network-panel {
+                width: 100% !important;
+                height: 100vh !important;
+                border-radius: 0 !important;
+                border: none !important;
+                max-width: none !important;
+            }
+
+            .layout.sidebar-disabled #networkCanvas {
+                width: 100% !important;
+                height: 100vh !important;
+                max-width: none !important;
+            }
+
+            /* Ensure iframe canvas takes full space on mobile */
+            canvas#networkCanvas {
+                width: 100% !important;
+                height: 100% !important;
+                min-width: 100% !important;
+                min-height: 100% !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="layout">
+        <aside class="sidebar">
+            <h1>Knowledge Graph Explorer</h1>
+            <p>Search, highlight, and inspect entities and relations to understand how the graph fits together.</p>
+            <div class="stats-grid" id="statsGrid"></div>
+            <div class="section">
+                <h2>Search</h2>
+                <input id="searchInput" class="search-input" type="text" placeholder="Search for entities or
+                    relations" />
+                <div class="search-hint">Matches are highlighted. Press Escape to clear.</div>
+            </div>
+            <div class="section" id="selectionSection">
+                <h2>Selection</h2>
+                <div id="selectionDetails" class="selection-card">Click a node or relation in the network to inspect
+                    details.</div>
+            </div>
+            <div class="section">
+                <h2>Entity Clusters</h2>
+                <div id="clusterList" class="list"></div>
+            </div>
+            <div class="section">
+                <h2>Top Entities</h2>
+                <div id="topEntities" class="list"></div>
+            </div>
+            <div class="section">
+                <h2>Top Relations</h2>
+                <div id="topRelations" class="list"></div>
+            </div>
+        </aside>
+        <main class="main">
+            <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar"></button>
+            <div class="tab-bar" style="padding-bottom: 10px; display: none;">
+                <button class="tab active" data-tab="network">Network</button>
+                <!-- <button class="tab" data-tab="relations">Relations</button>
+                <button class="tab" data-tab="insights">Insights</button> -->
+            </div>
+            <section id="network" class="tab-panel active">
+                <div class="network-panel">
+                    <canvas id="networkCanvas"></canvas>
+                </div>
+            </section>
+            <!-- <section id="relations" class="tab-panel">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Subject</th>
+                                <th>Relation</th>
+                                <th>Object</th>
+                            </tr>
+                        </thead>
+                        <tbody id="relationsTable"></tbody>
+                    </table>
+                </div>
+            </section>
+            <section id="insights" class="tab-panel">
+                <div class="table-container" style="padding: 20px;">
+                    <div id="insightsContent"></div>
+                </div>
+            </section> -->
+        </main>
+    </div>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script id="viz-data" type="application/json">
+{
+  "nodes": [
+    {
+      "id": "",
+      "label": "",
+      "cluster": null,
+      "color": "#9755e8",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "cosmic space"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e15"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "air",
+      "label": "air",
+      "cluster": null,
+      "color": "#5ee748",
+      "degree": 4,
+      "indegree": 4,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 26,
+      "neighbors": [
+        "creatures",
+        "interiors",
+        "objects",
+        "pseudo space"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e18",
+          "e19",
+          "e25",
+          "e37"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "air bubble",
+      "label": "air bubble",
+      "cluster": null,
+      "color": "#9fdc76",
+      "degree": 6,
+      "indegree": 2,
+      "outdegree": 4,
+      "isRepresentative": false,
+      "radius": 30,
+      "neighbors": [
+        "air bubble generating member",
+        "aquatic animal pseudo models",
+        "creature models",
+        "display device",
+        "ventilation member",
+        "water flow"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e7",
+          "e22"
+        ],
+        "outgoing": [
+          "e2",
+          "e20",
+          "e21",
+          "e51"
+        ]
+      }
+    },
+    {
+      "id": "air bubble generating member",
+      "label": "air bubble generating member",
+      "cluster": null,
+      "color": "#39a5cd",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "air bubble"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e51"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "airships",
+      "label": "airships",
+      "cluster": null,
+      "color": "#161bd0",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "objects"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e34"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "aquariums",
+      "label": "aquariums",
+      "cluster": null,
+      "color": "#31e5c1",
+      "degree": 5,
+      "indegree": 0,
+      "outdegree": 5,
+      "isRepresentative": false,
+      "radius": 28,
+      "neighbors": [
+        "aquatic animals",
+        "aquatic plants",
+        "seaweeds",
+        "tropical fish",
+        "visual effects"
+      ],
+      "edgeIds": {
+        "incoming": [],
+        "outgoing": [
+          "e10",
+          "e13",
+          "e14",
+          "e42",
+          "e43"
+        ]
+      }
+    },
+    {
+      "id": "aquatic animal pseudo models",
+      "label": "aquatic animal pseudo models",
+      "cluster": null,
+      "color": "#8fd24d",
+      "degree": 2,
+      "indegree": 0,
+      "outdegree": 2,
+      "isRepresentative": false,
+      "radius": 22,
+      "neighbors": [
+        "air bubble",
+        "water surface"
+      ],
+      "edgeIds": {
+        "incoming": [],
+        "outgoing": [
+          "e6",
+          "e7"
+        ]
+      }
+    },
+    {
+      "id": "aquatic animals",
+      "label": "aquatic animals",
+      "cluster": null,
+      "color": "#5acadf",
+      "degree": 5,
+      "indegree": 2,
+      "outdegree": 3,
+      "isRepresentative": false,
+      "radius": 28,
+      "neighbors": [
+        "aquariums",
+        "creatures",
+        "living conditions",
+        "pseudo models",
+        "tropical fish"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e5",
+          "e42"
+        ],
+        "outgoing": [
+          "e3",
+          "e27",
+          "e50"
+        ]
+      }
+    },
+    {
+      "id": "aquatic plants",
+      "label": "aquatic plants",
+      "cluster": null,
+      "color": "#cf3bea",
+      "degree": 2,
+      "indegree": 1,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 22,
+      "neighbors": [
+        "aquariums",
+        "seaweeds"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e43"
+        ],
+        "outgoing": [
+          "e28"
+        ]
+      }
+    },
+    {
+      "id": "birds",
+      "label": "birds",
+      "cluster": null,
+      "color": "#7d97e0",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "creatures"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e31"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "bottom wall",
+      "label": "bottom wall",
+      "cluster": null,
+      "color": "#24d66b",
+      "degree": 2,
+      "indegree": 1,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 22,
+      "neighbors": [
+        "ventilation member",
+        "water tank"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e39"
+        ],
+        "outgoing": [
+          "e41"
+        ]
+      }
+    },
+    {
+      "id": "butterflies",
+      "label": "butterflies",
+      "cluster": null,
+      "color": "#4a5de8",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "creatures"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e32"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "cosmic space",
+      "label": "cosmic space",
+      "cluster": null,
+      "color": "#853cc9",
+      "degree": 2,
+      "indegree": 1,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 22,
+      "neighbors": [
+        "",
+        "water tank for appreciation"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e17"
+        ],
+        "outgoing": [
+          "e15"
+        ]
+      }
+    },
+    {
+      "id": "creature models",
+      "label": "creature models",
+      "cluster": null,
+      "color": "#cfa41f",
+      "degree": 2,
+      "indegree": 1,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 22,
+      "neighbors": [
+        "air bubble",
+        "unnaturally"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e2"
+        ],
+        "outgoing": [
+          "e11"
+        ]
+      }
+    },
+    {
+      "id": "creatures",
+      "label": "creatures",
+      "cluster": null,
+      "color": "#a57eda",
+      "degree": 6,
+      "indegree": 2,
+      "outdegree": 4,
+      "isRepresentative": false,
+      "radius": 30,
+      "neighbors": [
+        "air",
+        "aquatic animals",
+        "birds",
+        "butterflies",
+        "display device for appreciation",
+        "fish"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e3",
+          "e46"
+        ],
+        "outgoing": [
+          "e18",
+          "e31",
+          "e32",
+          "e33"
+        ]
+      }
+    },
+    {
+      "id": "daily feeding",
+      "label": "daily feeding",
+      "cluster": null,
+      "color": "#b4e468",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "pseudo aquarium"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e16"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "display device",
+      "label": "display device",
+      "cluster": null,
+      "color": "#93e66f",
+      "degree": 4,
+      "indegree": 0,
+      "outdegree": 4,
+      "isRepresentative": false,
+      "radius": 26,
+      "neighbors": [
+        "air bubble",
+        "Japan unexamined patent publication Hei7-230259",
+        "pseudo models",
+        "water flow"
+      ],
+      "edgeIds": {
+        "incoming": [],
+        "outgoing": [
+          "e22",
+          "e23",
+          "e44",
+          "e45"
+        ]
+      }
+    },
+    {
+      "id": "display device for appreciation",
+      "label": "display device for appreciation",
+      "cluster": null,
+      "color": "#9cef73",
+      "degree": 4,
+      "indegree": 1,
+      "outdegree": 3,
+      "isRepresentative": false,
+      "radius": 26,
+      "neighbors": [
+        "creatures",
+        "objects",
+        "present invention",
+        "pseudo space"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e49"
+        ],
+        "outgoing": [
+          "e46",
+          "e47",
+          "e48"
+        ]
+      }
+    },
+    {
+      "id": "environmental maintenance",
+      "label": "environmental maintenance",
+      "cluster": null,
+      "color": "#7edead",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "pseudo aquarium"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e24"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "fish",
+      "label": "fish",
+      "cluster": null,
+      "color": "#e88274",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "creatures"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e33"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "fish models",
+      "label": "fish models",
+      "cluster": null,
+      "color": "#c9c71c",
+      "degree": 2,
+      "indegree": 1,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 22,
+      "neighbors": [
+        "pseudo aquarium",
+        "pseudo models"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e30"
+        ],
+        "outgoing": [
+          "e52"
+        ]
+      }
+    },
+    {
+      "id": "interiors",
+      "label": "interiors",
+      "cluster": null,
+      "color": "#eb7694",
+      "degree": 2,
+      "indegree": 0,
+      "outdegree": 2,
+      "isRepresentative": false,
+      "radius": 22,
+      "neighbors": [
+        "air",
+        "water"
+      ],
+      "edgeIds": {
+        "incoming": [],
+        "outgoing": [
+          "e25",
+          "e26"
+        ]
+      }
+    },
+    {
+      "id": "Japan unexamined patent publication Hei7-230259",
+      "label": "Japan unexamined patent publication Hei7-230259",
+      "cluster": null,
+      "color": "#e32e3a",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "display device"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e44"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "labor cost",
+      "label": "labor cost",
+      "cluster": null,
+      "color": "#6ae9ea",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "living conditions"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e0"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "living conditions",
+      "label": "living conditions",
+      "cluster": null,
+      "color": "#e675b5",
+      "degree": 4,
+      "indegree": 1,
+      "outdegree": 3,
+      "isRepresentative": false,
+      "radius": 26,
+      "neighbors": [
+        "aquatic animals",
+        "labor cost",
+        "maintenance cost",
+        "water temperature"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e50"
+        ],
+        "outgoing": [
+          "e0",
+          "e1",
+          "e29"
+        ]
+      }
+    },
+    {
+      "id": "maintenance cost",
+      "label": "maintenance cost",
+      "cluster": null,
+      "color": "#c9a030",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "living conditions"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e1"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "models",
+      "label": "models",
+      "cluster": null,
+      "color": "#d979df",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "submarines"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e4"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "objects",
+      "label": "objects",
+      "cluster": null,
+      "color": "#226acc",
+      "degree": 5,
+      "indegree": 1,
+      "outdegree": 4,
+      "isRepresentative": false,
+      "radius": 28,
+      "neighbors": [
+        "air",
+        "airships",
+        "display device for appreciation",
+        "spaceships",
+        "submarines"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e47"
+        ],
+        "outgoing": [
+          "e19",
+          "e34",
+          "e35",
+          "e36"
+        ]
+      }
+    },
+    {
+      "id": "present invention",
+      "label": "present invention",
+      "cluster": null,
+      "color": "#c668ee",
+      "degree": 1,
+      "indegree": 0,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "display device for appreciation"
+      ],
+      "edgeIds": {
+        "incoming": [],
+        "outgoing": [
+          "e49"
+        ]
+      }
+    },
+    {
+      "id": "pseudo aquarium",
+      "label": "pseudo aquarium",
+      "cluster": null,
+      "color": "#9325d8",
+      "degree": 3,
+      "indegree": 1,
+      "outdegree": 2,
+      "isRepresentative": false,
+      "radius": 24,
+      "neighbors": [
+        "daily feeding",
+        "environmental maintenance",
+        "fish models"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e52"
+        ],
+        "outgoing": [
+          "e16",
+          "e24"
+        ]
+      }
+    },
+    {
+      "id": "pseudo creature models",
+      "label": "pseudo creature models",
+      "cluster": null,
+      "color": "#81db45",
+      "degree": 1,
+      "indegree": 0,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "submarines"
+      ],
+      "edgeIds": {
+        "incoming": [],
+        "outgoing": [
+          "e12"
+        ]
+      }
+    },
+    {
+      "id": "pseudo models",
+      "label": "pseudo models",
+      "cluster": null,
+      "color": "#5ade49",
+      "degree": 3,
+      "indegree": 1,
+      "outdegree": 2,
+      "isRepresentative": false,
+      "radius": 24,
+      "neighbors": [
+        "aquatic animals",
+        "display device",
+        "fish models"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e45"
+        ],
+        "outgoing": [
+          "e5",
+          "e30"
+        ]
+      }
+    },
+    {
+      "id": "pseudo space",
+      "label": "pseudo space",
+      "cluster": null,
+      "color": "#c84dde",
+      "degree": 3,
+      "indegree": 1,
+      "outdegree": 2,
+      "isRepresentative": false,
+      "radius": 24,
+      "neighbors": [
+        "air",
+        "display device for appreciation",
+        "water"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e48"
+        ],
+        "outgoing": [
+          "e37",
+          "e38"
+        ]
+      }
+    },
+    {
+      "id": "seaweeds",
+      "label": "seaweeds",
+      "cluster": null,
+      "color": "#e77a8a",
+      "degree": 3,
+      "indegree": 2,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 24,
+      "neighbors": [
+        "aquariums",
+        "aquatic plants",
+        "water tank"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e13",
+          "e28"
+        ],
+        "outgoing": [
+          "e8"
+        ]
+      }
+    },
+    {
+      "id": "spaceships",
+      "label": "spaceships",
+      "cluster": null,
+      "color": "#5f55e2",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "objects"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e35"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "submarines",
+      "label": "submarines",
+      "cluster": null,
+      "color": "#91db56",
+      "degree": 3,
+      "indegree": 2,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 24,
+      "neighbors": [
+        "models",
+        "objects",
+        "pseudo creature models"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e12",
+          "e36"
+        ],
+        "outgoing": [
+          "e4"
+        ]
+      }
+    },
+    {
+      "id": "tropical fish",
+      "label": "tropical fish",
+      "cluster": null,
+      "color": "#41e4c8",
+      "degree": 3,
+      "indegree": 2,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 24,
+      "neighbors": [
+        "aquariums",
+        "aquatic animals",
+        "water tank"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e14",
+          "e27"
+        ],
+        "outgoing": [
+          "e9"
+        ]
+      }
+    },
+    {
+      "id": "unnaturally",
+      "label": "unnaturally",
+      "cluster": null,
+      "color": "#51d74e",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "creature models"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e11"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "ventilation member",
+      "label": "ventilation member",
+      "cluster": null,
+      "color": "#945fec",
+      "degree": 2,
+      "indegree": 1,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 22,
+      "neighbors": [
+        "air bubble",
+        "bottom wall"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e20"
+        ],
+        "outgoing": [
+          "e39"
+        ]
+      }
+    },
+    {
+      "id": "visual effects",
+      "label": "visual effects",
+      "cluster": null,
+      "color": "#5edd97",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "aquariums"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e10"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "water",
+      "label": "water",
+      "cluster": null,
+      "color": "#f171ed",
+      "degree": 2,
+      "indegree": 2,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 22,
+      "neighbors": [
+        "interiors",
+        "pseudo space"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e26",
+          "e38"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "water flow",
+      "label": "water flow",
+      "cluster": null,
+      "color": "#78e8df",
+      "degree": 3,
+      "indegree": 2,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 24,
+      "neighbors": [
+        "air bubble",
+        "display device",
+        "water tank"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e21",
+          "e23"
+        ],
+        "outgoing": [
+          "e40"
+        ]
+      }
+    },
+    {
+      "id": "water surface",
+      "label": "water surface",
+      "cluster": null,
+      "color": "#6ceabf",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "aquatic animal pseudo models"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e6"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "water tank",
+      "label": "water tank",
+      "cluster": null,
+      "color": "#ac5fd4",
+      "degree": 4,
+      "indegree": 4,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 26,
+      "neighbors": [
+        "bottom wall",
+        "seaweeds",
+        "tropical fish",
+        "water flow"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e8",
+          "e9",
+          "e40",
+          "e41"
+        ],
+        "outgoing": []
+      }
+    },
+    {
+      "id": "water tank for appreciation",
+      "label": "water tank for appreciation",
+      "cluster": null,
+      "color": "#35e085",
+      "degree": 1,
+      "indegree": 0,
+      "outdegree": 1,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "cosmic space"
+      ],
+      "edgeIds": {
+        "incoming": [],
+        "outgoing": [
+          "e17"
+        ]
+      }
+    },
+    {
+      "id": "water temperature",
+      "label": "water temperature",
+      "cluster": null,
+      "color": "#5bd047",
+      "degree": 1,
+      "indegree": 1,
+      "outdegree": 0,
+      "isRepresentative": false,
+      "radius": 20,
+      "neighbors": [
+        "living conditions"
+      ],
+      "edgeIds": {
+        "incoming": [
+          "e29"
+        ],
+        "outgoing": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "source": "living conditions",
+      "target": "labor cost",
+      "predicate": "accompany",
+      "cluster": null,
+      "color": "#135fd2",
+      "tooltip": "living conditions —accompany→ labor cost"
+    },
+    {
+      "id": "e1",
+      "source": "living conditions",
+      "target": "maintenance cost",
+      "predicate": "accompany",
+      "cluster": null,
+      "color": "#135fd2",
+      "tooltip": "living conditions —accompany→ maintenance cost"
+    },
+    {
+      "id": "e2",
+      "source": "air bubble",
+      "target": "creature models",
+      "predicate": "adheres to",
+      "cluster": null,
+      "color": "#43db15",
+      "tooltip": "air bubble —adheres to→ creature models"
+    },
+    {
+      "id": "e3",
+      "source": "aquatic animals",
+      "target": "creatures",
+      "predicate": "are",
+      "cluster": null,
+      "color": "#deec3c",
+      "tooltip": "aquatic animals —are→ creatures"
+    },
+    {
+      "id": "e4",
+      "source": "submarines",
+      "target": "models",
+      "predicate": "are",
+      "cluster": null,
+      "color": "#deec3c",
+      "tooltip": "submarines —are→ models"
+    },
+    {
+      "id": "e5",
+      "source": "pseudo models",
+      "target": "aquatic animals",
+      "predicate": "are of",
+      "cluster": null,
+      "color": "#e4c267",
+      "tooltip": "pseudo models —are of→ aquatic animals"
+    },
+    {
+      "id": "e6",
+      "source": "aquatic animal pseudo models",
+      "target": "water surface",
+      "predicate": "are pushed near",
+      "cluster": null,
+      "color": "#31be8a",
+      "tooltip": "aquatic animal pseudo models —are pushed near→ water surface"
+    },
+    {
+      "id": "e7",
+      "source": "aquatic animal pseudo models",
+      "target": "air bubble",
+      "predicate": "are pushed upward by",
+      "cluster": null,
+      "color": "#a6ee48",
+      "tooltip": "aquatic animal pseudo models —are pushed upward by→ air bubble"
+    },
+    {
+      "id": "e8",
+      "source": "seaweeds",
+      "target": "water tank",
+      "predicate": "are put in",
+      "cluster": null,
+      "color": "#70cee5",
+      "tooltip": "seaweeds —are put in→ water tank"
+    },
+    {
+      "id": "e9",
+      "source": "tropical fish",
+      "target": "water tank",
+      "predicate": "are put in",
+      "cluster": null,
+      "color": "#70cee5",
+      "tooltip": "tropical fish —are put in→ water tank"
+    },
+    {
+      "id": "e10",
+      "source": "aquariums",
+      "target": "visual effects",
+      "predicate": "are used as",
+      "cluster": null,
+      "color": "#996af0",
+      "tooltip": "aquariums —are used as→ visual effects"
+    },
+    {
+      "id": "e11",
+      "source": "creature models",
+      "target": "unnaturally",
+      "predicate": "behave",
+      "cluster": null,
+      "color": "#aed451",
+      "tooltip": "creature models —behave→ unnaturally"
+    },
+    {
+      "id": "e12",
+      "source": "pseudo creature models",
+      "target": "submarines",
+      "predicate": "can be replaced by",
+      "cluster": null,
+      "color": "#cfd863",
+      "tooltip": "pseudo creature models —can be replaced by→ submarines"
+    },
+    {
+      "id": "e13",
+      "source": "aquariums",
+      "target": "seaweeds",
+      "predicate": "contain",
+      "cluster": null,
+      "color": "#f0598b",
+      "tooltip": "aquariums —contain→ seaweeds"
+    },
+    {
+      "id": "e14",
+      "source": "aquariums",
+      "target": "tropical fish",
+      "predicate": "contain",
+      "cluster": null,
+      "color": "#f0598b",
+      "tooltip": "aquariums —contain→ tropical fish"
+    },
+    {
+      "id": "e15",
+      "source": "cosmic space",
+      "target": "",
+      "predicate": "contains",
+      "cluster": null,
+      "color": "#6ca6dd",
+      "tooltip": "cosmic space —contains→ "
+    },
+    {
+      "id": "e16",
+      "source": "pseudo aquarium",
+      "target": "daily feeding",
+      "predicate": "does not require",
+      "cluster": null,
+      "color": "#3bd8eb",
+      "tooltip": "pseudo aquarium —does not require→ daily feeding"
+    },
+    {
+      "id": "e17",
+      "source": "water tank for appreciation",
+      "target": "cosmic space",
+      "predicate": "expresses",
+      "cluster": null,
+      "color": "#2a6ee0",
+      "tooltip": "water tank for appreciation —expresses→ cosmic space"
+    },
+    {
+      "id": "e18",
+      "source": "creatures",
+      "target": "air",
+      "predicate": "float in",
+      "cluster": null,
+      "color": "#4ed0d2",
+      "tooltip": "creatures —float in→ air"
+    },
+    {
+      "id": "e19",
+      "source": "objects",
+      "target": "air",
+      "predicate": "float in",
+      "cluster": null,
+      "color": "#4ed0d2",
+      "tooltip": "objects —float in→ air"
+    },
+    {
+      "id": "e20",
+      "source": "air bubble",
+      "target": "ventilation member",
+      "predicate": "generated from",
+      "cluster": null,
+      "color": "#cd59cf",
+      "tooltip": "air bubble —generated from→ ventilation member"
+    },
+    {
+      "id": "e21",
+      "source": "air bubble",
+      "target": "water flow",
+      "predicate": "generates",
+      "cluster": null,
+      "color": "#6a1de9",
+      "tooltip": "air bubble —generates→ water flow"
+    },
+    {
+      "id": "e22",
+      "source": "display device",
+      "target": "air bubble",
+      "predicate": "generates",
+      "cluster": null,
+      "color": "#6a1de9",
+      "tooltip": "display device —generates→ air bubble"
+    },
+    {
+      "id": "e23",
+      "source": "display device",
+      "target": "water flow",
+      "predicate": "generates",
+      "cluster": null,
+      "color": "#6a1de9",
+      "tooltip": "display device —generates→ water flow"
+    },
+    {
+      "id": "e24",
+      "source": "pseudo aquarium",
+      "target": "environmental maintenance",
+      "predicate": "has",
+      "cluster": null,
+      "color": "#e1ce4f",
+      "tooltip": "pseudo aquarium —has→ environmental maintenance"
+    },
+    {
+      "id": "e25",
+      "source": "interiors",
+      "target": "air",
+      "predicate": "have motifs in",
+      "cluster": null,
+      "color": "#e2cf79",
+      "tooltip": "interiors —have motifs in→ air"
+    },
+    {
+      "id": "e26",
+      "source": "interiors",
+      "target": "water",
+      "predicate": "have motifs in",
+      "cluster": null,
+      "color": "#e2cf79",
+      "tooltip": "interiors —have motifs in→ water"
+    },
+    {
+      "id": "e27",
+      "source": "aquatic animals",
+      "target": "tropical fish",
+      "predicate": "include",
+      "cluster": null,
+      "color": "#5adea7",
+      "tooltip": "aquatic animals —include→ tropical fish"
+    },
+    {
+      "id": "e28",
+      "source": "aquatic plants",
+      "target": "seaweeds",
+      "predicate": "include",
+      "cluster": null,
+      "color": "#5adea7",
+      "tooltip": "aquatic plants —include→ seaweeds"
+    },
+    {
+      "id": "e29",
+      "source": "living conditions",
+      "target": "water temperature",
+      "predicate": "include",
+      "cluster": null,
+      "color": "#5adea7",
+      "tooltip": "living conditions —include→ water temperature"
+    },
+    {
+      "id": "e30",
+      "source": "pseudo models",
+      "target": "fish models",
+      "predicate": "include",
+      "cluster": null,
+      "color": "#5adea7",
+      "tooltip": "pseudo models —include→ fish models"
+    },
+    {
+      "id": "e31",
+      "source": "creatures",
+      "target": "birds",
+      "predicate": "includes",
+      "cluster": null,
+      "color": "#26c2bd",
+      "tooltip": "creatures —includes→ birds"
+    },
+    {
+      "id": "e32",
+      "source": "creatures",
+      "target": "butterflies",
+      "predicate": "includes",
+      "cluster": null,
+      "color": "#26c2bd",
+      "tooltip": "creatures —includes→ butterflies"
+    },
+    {
+      "id": "e33",
+      "source": "creatures",
+      "target": "fish",
+      "predicate": "includes",
+      "cluster": null,
+      "color": "#26c2bd",
+      "tooltip": "creatures —includes→ fish"
+    },
+    {
+      "id": "e34",
+      "source": "objects",
+      "target": "airships",
+      "predicate": "includes",
+      "cluster": null,
+      "color": "#26c2bd",
+      "tooltip": "objects —includes→ airships"
+    },
+    {
+      "id": "e35",
+      "source": "objects",
+      "target": "spaceships",
+      "predicate": "includes",
+      "cluster": null,
+      "color": "#26c2bd",
+      "tooltip": "objects —includes→ spaceships"
+    },
+    {
+      "id": "e36",
+      "source": "objects",
+      "target": "submarines",
+      "predicate": "includes",
+      "cluster": null,
+      "color": "#26c2bd",
+      "tooltip": "objects —includes→ submarines"
+    },
+    {
+      "id": "e37",
+      "source": "pseudo space",
+      "target": "air",
+      "predicate": "includes",
+      "cluster": null,
+      "color": "#26c2bd",
+      "tooltip": "pseudo space —includes→ air"
+    },
+    {
+      "id": "e38",
+      "source": "pseudo space",
+      "target": "water",
+      "predicate": "includes",
+      "cluster": null,
+      "color": "#26c2bd",
+      "tooltip": "pseudo space —includes→ water"
+    },
+    {
+      "id": "e39",
+      "source": "ventilation member",
+      "target": "bottom wall",
+      "predicate": "installed at",
+      "cluster": null,
+      "color": "#2b6fdf",
+      "tooltip": "ventilation member —installed at→ bottom wall"
+    },
+    {
+      "id": "e40",
+      "source": "water flow",
+      "target": "water tank",
+      "predicate": "is in",
+      "cluster": null,
+      "color": "#391ee1",
+      "tooltip": "water flow —is in→ water tank"
+    },
+    {
+      "id": "e41",
+      "source": "bottom wall",
+      "target": "water tank",
+      "predicate": "is part of",
+      "cluster": null,
+      "color": "#2553c9",
+      "tooltip": "bottom wall —is part of→ water tank"
+    },
+    {
+      "id": "e42",
+      "source": "aquariums",
+      "target": "aquatic animals",
+      "predicate": "keep",
+      "cluster": null,
+      "color": "#da4016",
+      "tooltip": "aquariums —keep→ aquatic animals"
+    },
+    {
+      "id": "e43",
+      "source": "aquariums",
+      "target": "aquatic plants",
+      "predicate": "keep",
+      "cluster": null,
+      "color": "#da4016",
+      "tooltip": "aquariums —keep→ aquatic plants"
+    },
+    {
+      "id": "e44",
+      "source": "display device",
+      "target": "Japan unexamined patent publication Hei7-230259",
+      "predicate": "proposed in",
+      "cluster": null,
+      "color": "#a426df",
+      "tooltip": "display device —proposed in→ Japan unexamined patent publication Hei7-230259"
+    },
+    {
+      "id": "e45",
+      "source": "display device",
+      "target": "pseudo models",
+      "predicate": "provided with",
+      "cluster": null,
+      "color": "#e532c1",
+      "tooltip": "display device —provided with→ pseudo models"
+    },
+    {
+      "id": "e46",
+      "source": "display device for appreciation",
+      "target": "creatures",
+      "predicate": "regards",
+      "cluster": null,
+      "color": "#3574d3",
+      "tooltip": "display device for appreciation —regards→ creatures"
+    },
+    {
+      "id": "e47",
+      "source": "display device for appreciation",
+      "target": "objects",
+      "predicate": "regards",
+      "cluster": null,
+      "color": "#3574d3",
+      "tooltip": "display device for appreciation —regards→ objects"
+    },
+    {
+      "id": "e48",
+      "source": "display device for appreciation",
+      "target": "pseudo space",
+      "predicate": "regards",
+      "cluster": null,
+      "color": "#3574d3",
+      "tooltip": "display device for appreciation —regards→ pseudo space"
+    },
+    {
+      "id": "e49",
+      "source": "present invention",
+      "target": "display device for appreciation",
+      "predicate": "relates to",
+      "cluster": null,
+      "color": "#da384f",
+      "tooltip": "present invention —relates to→ display device for appreciation"
+    },
+    {
+      "id": "e50",
+      "source": "aquatic animals",
+      "target": "living conditions",
+      "predicate": "require",
+      "cluster": null,
+      "color": "#cb37c6",
+      "tooltip": "aquatic animals —require→ living conditions"
+    },
+    {
+      "id": "e51",
+      "source": "air bubble",
+      "target": "air bubble generating member",
+      "predicate": "rises near",
+      "cluster": null,
+      "color": "#a2ea31",
+      "tooltip": "air bubble —rises near→ air bubble generating member"
+    },
+    {
+      "id": "e52",
+      "source": "fish models",
+      "target": "pseudo aquarium",
+      "predicate": "swim in",
+      "cluster": null,
+      "color": "#b83ad8",
+      "tooltip": "fish models —swim in→ pseudo aquarium"
+    }
+  ],
+  "clusters": [],
+  "edgeClusters": [],
+  "topEntities": [
+    {
+      "label": "air bubble",
+      "degree": 6,
+      "indegree": 2,
+      "outdegree": 4,
+      "cluster": null
+    },
+    {
+      "label": "creatures",
+      "degree": 6,
+      "indegree": 2,
+      "outdegree": 4,
+      "cluster": null
+    },
+    {
+      "label": "aquariums",
+      "degree": 5,
+      "indegree": 0,
+      "outdegree": 5,
+      "cluster": null
+    },
+    {
+      "label": "aquatic animals",
+      "degree": 5,
+      "indegree": 2,
+      "outdegree": 3,
+      "cluster": null
+    },
+    {
+      "label": "objects",
+      "degree": 5,
+      "indegree": 1,
+      "outdegree": 4,
+      "cluster": null
+    },
+    {
+      "label": "air",
+      "degree": 4,
+      "indegree": 4,
+      "outdegree": 0,
+      "cluster": null
+    },
+    {
+      "label": "display device",
+      "degree": 4,
+      "indegree": 0,
+      "outdegree": 4,
+      "cluster": null
+    },
+    {
+      "label": "display device for appreciation",
+      "degree": 4,
+      "indegree": 1,
+      "outdegree": 3,
+      "cluster": null
+    },
+    {
+      "label": "living conditions",
+      "degree": 4,
+      "indegree": 1,
+      "outdegree": 3,
+      "cluster": null
+    },
+    {
+      "label": "water tank",
+      "degree": 4,
+      "indegree": 4,
+      "outdegree": 0,
+      "cluster": null
+    }
+  ],
+  "topRelations": [
+    {
+      "predicate": "includes",
+      "count": 8,
+      "cluster": null,
+      "color": "#26c2bd"
+    },
+    {
+      "predicate": "include",
+      "count": 4,
+      "cluster": null,
+      "color": "#5adea7"
+    },
+    {
+      "predicate": "generates",
+      "count": 3,
+      "cluster": null,
+      "color": "#6a1de9"
+    },
+    {
+      "predicate": "regards",
+      "count": 3,
+      "cluster": null,
+      "color": "#3574d3"
+    },
+    {
+      "predicate": "accompany",
+      "count": 2,
+      "cluster": null,
+      "color": "#135fd2"
+    },
+    {
+      "predicate": "are",
+      "count": 2,
+      "cluster": null,
+      "color": "#deec3c"
+    },
+    {
+      "predicate": "are put in",
+      "count": 2,
+      "cluster": null,
+      "color": "#70cee5"
+    },
+    {
+      "predicate": "contain",
+      "count": 2,
+      "cluster": null,
+      "color": "#f0598b"
+    },
+    {
+      "predicate": "float in",
+      "count": 2,
+      "cluster": null,
+      "color": "#4ed0d2"
+    },
+    {
+      "predicate": "have motifs in",
+      "count": 2,
+      "cluster": null,
+      "color": "#e2cf79"
+    }
+  ],
+  "stats": {
+    "entities": 46,
+    "relations": 53,
+    "relationTypes": 32,
+    "entityClusters": 0,
+    "edgeClusters": 0,
+    "isolatedEntities": 0,
+    "components": 2,
+    "averageDegree": 2.3,
+    "density": 0.026
+  },
+  "isolatedEntities": [],
+  "components": [
+    {
+      "size": 43,
+      "members": [
+        "air",
+        "air bubble",
+        "air bubble generating member",
+        "airships",
+        "aquariums",
+        "aquatic animal pseudo models",
+        "aquatic animals",
+        "aquatic plants",
+        "birds",
+        "bottom wall",
+        "butterflies",
+        "creature models",
+        "creatures",
+        "daily feeding",
+        "display device",
+        "display device for appreciation",
+        "environmental maintenance",
+        "fish",
+        "fish models",
+        "interiors",
+        "Japan unexamined patent publication Hei7-230259",
+        "labor cost",
+        "living conditions",
+        "maintenance cost",
+        "models",
+        "objects",
+        "present invention",
+        "pseudo aquarium",
+        "pseudo creature models",
+        "pseudo models",
+        "pseudo space",
+        "seaweeds",
+        "spaceships",
+        "submarines",
+        "tropical fish",
+        "unnaturally",
+        "ventilation member",
+        "visual effects",
+        "water",
+        "water flow",
+        "water surface",
+        "water tank",
+        "water temperature"
+      ]
+    },
+    {
+      "size": 3,
+      "members": [
+        "",
+        "cosmic space",
+        "water tank for appreciation"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "source": "living conditions",
+      "predicate": "accompany",
+      "target": "labor cost",
+      "edgeId": "e0",
+      "color": "#135fd2"
+    },
+    {
+      "source": "living conditions",
+      "predicate": "accompany",
+      "target": "maintenance cost",
+      "edgeId": "e1",
+      "color": "#135fd2"
+    },
+    {
+      "source": "air bubble",
+      "predicate": "adheres to",
+      "target": "creature models",
+      "edgeId": "e2",
+      "color": "#43db15"
+    },
+    {
+      "source": "aquatic animals",
+      "predicate": "are",
+      "target": "creatures",
+      "edgeId": "e3",
+      "color": "#deec3c"
+    },
+    {
+      "source": "submarines",
+      "predicate": "are",
+      "target": "models",
+      "edgeId": "e4",
+      "color": "#deec3c"
+    },
+    {
+      "source": "pseudo models",
+      "predicate": "are of",
+      "target": "aquatic animals",
+      "edgeId": "e5",
+      "color": "#e4c267"
+    },
+    {
+      "source": "aquatic animal pseudo models",
+      "predicate": "are pushed near",
+      "target": "water surface",
+      "edgeId": "e6",
+      "color": "#31be8a"
+    },
+    {
+      "source": "aquatic animal pseudo models",
+      "predicate": "are pushed upward by",
+      "target": "air bubble",
+      "edgeId": "e7",
+      "color": "#a6ee48"
+    },
+    {
+      "source": "seaweeds",
+      "predicate": "are put in",
+      "target": "water tank",
+      "edgeId": "e8",
+      "color": "#70cee5"
+    },
+    {
+      "source": "tropical fish",
+      "predicate": "are put in",
+      "target": "water tank",
+      "edgeId": "e9",
+      "color": "#70cee5"
+    },
+    {
+      "source": "aquariums",
+      "predicate": "are used as",
+      "target": "visual effects",
+      "edgeId": "e10",
+      "color": "#996af0"
+    },
+    {
+      "source": "creature models",
+      "predicate": "behave",
+      "target": "unnaturally",
+      "edgeId": "e11",
+      "color": "#aed451"
+    },
+    {
+      "source": "pseudo creature models",
+      "predicate": "can be replaced by",
+      "target": "submarines",
+      "edgeId": "e12",
+      "color": "#cfd863"
+    },
+    {
+      "source": "aquariums",
+      "predicate": "contain",
+      "target": "seaweeds",
+      "edgeId": "e13",
+      "color": "#f0598b"
+    },
+    {
+      "source": "aquariums",
+      "predicate": "contain",
+      "target": "tropical fish",
+      "edgeId": "e14",
+      "color": "#f0598b"
+    },
+    {
+      "source": "cosmic space",
+      "predicate": "contains",
+      "target": "",
+      "edgeId": "e15",
+      "color": "#6ca6dd"
+    },
+    {
+      "source": "pseudo aquarium",
+      "predicate": "does not require",
+      "target": "daily feeding",
+      "edgeId": "e16",
+      "color": "#3bd8eb"
+    },
+    {
+      "source": "water tank for appreciation",
+      "predicate": "expresses",
+      "target": "cosmic space",
+      "edgeId": "e17",
+      "color": "#2a6ee0"
+    },
+    {
+      "source": "creatures",
+      "predicate": "float in",
+      "target": "air",
+      "edgeId": "e18",
+      "color": "#4ed0d2"
+    },
+    {
+      "source": "objects",
+      "predicate": "float in",
+      "target": "air",
+      "edgeId": "e19",
+      "color": "#4ed0d2"
+    },
+    {
+      "source": "air bubble",
+      "predicate": "generated from",
+      "target": "ventilation member",
+      "edgeId": "e20",
+      "color": "#cd59cf"
+    },
+    {
+      "source": "air bubble",
+      "predicate": "generates",
+      "target": "water flow",
+      "edgeId": "e21",
+      "color": "#6a1de9"
+    },
+    {
+      "source": "display device",
+      "predicate": "generates",
+      "target": "air bubble",
+      "edgeId": "e22",
+      "color": "#6a1de9"
+    },
+    {
+      "source": "display device",
+      "predicate": "generates",
+      "target": "water flow",
+      "edgeId": "e23",
+      "color": "#6a1de9"
+    },
+    {
+      "source": "pseudo aquarium",
+      "predicate": "has",
+      "target": "environmental maintenance",
+      "edgeId": "e24",
+      "color": "#e1ce4f"
+    },
+    {
+      "source": "interiors",
+      "predicate": "have motifs in",
+      "target": "air",
+      "edgeId": "e25",
+      "color": "#e2cf79"
+    },
+    {
+      "source": "interiors",
+      "predicate": "have motifs in",
+      "target": "water",
+      "edgeId": "e26",
+      "color": "#e2cf79"
+    },
+    {
+      "source": "aquatic animals",
+      "predicate": "include",
+      "target": "tropical fish",
+      "edgeId": "e27",
+      "color": "#5adea7"
+    },
+    {
+      "source": "aquatic plants",
+      "predicate": "include",
+      "target": "seaweeds",
+      "edgeId": "e28",
+      "color": "#5adea7"
+    },
+    {
+      "source": "living conditions",
+      "predicate": "include",
+      "target": "water temperature",
+      "edgeId": "e29",
+      "color": "#5adea7"
+    },
+    {
+      "source": "pseudo models",
+      "predicate": "include",
+      "target": "fish models",
+      "edgeId": "e30",
+      "color": "#5adea7"
+    },
+    {
+      "source": "creatures",
+      "predicate": "includes",
+      "target": "birds",
+      "edgeId": "e31",
+      "color": "#26c2bd"
+    },
+    {
+      "source": "creatures",
+      "predicate": "includes",
+      "target": "butterflies",
+      "edgeId": "e32",
+      "color": "#26c2bd"
+    },
+    {
+      "source": "creatures",
+      "predicate": "includes",
+      "target": "fish",
+      "edgeId": "e33",
+      "color": "#26c2bd"
+    },
+    {
+      "source": "objects",
+      "predicate": "includes",
+      "target": "airships",
+      "edgeId": "e34",
+      "color": "#26c2bd"
+    },
+    {
+      "source": "objects",
+      "predicate": "includes",
+      "target": "spaceships",
+      "edgeId": "e35",
+      "color": "#26c2bd"
+    },
+    {
+      "source": "objects",
+      "predicate": "includes",
+      "target": "submarines",
+      "edgeId": "e36",
+      "color": "#26c2bd"
+    },
+    {
+      "source": "pseudo space",
+      "predicate": "includes",
+      "target": "air",
+      "edgeId": "e37",
+      "color": "#26c2bd"
+    },
+    {
+      "source": "pseudo space",
+      "predicate": "includes",
+      "target": "water",
+      "edgeId": "e38",
+      "color": "#26c2bd"
+    },
+    {
+      "source": "ventilation member",
+      "predicate": "installed at",
+      "target": "bottom wall",
+      "edgeId": "e39",
+      "color": "#2b6fdf"
+    },
+    {
+      "source": "water flow",
+      "predicate": "is in",
+      "target": "water tank",
+      "edgeId": "e40",
+      "color": "#391ee1"
+    },
+    {
+      "source": "bottom wall",
+      "predicate": "is part of",
+      "target": "water tank",
+      "edgeId": "e41",
+      "color": "#2553c9"
+    },
+    {
+      "source": "aquariums",
+      "predicate": "keep",
+      "target": "aquatic animals",
+      "edgeId": "e42",
+      "color": "#da4016"
+    },
+    {
+      "source": "aquariums",
+      "predicate": "keep",
+      "target": "aquatic plants",
+      "edgeId": "e43",
+      "color": "#da4016"
+    },
+    {
+      "source": "display device",
+      "predicate": "proposed in",
+      "target": "Japan unexamined patent publication Hei7-230259",
+      "edgeId": "e44",
+      "color": "#a426df"
+    },
+    {
+      "source": "display device",
+      "predicate": "provided with",
+      "target": "pseudo models",
+      "edgeId": "e45",
+      "color": "#e532c1"
+    },
+    {
+      "source": "display device for appreciation",
+      "predicate": "regards",
+      "target": "creatures",
+      "edgeId": "e46",
+      "color": "#3574d3"
+    },
+    {
+      "source": "display device for appreciation",
+      "predicate": "regards",
+      "target": "objects",
+      "edgeId": "e47",
+      "color": "#3574d3"
+    },
+    {
+      "source": "display device for appreciation",
+      "predicate": "regards",
+      "target": "pseudo space",
+      "edgeId": "e48",
+      "color": "#3574d3"
+    },
+    {
+      "source": "present invention",
+      "predicate": "relates to",
+      "target": "display device for appreciation",
+      "edgeId": "e49",
+      "color": "#da384f"
+    },
+    {
+      "source": "aquatic animals",
+      "predicate": "require",
+      "target": "living conditions",
+      "edgeId": "e50",
+      "color": "#cb37c6"
+    },
+    {
+      "source": "air bubble",
+      "predicate": "rises near",
+      "target": "air bubble generating member",
+      "edgeId": "e51",
+      "color": "#a2ea31"
+    },
+    {
+      "source": "fish models",
+      "predicate": "swim in",
+      "target": "pseudo aquarium",
+      "edgeId": "e52",
+      "color": "#b83ad8"
+    }
+  ]
+}
+    </script>
+    <script>
+        (function () {
+            console.log('[iframe] Script starting - mobile check:', window.innerWidth <= 768);
+            console.log('[iframe] User agent:', navigator.userAgent);
+
+            const dataElement = document.getElementById('viz-data');
+            if (!dataElement) {
+                console.error('[iframe] viz-data element not found!');
+                return;
+            }
+
+            let vizData;
+            try {
+                vizData = JSON.parse(dataElement.textContent);
+                console.log('[iframe] Data parsed successfully:', vizData.nodes?.length, 'nodes');
+            } catch (e) {
+                console.error('[iframe] Failed to parse data:', e);
+                return;
+            }
+
+            const state = {
+                activeElement: null,
+                focusCluster: null,
+                focusPredicate: null,
+                searchTerm: '',
+                sidebarCollapsed: false,
+                sidebarDisabled: false
+            };
+
+            const nodeById = Object.fromEntries(vizData.nodes.map(node => [node.id, node]));
+            const edgeById = Object.fromEntries(vizData.edges.map(edge => [edge.id, edge]));
+            const clusterById = Object.fromEntries(vizData.clusters.map(cluster => [cluster.id, cluster]));
+            const edgesByPredicate = {};
+            vizData.edges.forEach(edge => {
+                if (!edgesByPredicate[edge.predicate]) {
+                    edgesByPredicate[edge.predicate] = [];
+                }
+                edgesByPredicate[edge.predicate].push(edge.id);
+            });
+
+            const nodesByCluster = {};
+            vizData.clusters.forEach(cluster => {
+                cluster.members.forEach(member => {
+                    if (!nodesByCluster[cluster.id]) {
+                        nodesByCluster[cluster.id] = new Set();
+                    }
+                    nodesByCluster[cluster.id].add(member);
+                });
+            });
+
+            function renderStats() {
+                const grid = document.getElementById('statsGrid');
+                const stats = vizData.stats;
+                const entries = [
+                    { label: 'Entities', value: stats.entities },
+                    { label: 'Relations', value: stats.relations },
+                    { label: 'Relation types', value: stats.relationTypes },
+                    { label: 'Entity clusters', value: stats.entityClusters },
+                    { label: 'Edge clusters', value: stats.edgeClusters },
+                    { label: 'Isolated entities', value: stats.isolatedEntities },
+                    { label: 'Components', value: stats.components },
+                    { label: 'Average degree', value: stats.averageDegree }
+                ];
+                grid.innerHTML = entries
+                    .map(entry => `
+                        <div class="stat-card">
+                            <div class="stat-value">${entry.value}</div>
+                            <div>${entry.label}</div>
+                        </div>
+                    `)
+                    .join('');
+            }
+
+            function renderTopLists() {
+                const topEntitiesContainer = document.getElementById('topEntities');
+                const topRelationsContainer = document.getElementById('topRelations');
+
+                const entityItems = vizData.topEntities.map(item => {
+                    const clusterLabel = item.cluster ? `${item.cluster}` : 'Unclustered';
+                    return `
+                        <div class="list-item">
+                            <div>
+                                <strong>${item.label}</strong>
+                                <div class="meta">Cluster: ${clusterLabel}</div>
+                            </div>
+                            <div>${item.degree}</div>
+                        </div>
+                    `;
+                });
+                topEntitiesContainer.innerHTML = entityItems.join('') || '<div class="meta">No entities</div>';
+
+                const relationItems = vizData.topRelations.map(item => `
+                    <div class="list-item relation-item" data-predicate="${item.predicate}">
+                        <div>
+                            <strong>${item.predicate}</strong>
+                            <div class="meta">${item.count} relations</div>
+                        </div>
+                        <div class="pill" style="background: ${item.color}1a; border: 1px solid ${item.color};">${item.count}</div>
+                    </div>
+                `);
+                topRelationsContainer.innerHTML = relationItems.join('') || '<div class="meta">No relations</div>';
+            }
+
+            function renderClusters() {
+                const container = document.getElementById('clusterList');
+                if (!vizData.clusters.length) {
+                    container.innerHTML = '<div class="meta">No cluster information provided.</div>';
+                    return;
+                }
+                container.innerHTML = vizData.clusters
+                    .map(cluster => `
+                        <button class="list-item cluster-item" data-cluster="${cluster.id}" style="border-left-color: ${cluster.color};">
+                            <div>
+                                <strong>${cluster.label}</strong>
+                                <div class="meta">${cluster.size} members</div>
+                            </div>
+                            <span class="legend-swatch" style="background: ${cluster.color};"></span>
+                        </button>
+                    `)
+                    .join('');
+            }
+
+            // function renderRelationsTable() {
+            //     const tbody = document.getElementById('relationsTable');
+            //     tbody.innerHTML = vizData.relations
+            //         .map(rel => `
+            //             <tr data-edge="${rel.edgeId}">
+            //                 <td>${rel.source}</td>
+            //                 <td><span class="pill" style="border: 1px solid ${rel.color}; background: ${rel.color}1a;">${rel.predicate}</span></td>
+            //                 <td>${rel.target}</td>
+            //             </tr>
+            //         `)
+            //         .join('');
+            // }
+
+            // function renderInsights() {
+            //     const insights = document.getElementById('insightsContent');
+            //     const clusters = vizData.clusters
+            //         .map(cluster => `
+            //             <div class="list-item" style="border-left: 4px solid ${cluster.color};">
+            //                 <div>
+            //                     <strong>${cluster.label}</strong>
+            //                     <div class="meta">Members: ${cluster.members.join(', ')}</div>
+            //                 </div>
+            //                 <div>${cluster.size}</div>
+            //             </div>
+            //         `)
+            //         .join('');
+
+            //     const components = vizData.components
+            //         .map((component, index) => `
+            //             <div class="list-item">
+            //                 <div>
+            //                     <strong>Component ${index + 1}</strong>
+            //                     <div class="meta">${component.members.join(', ')}</div>
+            //                 </div>
+            //                 <div>${component.size}</div>
+            //             </div>
+            //         `)
+            //         .join('');
+
+            //     const isolates = vizData.isolatedEntities.length
+            //         ? vizData.isolatedEntities.join(', ')
+            //         : 'None';
+
+            //     insights.innerHTML = `
+            //         <div class="section">
+            //             <h2>Clusters</h2>
+            //             <div class="list">${clusters || '<div class="meta">No clusters</div>'}</div>
+            //         </div>
+            //         <div class="section">
+            //             <h2>Connected components</h2>
+            //             <div class="list">${components || '<div class="meta">Single connected component</div>'}</div>
+            //         </div>
+            //         <div class="section">
+            //             <h2>Isolated entities</h2>
+            //             <div class="meta">${isolates}</div>
+            //         </div>
+            //     `;
+            // }
+
+            function setActiveElement(element) {
+                state.activeElement = element;
+                renderSelectionDetails();
+                updateHighlights();
+
+                // Notify parent about selection change
+                if (window.parent !== window && state.sidebarDisabled) {
+                    const selection = element ? {
+                        type: element.type,
+                        id: element.id,
+                        ...getElementDetails(element)
+                    } : null;
+                    window.parent.postMessage({
+                        type: 'selectionChanged',
+                        selection: selection
+                    }, '*');
+                }
+            }
+
+            function getElementDetails(element) {
+                if (!element) return {};
+
+                if (element.type === 'node') {
+                    const node = nodeById[element.id];
+                    return {
+                        label: node.label,
+                        cluster: node.cluster,
+                        degree: node.degree,
+                        indegree: node.indegree,
+                        outdegree: node.outdegree,
+                        neighbors: node.neighbors
+                    };
+                } else if (element.type === 'edge') {
+                    const edge = edgeById[element.id];
+                    return {
+                        source: edge.source,
+                        target: edge.target,
+                        predicate: edge.predicate,
+                        cluster: edge.cluster
+                    };
+                }
+                return {};
+            }
+
+            function clearActiveElement() {
+                state.activeElement = null;
+                renderSelectionDetails();
+                updateHighlights();
+            }
+
+            function renderSelectionDetails() {
+                const panel = document.getElementById('selectionDetails');
+                const active = state.activeElement;
+                if (!active) {
+                    panel.innerHTML = 'Click a node or relation in the network to inspect details.';
+                    return;
+                }
+
+                if (active.type === 'node') {
+                    const node = nodeById[active.id];
+                    const cluster = node.cluster ? `Cluster: ${node.cluster}` : 'Unclustered';
+                    const neighbors = node.neighbors.length ? node.neighbors.join(', ') : 'None';
+                    panel.innerHTML = `
+                        <h3>${node.label}</h3>
+                        <ul>
+                            <li>${cluster}</li>
+                            <li>Total degree: ${node.degree}</li>
+                            <li>Outgoing: ${node.outdegree}</li>
+                            <li>Incoming: ${node.indegree}</li>
+                            <li>Neighbors: ${neighbors}</li>
+                        </ul>
+                    `;
+                } else if (active.type === 'edge') {
+                    const edge = edgeById[active.id];
+                    const cluster = edge.cluster ? `Cluster: ${edge.cluster}` : 'Unclustered';
+                    panel.innerHTML = `
+                        <h3>${edge.source} → ${edge.target}</h3>
+                        <ul>
+                            <li>Relation: ${edge.predicate}</li>
+                            <li>${cluster}</li>
+                        </ul>
+                    `;
+                }
+            }
+
+            function toggleClusterFocus(clusterId) {
+                if (state.focusCluster === clusterId) {
+                    state.focusCluster = null;
+                } else {
+                    state.focusCluster = clusterId;
+                }
+                updateActiveButtons();
+                updateHighlights();
+            }
+
+            function togglePredicateFocus(predicate) {
+                if (state.focusPredicate === predicate) {
+                    state.focusPredicate = null;
+                } else {
+                    state.focusPredicate = predicate;
+                }
+                updateActiveButtons();
+                updateHighlights();
+            }
+
+            function updateActiveButtons() {
+                document.querySelectorAll('.cluster-item').forEach(item => {
+                    const clusterId = item.getAttribute('data-cluster');
+                    item.classList.toggle('active', state.focusCluster === clusterId);
+                });
+                document.querySelectorAll('.relation-item').forEach(item => {
+                    const predicate = item.getAttribute('data-predicate');
+                    item.classList.toggle('active', state.focusPredicate === predicate);
+                });
+            }
+
+            // Canvas-based network visualization
+            let canvas, ctx, transform, simulation;
+            let nodes, edges;
+            let highlightedNodes = new Set();
+            let highlightedEdges = new Set();
+            let isFiltering = false;
+
+            function createNetwork() {
+                console.log('[iframe] createNetwork starting...');
+
+                if (typeof d3 === 'undefined') {
+                    console.error('[iframe] D3.js not loaded!');
+                    return;
+                }
+                console.log('[iframe] D3.js version:', d3.version);
+
+                canvas = document.getElementById('networkCanvas');
+                if (!canvas) {
+                    console.error('[iframe] Canvas element not found!');
+                    return;
+                }
+
+                ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    console.error('[iframe] Canvas context not available!');
+                    return;
+                }
+
+                // Force a layout recalculation to ensure proper sizing
+                canvas.offsetHeight; // Trigger reflow
+
+                // Set canvas size with device pixel ratio for crisp rendering
+                const rect = canvas.getBoundingClientRect();
+                console.log('[iframe] Canvas rect:', rect.width, 'x', rect.height);
+
+                // Ensure minimum size for mobile/narrow viewports
+                const width = Math.max(rect.width, 320);
+                const height = Math.max(rect.height, 200);
+
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = width * dpr;
+                canvas.height = height * dpr;
+                ctx.scale(dpr, dpr);
+                canvas.style.width = width + 'px';
+                canvas.style.height = height + 'px';
+
+                // Initialize transform for zooming/panning
+                transform = d3.zoomIdentity;
+
+                // Clone data for simulation
+                nodes = vizData.nodes.map(node => ({ ...node }));
+                edges = vizData.edges.map(edge => ({ ...edge }));
+
+                // Create D3 force simulation
+                simulation = d3
+                    .forceSimulation(nodes)
+                    .force('link', d3.forceLink(edges).id(d => d.id).distance(120).strength(0.3))
+                    .force('charge', d3.forceManyBody().strength(-280))
+                    .force('center', d3.forceCenter(width / 2, height / 2))
+                    .force('collision', d3.forceCollide().radius(d => d.radius + 12));
+
+                // Set up zoom behavior
+                const zoom = d3.zoom()
+                    .scaleExtent([0.25, 3])
+                    .on('zoom', (event) => {
+                        transform = event.transform;
+                        render();
+                    });
+
+                d3.select(canvas).call(zoom);
+
+                // Mouse interaction handling
+                let draggedNode = null;
+                let mouseX, mouseY;
+
+                function getMousePos(event) {
+                    const rect = canvas.getBoundingClientRect();
+                    return {
+                        x: (event.clientX - rect.left - transform.x) / transform.k,
+                        y: (event.clientY - rect.top - transform.y) / transform.k
+                    };
+                }
+
+                function findNode(x, y) {
+                    for (let i = nodes.length - 1; i >= 0; i--) {
+                        const node = nodes[i];
+                        const dx = x - node.x;
+                        const dy = y - node.y;
+                        if (dx * dx + dy * dy < node.radius * node.radius) {
+                            return node;
+                        }
+                    }
+                    return null;
+                }
+
+                function findEdge(x, y) {
+                    for (let i = edges.length - 1; i >= 0; i--) {
+                        const edge = edges[i];
+                        if (!edge.source || !edge.target) continue;
+
+                        // Check if click is near the edge line
+                        const dx = edge.target.x - edge.source.x;
+                        const dy = edge.target.y - edge.source.y;
+                        const length = Math.sqrt(dx * dx + dy * dy);
+                        if (length === 0) continue;
+
+                        const dot = ((x - edge.source.x) * dx + (y - edge.source.y) * dy) / (length * length);
+                        if (dot < 0 || dot > 1) continue;
+
+                        const projX = edge.source.x + dot * dx;
+                        const projY = edge.source.y + dot * dy;
+                        const distSq = (x - projX) * (x - projX) + (y - projY) * (y - projY);
+
+                        if (distSq < 25) { // 5px threshold
+                            return edge;
+                        }
+                    }
+                    return null;
+                }
+
+                canvas.addEventListener('mousedown', (event) => {
+                    const pos = getMousePos(event);
+                    mouseX = pos.x;
+                    mouseY = pos.y;
+                    draggedNode = findNode(pos.x, pos.y);
+
+                    if (draggedNode) {
+                        simulation.alphaTarget(0.3).restart();
+                        draggedNode.fx = draggedNode.x;
+                        draggedNode.fy = draggedNode.y;
+                        canvas.style.cursor = 'grabbing';
+                    }
+                });
+
+                canvas.addEventListener('mousemove', (event) => {
+                    const pos = getMousePos(event);
+
+                    if (draggedNode) {
+                        draggedNode.fx = pos.x;
+                        draggedNode.fy = pos.y;
+                    } else {
+                        // Update cursor based on what's under mouse
+                        const node = findNode(pos.x, pos.y);
+                        const edge = findEdge(pos.x, pos.y);
+                        canvas.style.cursor = (node || edge) ? 'pointer' : 'grab';
+                    }
+                });
+
+                canvas.addEventListener('mouseup', (event) => {
+                    if (draggedNode) {
+                        simulation.alphaTarget(0);
+                        draggedNode.fx = null;
+                        draggedNode.fy = null;
+                        draggedNode = null;
+                        canvas.style.cursor = 'grab';
+                    }
+                });
+
+                canvas.addEventListener('click', (event) => {
+                    const pos = getMousePos(event);
+                    const node = findNode(pos.x, pos.y);
+                    const edge = findEdge(pos.x, pos.y);
+
+                    if (node) {
+                        setActiveElement({ type: 'node', id: node.id });
+                    } else if (edge) {
+                        setActiveElement({ type: 'edge', id: edge.id });
+                    } else {
+                        clearActiveElement();
+                    }
+                });
+
+                // Animation loop
+                simulation.on('tick', () => {
+                    render();
+                });
+
+                // Handle window resize
+                window.addEventListener('resize', resizeCanvas);
+
+                render();
+            }
+
+            function resizeCanvas() {
+                if (!canvas || !ctx) return;
+
+                // Force canvas to take full container size
+                if (state.sidebarDisabled) {
+                    canvas.style.width = '100%';
+                    canvas.style.height = '100%';
+                }
+
+                const rect = canvas.getBoundingClientRect();
+                console.log('Canvas resize - rect:', rect.width, 'x', rect.height);
+
+                // Ensure minimum size for mobile
+                const width = Math.max(rect.width, 320);
+                const height = Math.max(rect.height, 200);
+
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = width * dpr;
+                canvas.height = height * dpr;
+                ctx.scale(dpr, dpr);
+                canvas.style.width = width + 'px';
+                canvas.style.height = height + 'px';
+
+                // Update simulation center
+                if (simulation) {
+                    simulation.force('center', d3.forceCenter(width / 2, height / 2));
+                    simulation.alpha(0.3).restart();
+                }
+
+                render();
+            }
+
+
+            function render() {
+                if (!ctx || !canvas) return;
+
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width / (window.devicePixelRatio || 1),
+                             canvas.height / (window.devicePixelRatio || 1));
+
+                // Apply transform
+                ctx.save();
+                ctx.translate(transform.x, transform.y);
+                ctx.scale(transform.k, transform.k);
+
+                // Set text properties
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = '12px Inter, system-ui, sans-serif';
+
+                // Draw edges first
+                edges.forEach(edge => {
+                    if (!edge.source || !edge.target) return;
+
+                    const isHighlighted = highlightedEdges.has(edge.id);
+                    const isDimmed = isFiltering && !isHighlighted;
+
+                    // Calculate edge endpoints accounting for node radius
+                    const dx = edge.target.x - edge.source.x;
+                    const dy = edge.target.y - edge.source.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+                    const normX = dx / distance;
+                    const normY = dy / distance;
+
+                    const sourcePadding = edge.source.radius + 2;
+                    const targetPadding = edge.target.radius + 8;
+                    const sourceX = edge.source.x + normX * sourcePadding;
+                    const sourceY = edge.source.y + normY * sourcePadding;
+                    const targetX = edge.target.x - normX * targetPadding;
+                    const targetY = edge.target.y - normY * targetPadding;
+
+                    // Draw edge line
+                    ctx.strokeStyle = edge.color;
+                    ctx.globalAlpha = isDimmed ? 0.15 : (isHighlighted ? 1.0 : 0.55);
+                    ctx.lineWidth = 1.4;
+                    ctx.beginPath();
+                    ctx.moveTo(sourceX, sourceY);
+                    ctx.lineTo(targetX, targetY);
+                    ctx.stroke();
+
+                    // Draw arrowhead
+                    const arrowLength = 10;
+                    const arrowWidth = 5;
+                    const angle = Math.atan2(dy, dx);
+
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.beginPath();
+                    ctx.moveTo(targetX, targetY);
+                    ctx.lineTo(
+                        targetX - arrowLength * Math.cos(angle - arrowWidth * Math.PI / 180),
+                        targetY - arrowLength * Math.sin(angle - arrowWidth * Math.PI / 180)
+                    );
+                    ctx.lineTo(
+                        targetX - arrowLength * Math.cos(angle + arrowWidth * Math.PI / 180),
+                        targetY - arrowLength * Math.sin(angle + arrowWidth * Math.PI / 180)
+                    );
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Draw edge label if zoom level is appropriate
+                    if (transform.k > 0.8) {
+                        const labelX = (sourceX + targetX) / 2;
+                        const labelY = (sourceY + targetY) / 2;
+
+                        ctx.fillStyle = isDimmed ? 'rgba(30, 41, 59, 0.15)' : 'rgba(30, 41, 59, 0.8)';
+                        ctx.font = '10px Inter, system-ui, sans-serif';
+                        ctx.fillText(edge.predicate, labelX, labelY);
+                    }
+                });
+
+                // Draw nodes
+                nodes.forEach(node => {
+                    const isHighlighted = highlightedNodes.has(node.id);
+                    const isDimmed = isFiltering && !isHighlighted;
+
+                    // Draw node circle
+                    ctx.fillStyle = node.color;
+                    ctx.globalAlpha = isDimmed ? 0.15 : 1.0;
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, node.radius, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    // Draw node border
+                    ctx.strokeStyle = '#0f172a';
+                    ctx.lineWidth = isHighlighted ? 2.4 : 1.2;
+                    ctx.stroke();
+
+                    // Draw node label
+                    if (transform.k > 0.5) {
+                        ctx.fillStyle = isDimmed ? 'rgba(15, 23, 42, 0.15)' : '#0f172a';
+                        ctx.font = '12px Inter, system-ui, sans-serif';
+                        ctx.fillText(node.label, node.x, node.y + node.radius + 14);
+                    }
+                });
+
+                ctx.restore();
+                ctx.globalAlpha = 1.0;
+            }
+
+            function updateHighlights() {
+                // Clear previous highlights
+                highlightedNodes.clear();
+                highlightedEdges.clear();
+                isFiltering = false;
+
+                const addNode = id => {
+                    if (id) {
+                        highlightedNodes.add(id);
+                    }
+                };
+                const addEdge = id => {
+                    if (id) {
+                        highlightedEdges.add(id);
+                    }
+                };
+
+                if (state.activeElement) {
+                    isFiltering = true;
+                    if (state.activeElement.type === 'node') {
+                        const node = nodeById[state.activeElement.id];
+                        addNode(node.id);
+                        node.neighbors.forEach(addNode);
+                        (node.edgeIds.outgoing || []).forEach(addEdge);
+                        (node.edgeIds.incoming || []).forEach(addEdge);
+                    } else if (state.activeElement.type === 'edge') {
+                        const edge = edgeById[state.activeElement.id];
+                        addEdge(edge.id);
+                        addNode(edge.source);
+                        addNode(edge.target);
+                    }
+                }
+
+                if (state.focusCluster && nodesByCluster[state.focusCluster]) {
+                    isFiltering = true;
+                    nodesByCluster[state.focusCluster].forEach(addNode);
+                    vizData.edges.forEach(edge => {
+                        if (
+                            nodesByCluster[state.focusCluster].has(edge.source) &&
+                            nodesByCluster[state.focusCluster].has(edge.target)
+                        ) {
+                            addEdge(edge.id);
+                        }
+                    });
+                }
+
+                if (state.focusPredicate && edgesByPredicate[state.focusPredicate]) {
+                    isFiltering = true;
+                    edgesByPredicate[state.focusPredicate].forEach(edgeId => {
+                        addEdge(edgeId);
+                        const edge = edgeById[edgeId];
+                        addNode(edge.source);
+                        addNode(edge.target);
+                    });
+                }
+
+                if (state.searchTerm) {
+                    const term = state.searchTerm.toLowerCase();
+                    isFiltering = true;
+                    vizData.nodes.forEach(node => {
+                        if (node.label.toLowerCase().includes(term)) {
+                            addNode(node.id);
+                            node.neighbors.forEach(addNode);
+                        }
+                    });
+                    vizData.edges.forEach(edge => {
+                        if (edge.predicate.toLowerCase().includes(term)) {
+                            addEdge(edge.id);
+                            addNode(edge.source);
+                            addNode(edge.target);
+                        }
+                    });
+                }
+
+                // Trigger re-render with updated highlights
+                render();
+            }
+
+            function toggleSidebar() {
+                if (state.sidebarDisabled) return;
+
+                state.sidebarCollapsed = !state.sidebarCollapsed;
+                const layout = document.querySelector('.layout');
+                const sidebar = document.querySelector('.sidebar');
+                const toggleButton = document.getElementById('sidebarToggle');
+
+                layout.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
+                sidebar.classList.toggle('collapsed', state.sidebarCollapsed);
+                toggleButton.classList.toggle('collapsed', state.sidebarCollapsed);
+
+                // Trigger canvas resize when sidebar toggles
+                setTimeout(() => {
+                    resizeCanvas();
+                }, 300); // Wait for transition to complete
+            }
+
+            function disableSidebar() {
+                state.sidebarDisabled = true;
+
+                const layout = document.querySelector('.layout');
+                const sidebar = document.querySelector('.sidebar');
+                const toggleButton = document.getElementById('sidebarToggle');
+                const main = document.querySelector('.main');
+                const tabPanel = document.querySelector('.tab-panel');
+                const networkPanel = document.querySelector('.network-panel');
+
+                layout.classList.add('sidebar-disabled');
+                sidebar.style.display = 'none';
+                toggleButton.style.display = 'none';
+
+                // Force styles directly for iframe context
+                main.style.width = '100%';
+                main.style.height = '100vh';
+                tabPanel.style.padding = '0';
+                tabPanel.style.width = '100%';
+                tabPanel.style.height = '100vh';
+                networkPanel.style.width = '100%';
+                networkPanel.style.height = '100vh';
+                networkPanel.style.borderRadius = '0';
+                networkPanel.style.border = 'none';
+
+                console.log('Sidebar disabled, forcing full width styles');
+
+                // Multiple resize attempts with forced reflow
+                setTimeout(() => {
+                    canvas.offsetHeight; // Trigger reflow
+                    console.log('First resize attempt after 200ms');
+                    resizeCanvas();
+                }, 200);
+
+                setTimeout(() => {
+                    canvas.offsetHeight; // Trigger reflow
+                    console.log('Second resize attempt after 500ms');
+                    resizeCanvas();
+                }, 500);
+
+                setTimeout(() => {
+                    canvas.offsetHeight; // Trigger reflow
+                    console.log('Final resize attempt after 800ms');
+                    resizeCanvas();
+                }, 800);
+
+                // Notify parent about graph data
+                if (window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'graphDataReady',
+                        data: vizData
+                    }, '*');
+                }
+            }
+
+            function bindInteractions() {
+                document.querySelectorAll('.cluster-item').forEach(item => {
+                    item.addEventListener('click', () => toggleClusterFocus(item.getAttribute('data-cluster')));
+                });
+
+                document.querySelectorAll('.relation-item').forEach(item => {
+                    item.addEventListener('click', () => togglePredicateFocus(item.getAttribute('data-predicate')));
+                });
+
+                // document.getElementById('relationsTable').addEventListener('click', event => {
+                //     const row = event.target.closest('tr');
+                //     if (!row) {
+                //         return;
+                //     }
+                //     const edgeId = row.getAttribute('data-edge');
+                //     if (edgeId) {
+                //         setActiveElement({ type: 'edge', id: edgeId });
+                //     }
+                // });
+
+                const searchInput = document.getElementById('searchInput');
+                searchInput.addEventListener('input', () => {
+                    state.searchTerm = searchInput.value.trim();
+                    updateHighlights();
+
+                    // Notify parent about search change
+                    if (window.parent !== window && state.sidebarDisabled) {
+                        window.parent.postMessage({
+                            type: 'searchChanged',
+                            searchTerm: state.searchTerm
+                        }, '*');
+                    }
+                });
+                searchInput.addEventListener('keydown', event => {
+                    if (event.key === 'Escape') {
+                        searchInput.value = '';
+                        state.searchTerm = '';
+                        updateHighlights();
+                    }
+                });
+
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.addEventListener('click', event => {
+                        const target = event.currentTarget;
+                        document.querySelectorAll('.tab').forEach(button => button.classList.remove('active'));
+                        target.classList.add('active');
+                        const tabId = target.getAttribute('data-tab');
+                        document.querySelectorAll('.tab-panel').forEach(panel => {
+                            panel.classList.toggle('active', panel.id === tabId);
+                        });
+                    });
+                });
+
+                document.getElementById('sidebarToggle').addEventListener('click', toggleSidebar);
+
+                // Listen for messages from parent
+                window.addEventListener('message', (event) => {
+                    if (event.data.type === 'disableInternalSidebar') {
+                        disableSidebar();
+                    } else if (event.data.type === 'search') {
+                        state.searchTerm = event.data.term || '';
+                        updateHighlights();
+                    } else if (event.data.type === 'focusCluster') {
+                        toggleClusterFocus(event.data.clusterId);
+                    } else if (event.data.type === 'focusPredicate') {
+                        togglePredicateFocus(event.data.predicate);
+                    }
+                });
+
+            }
+
+            renderStats();
+            renderTopLists();
+            renderClusters();
+            // renderRelationsTable();
+            // renderInsights();
+
+            // Delay network creation to ensure proper layout
+            setTimeout(() => {
+                createNetwork();
+                bindInteractions();
+            }, 100);
+        })();
+    </script>
+</body>
+
+</html>

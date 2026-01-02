@@ -94,6 +94,143 @@ class GraphVisualizer:
                     return str(v)
         # fall back to id
         return GraphVisualizer._entity_key(e)
+    
+    def _get_readable_node_label(
+        self,
+        node_id: str,
+        node_data: Dict[str, Any],
+        id_to_name: Dict[str, str],
+        G: Optional[nx.MultiDiGraph] = None,
+    ) -> str:
+        """
+        Get a readable label for a node based on its type and data.
+        
+        Args:
+            node_id: The node ID
+            node_data: The node's data dictionary
+            id_to_name: Optional mapping from entity ID to display name
+            G: Optional graph to traverse for connected entities
+            
+        Returns:
+            A readable label string
+        """
+        node_type = node_data.get("node_type", "")
+        
+        # For assertion nodes, create a readable label from predicate and connected entities
+        if node_type == "ASSERTION":
+            predicate = node_data.get("predicate", "")
+            category = node_data.get("category", "")
+            
+            # Try to get subject and object from connected nodes
+            subject_label = ""
+            object_label = ""
+            if G:
+                # Find SUBJECT edge
+                for target in G.successors(node_id):
+                    edge_data = G.get_edge_data(node_id, target)
+                    if edge_data:
+                        for key, data in edge_data.items():
+                            if data.get("label") == "SUBJECT":
+                                subject_label = self._get_entity_display_name(G, target, id_to_name)
+                                break
+                
+                # Find OBJECT edge
+                for target in G.successors(node_id):
+                    edge_data = G.get_edge_data(node_id, target)
+                    if edge_data:
+                        for key, data in edge_data.items():
+                            if data.get("label") == "OBJECT":
+                                object_label = self._get_entity_display_name(G, target, id_to_name)
+                                break
+                
+                # Check for literal value
+                if not object_label:
+                    value = node_data.get("value")
+                    if value:
+                        object_label = str(value)
+            
+            # Build label
+            if subject_label and object_label:
+                label = f"{subject_label} --[{predicate}]--> {object_label}"
+            elif subject_label:
+                label = f"{subject_label} --[{predicate}]--> ?"
+            elif predicate:
+                label = predicate
+            else:
+                label = f"Assertion: {node_id[:12]}..."
+            
+            # Add category if meaningful
+            if category and category != "UNCLASSIFIED" and len(label) < 40:
+                label = f"[{category}] {label}"
+            
+            # Truncate if too long
+            if len(label) > 60:
+                label = label[:57] + "..."
+            return label
+        
+        # For claim concept nodes
+        elif node_type == "CLAIM_CONCEPT":
+            kind = node_data.get("kind", "")
+            breadth = node_data.get("breadth", "")
+            claim_id = node_data.get("claim_id", node_id)
+            
+            parts = []
+            if kind:
+                parts.append(kind)
+            if breadth:
+                parts.append(breadth)
+            
+            if parts:
+                label = f"{' '.join(parts)} Claim"
+            else:
+                label = "Claim Concept"
+            
+            # Add short ID for uniqueness
+            short_id = claim_id.split("_")[-1][:6] if "_" in claim_id else claim_id[:6]
+            return f"{label} ({short_id})"
+        
+        # For entity nodes, use id_to_name mapping or try to get name from node data
+        else:
+            # First try id_to_name mapping
+            if node_id in id_to_name:
+                return id_to_name[node_id]
+            
+            # Try to get name from node data
+            for attr in ("name", "text", "label", "display_name"):
+                if attr in node_data:
+                    value = node_data[attr]
+                    if value:
+                        return str(value)
+            
+            # Fall back to node ID, but truncate if it's a long UUID
+            if len(node_id) > 30:
+                return f"{node_id[:27]}..."
+            return node_id
+    
+    @staticmethod
+    def _get_entity_display_name(
+        G: nx.MultiDiGraph,
+        entity_id: str,
+        id_to_name: Dict[str, str],
+    ) -> str:
+        """Get display name for an entity node."""
+        # First try id_to_name mapping
+        if entity_id in id_to_name:
+            return id_to_name[entity_id]
+        
+        # Try to get from node data
+        if G.has_node(entity_id):
+            node_data = G.nodes[entity_id]
+            for attr in ("name", "text", "label", "display_name"):
+                if attr in node_data:
+                    value = node_data[attr]
+                    if value:
+                        return str(value)
+        
+        # Fall back to truncated ID
+        if len(entity_id) > 20:
+            return f"{entity_id[:17]}..."
+        return entity_id
 
     @staticmethod
     def _entity_type(e: Entity | None) -> str:
@@ -201,16 +338,36 @@ class GraphVisualizer:
 
         # Add nodes
         for n in G.nodes():
-            t = (G.nodes[n].get("node_type", "UNKNOWN") or "UNKNOWN").upper()
+            node_data = G.nodes[n]
+            t = (node_data.get("node_type", "UNKNOWN") or "UNKNOWN").upper()
             color = self.node_type_colors.get(t, self.node_type_colors.get("UNKNOWN", "#bdbdbd"))
-            label = id_to_name.get(n, n)
-
+            
+            # Get readable label based on node type (pass G for assertion node traversal)
+            label = self._get_readable_node_label(n, node_data, id_to_name, G)
+            
+            # Build title with more details
+            title_parts = [f"id: {n}", f"type: {t}"]
+            if node_data.get("node_type") == "ASSERTION":
+                predicate = node_data.get("predicate", "")
+                category = node_data.get("category", "")
+                if predicate:
+                    title_parts.insert(0, f"predicate: {predicate}")
+                if category:
+                    title_parts.append(f"category: {category}")
+            elif node_data.get("node_type") == "CLAIM_CONCEPT":
+                kind = node_data.get("kind", "")
+                breadth = node_data.get("breadth", "")
+                if kind:
+                    title_parts.insert(0, f"kind: {kind}")
+                if breadth:
+                    title_parts.append(f"breadth: {breadth}")
+            
             net.add_node(
                 n,
                 label=label,
                 color=color,
                 shape="ellipse",
-                title=f"name: {label}<br>id: {n}<br>type: {t}",
+                title="<br>".join(title_parts),
             )
 
         # Add edges
@@ -332,6 +489,31 @@ class GraphVisualizer:
                         id_to_label[ent_id] = str(label).upper()
 
         return id_to_label
+
+    def remove_singular_nodes(self, G: nx.MultiDiGraph, verbose: bool = True) -> nx.MultiDiGraph:
+        """
+        Remove all singular nodes (nodes with no edges) from the graph.
+        
+        Args:
+            G: NetworkX MultiDiGraph to clean
+            verbose: If True, print how many nodes were removed
+            
+        Returns:
+            Modified graph G (nodes are removed in place)
+        """
+        # Find all nodes with degree 0 (no incoming or outgoing edges)
+        singular_nodes = [n for n in G.nodes() if G.degree(n) == 0]
+        
+        if singular_nodes:
+            # Remove singular nodes
+            G.remove_nodes_from(singular_nodes)
+            
+            if verbose:
+                print(f"✅ Removed {len(singular_nodes)} singular node(s) (nodes with no edges)")
+        elif verbose:
+            print("✅ No singular nodes found")
+        
+        return G
 
 
 
