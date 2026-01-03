@@ -31,14 +31,13 @@ class NodeGenerator:
         Args:
             max_iter: Maximum number of API calls for recursive prompting (default 3 to limit API usage)
         """
-        self.agent = NodeGeneratorAgent(
+        prompt_text = (
             "Task: Extract knowledge graph triples from a sentence.\n"
             "You are given:\n"
             "1) The raw sentence text.\n"
             "2) A JSON list of entities with ids and spans.\n"
             "3) Existing triples connected to entities in this sentence (for context).\n\n"
-            "CRITICAL RULES - BE EXTREMELY STRICT:\n",
-            max_iter=max_iter
+            "CRITICAL RULES - BE EXTREMELY STRICT:\n"
             "- ONLY extract triples that are EXPLICITLY, CLEARLY, and UNEQUIVOCALLY stated in the sentence.\n"
             "- The relation MUST be directly and unambiguously supported by the sentence wording.\n"
             "- DO NOT infer, assume, or guess relationships.\n"
@@ -77,6 +76,8 @@ class NodeGenerator:
             'Existing triples: []\n'
             'Output: [{"head":"E1","relation":"is for appreciation regarding","tail":"E2"}]\n'
         )
+        
+        self.agent = NodeGeneratorAgent(prompt_text, max_iter=max_iter)
 
 
     def run(self, sentence: str, entities: List[Dict[str, Any]], repo, existing_triples: List = None):
