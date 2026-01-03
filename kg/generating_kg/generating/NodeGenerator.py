@@ -3,7 +3,8 @@ import json
 from typing import List, Dict, Any
 
 from kg.generating_kg.generating.NodeGeneratorAgent import NodeGeneratorAgent
-from tools.sentence.entity import Entity,InMemoryEntityRepository
+from tools.sentence.entity import Entity, InMemoryEntityRepository
+from tools.graph.Triple import Triple
 import json
 import re
 from typing import Any, Dict, List
@@ -147,23 +148,27 @@ class NodeGenerator:
             f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
         )
 
-        raw = self.agent.run(prompt, repo)
-        print("raw:", type(raw), str(raw)[:300])
+        # Agent returns List[Triple] objects, convert to dicts
+        triple_objects = self.agent.run(prompt, repo)
+        print("raw:", type(triple_objects), f"count: {len(triple_objects) if isinstance(triple_objects, list) else 'N/A'}")
 
-        # If agent already returns Python list
-        if isinstance(raw, list):
-            return raw
-
-        # If agent returns a string, parse JSON
-        if isinstance(raw, str):
-            txt = raw.strip()
-            # strip ```json ... ``` if the model adds it anyway
-            txt = re.sub(r"^```(?:json)?\s*|\s*```$", "", txt)
-            try:
-                parsed = json.loads(txt)
-                return parsed if isinstance(parsed, list) else []
-            except Exception as e:
-                print("json parse error:", e, "text:", txt[:300])
-                return []
+        # Convert Triple objects to dicts
+        if isinstance(triple_objects, list):
+            result = []
+            for triple in triple_objects:
+                if isinstance(triple, Triple):
+                    # Get entity IDs
+                    head_id = getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None) or str(triple.head)
+                    tail_id = getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None) or str(triple.tail)
+                    
+                    result.append({
+                        "head": head_id,
+                        "relation": triple.relation,
+                        "tail": tail_id,
+                    })
+                elif isinstance(triple, dict):
+                    # Already a dict, use as-is
+                    result.append(triple)
+            return result
 
         return []

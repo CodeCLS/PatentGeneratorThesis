@@ -1,6 +1,9 @@
 """
 Flask server for editing triples and entities in real-time.
 """
+# Fix Jinja2 compatibility issue - must be imported BEFORE Flask
+import web_editor.jinja2_compat  # noqa: F401
+
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 import json

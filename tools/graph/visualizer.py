@@ -84,15 +84,12 @@ class GraphVisualizer:
 
     @staticmethod
     def _entity_name(e: Entity | None) -> str:
-        """Nice display label."""
+        """Nice display label - uses entity.name attribute."""
         if e is None:
             return ""
-        for attr in ("name", "text", "surface", "value"):
-            if hasattr(e, attr):
-                v = getattr(e, attr)
-                if v:
-                    return str(v)
-        # fall back to id
+        if hasattr(e, "name") and e.name:
+            return str(e.name).strip()
+        # Fall back to id
         return GraphVisualizer._entity_key(e)
     
     def _get_readable_node_label(
@@ -189,18 +186,19 @@ class GraphVisualizer:
             short_id = claim_id.split("_")[-1][:6] if "_" in claim_id else claim_id[:6]
             return f"{label} ({short_id})"
         
-        # For entity nodes, use id_to_name mapping or try to get name from node data
+        # For entity nodes, use name from node data (extracted from Entity.name), then id_to_name
         else:
-            # First try id_to_name mapping
+            # First try id_to_name mapping (built from Entity.name - most reliable)
             if node_id in id_to_name:
-                return id_to_name[node_id]
+                name = id_to_name[node_id]
+                if name:
+                    return name
             
-            # Try to get name from node data
-            for attr in ("name", "text", "label", "display_name"):
-                if attr in node_data:
-                    value = node_data[attr]
-                    if value:
-                        return str(value)
+            # Then try to get name from node data (stored from Entity.name when building graph)
+            if "name" in node_data:
+                name = node_data["name"]
+                if name and name != node_id:
+                    return str(name).strip()
             
             # Fall back to node ID, but truncate if it's a long UUID
             if len(node_id) > 30:
@@ -213,19 +211,19 @@ class GraphVisualizer:
         entity_id: str,
         id_to_name: Dict[str, str],
     ) -> str:
-        """Get display name for an entity node."""
-        # First try id_to_name mapping
+        """Get display name for an entity node - uses entity.name from id_to_name or node data."""
+        # First try id_to_name mapping (built from Entity.name)
         if entity_id in id_to_name:
             return id_to_name[entity_id]
         
-        # Try to get from node data
+        # Try to get from node data (stored from Entity.name when building graph)
         if G.has_node(entity_id):
             node_data = G.nodes[entity_id]
-            for attr in ("name", "text", "label", "display_name"):
-                if attr in node_data:
-                    value = node_data[attr]
-                    if value:
-                        return str(value)
+            # Direct access to name attribute (stored from Entity.name)
+            if "name" in node_data:
+                name = node_data["name"]
+                if name:
+                    return str(name)
         
         # Fall back to truncated ID
         if len(entity_id) > 20:
@@ -304,11 +302,15 @@ class GraphVisualizer:
 
             h_type = (node_type_map.get(h_id) or self._entity_type(tr.head) or self.infer_type_from_id(h_id))
             t_type = (node_type_map.get(t_id) or self._entity_type(tr.tail) or self.infer_type_from_id(t_id))
+            
+            # Get entity names for node attributes
+            h_name = self._entity_name(tr.head)
+            t_name = self._entity_name(tr.tail)
 
             if not G.has_node(h_id):
-                G.add_node(h_id, node_type=h_type)
+                G.add_node(h_id, node_type=h_type, name=h_name)
             if not G.has_node(t_id):
-                G.add_node(t_id, node_type=t_type)
+                G.add_node(t_id, node_type=t_type, name=t_name)
 
             G.add_edge(h_id, t_id, label=r)
 
@@ -401,6 +403,7 @@ class GraphVisualizer:
     def build_id_to_name_map(sentence_split: List[Any]) -> Dict[str, str]:
         """
         Build a mapping from entity ID to display name from sentence_split.
+        Uses entity.name directly from Entity objects.
 
         Args:
             sentence_split: List of Sentence objects with entities
@@ -425,6 +428,7 @@ class GraphVisualizer:
         id_to_name: Dict[str, str] = {}
         for sent in sentence_split:
             for ent in iter_sentence_entities(sent):
+                # Get entity ID
                 ent_id = None
                 for attr in ("ref", "id", "ref_short"):
                     if hasattr(ent, attr):
@@ -434,10 +438,48 @@ class GraphVisualizer:
                             break
                 if not ent_id:
                     continue
-                name = GraphVisualizer._entity_name(ent)
-                if name and (ent_id not in id_to_name or len(name) > len(id_to_name[ent_id])):
-                    id_to_name[ent_id] = name
+                
+                # Use entity.name directly (not ref or other attributes)
+                if hasattr(ent, "name") and ent.name:
+                    name = str(ent.name).strip()
+                    if name and (ent_id not in id_to_name or len(name) > len(id_to_name.get(ent_id, ""))):
+                        id_to_name[ent_id] = name
 
+        return id_to_name
+    
+    @staticmethod
+    def build_id_to_name_map_from_triples(triples: List[Triple]) -> Dict[str, str]:
+        """
+        Build a mapping from entity ID to display name directly from triples.
+        Uses entity.name directly from Entity objects in triples.
+
+        Args:
+            triples: List of Triple objects with Entity objects as head and tail
+
+        Returns:
+            Dictionary mapping entity ID to name
+        """
+        id_to_name: Dict[str, str] = {}
+        
+        for triple in triples:
+            # Process head entity - use entity.name directly
+            if hasattr(triple, "head") and triple.head:
+                head_entity = triple.head
+                head_id = GraphVisualizer._entity_key(head_entity)
+                if hasattr(head_entity, "name") and head_entity.name:
+                    name = str(head_entity.name).strip()
+                    if name and (head_id not in id_to_name or len(name) > len(id_to_name.get(head_id, ""))):
+                        id_to_name[head_id] = name
+            
+            # Process tail entity - use entity.name directly
+            if hasattr(triple, "tail") and triple.tail:
+                tail_entity = triple.tail
+                tail_id = GraphVisualizer._entity_key(tail_entity)
+                if hasattr(tail_entity, "name") and tail_entity.name:
+                    name = str(tail_entity.name).strip()
+                    if name and (tail_id not in id_to_name or len(name) > len(id_to_name.get(tail_id, ""))):
+                        id_to_name[tail_id] = name
+        
         return id_to_name
 
     @staticmethod

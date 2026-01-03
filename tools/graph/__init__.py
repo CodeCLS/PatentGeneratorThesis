@@ -1,6 +1,25 @@
 """
 Graph processing tools for knowledge graphs.
 """
+
+# Fix Jinja2 compatibility - patch before any Flask imports
+import jinja2
+if not hasattr(jinja2, 'escape'):
+    try:
+        from markupsafe import escape
+        jinja2.escape = escape
+    except ImportError:
+        def escape(s):
+            if s is None:
+                return ''
+            s = str(s)
+            return (s.replace('&', '&amp;')
+                    .replace('<', '&lt;')
+                    .replace('>', '&gt;')
+                    .replace('"', '&quot;')
+                    .replace("'", '&#x27;'))
+        jinja2.escape = escape
+
 from tools.graph.llm_relation_filter import LLMRelationFilter
 from tools.graph.small_cluster_filter import SmallClusterFilter
 from tools.graph.patent_claim_generator import PatentClaimGenerator
@@ -10,6 +29,7 @@ from tools.graph.claim_concept_agent import ClaimConceptAgent, ClaimConcept
 from tools.graph.claim_extractor import ClaimExtractor, ClaimBundle, AssertionInfo
 from tools.graph.claim_drafting_agent import ClaimDraftingAgent, DraftedClaim
 from tools.graph.kg_gen_converter import kg_gen_graph_to_triples, build_id_to_name_map
+from tools.graph.graph_validator import GraphValidator, Question, Response, Action, ActionType
 
 __all__ = [
     "LLMRelationFilter",
@@ -28,5 +48,10 @@ __all__ = [
     "DraftedClaim",
     "kg_gen_graph_to_triples",
     "build_id_to_name_map",
+    "GraphValidator",
+    "Question",
+    "Response",
+    "Action",
+    "ActionType",
 ]
 

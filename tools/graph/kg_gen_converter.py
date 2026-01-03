@@ -3,6 +3,24 @@ Converter to convert kg_gen Graph objects to Triple objects for use with the cla
 """
 from __future__ import annotations
 
+# Fix Jinja2 compatibility - patch before any Flask imports
+import jinja2
+if not hasattr(jinja2, 'escape'):
+    try:
+        from markupsafe import escape
+        jinja2.escape = escape
+    except ImportError:
+        def escape(s):
+            if s is None:
+                return ''
+            s = str(s)
+            return (s.replace('&', '&amp;')
+                    .replace('<', '&lt;')
+                    .replace('>', '&gt;')
+                    .replace('"', '&quot;')
+                    .replace("'", '&#x27;'))
+        jinja2.escape = escape
+
 from typing import List, Dict, Set, Tuple
 import uuid
 

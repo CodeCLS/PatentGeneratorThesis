@@ -6,7 +6,30 @@ import threading
 import webbrowser
 import time
 from tools.graph.Triple import Triple
-from web_editor.app import app, initialize_repository, run_server
+
+# Lazy Flask import - only import when actually starting the server
+def _get_flask_app():
+    """Get Flask app with Jinja2 compatibility fix."""
+    # Fix Jinja2 compatibility before importing Flask
+    import jinja2
+    if not hasattr(jinja2, 'escape'):
+        try:
+            from markupsafe import escape
+            jinja2.escape = escape
+        except ImportError:
+            def escape(s):
+                if s is None:
+                    return ''
+                s = str(s)
+                return (s.replace('&', '&amp;')
+                        .replace('<', '&lt;')
+                        .replace('>', '&gt;')
+                        .replace('"', '&quot;')
+                        .replace("'", '&#x27;'))
+            jinja2.escape = escape
+    
+    from web_editor.app import app, initialize_repository, run_server
+    return app, initialize_repository, run_server
 
 
 def start_triple_editor(
@@ -40,6 +63,9 @@ def start_triple_editor(
     """
     if not triples:
         raise ValueError("Triples list cannot be empty")
+    
+    # Get Flask app (with Jinja2 fix)
+    app, initialize_repository, run_server = _get_flask_app()
     
     # Initialize repository
     repo = initialize_repository(triples)
