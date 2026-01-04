@@ -167,15 +167,47 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         # Get the first message from global conversation history, or generate one
         if validator.global_conversation_history:
             first_msg = validator.global_conversation_history[0]
+            initial_text = first_msg["content"]
+            
+            # Ensure we have a question in the initial message
+            next_q = None
+            if validator.questions and len(validator.questions) > 0:
+                first_question = validator.questions[0]
+                # Check if question is already in the message
+                if first_question.text.lower() not in initial_text.lower():
+                    initial_text += f"\n\n{first_question.text}"
+                next_q = first_question.text
+            else:
+                # No questions yet - try to generate them if we have graph/triples
+                if validator.graph or validator.triples:
+                    try:
+                        context = validator._build_context()
+                        validator.questions = validator._generate_questions(context)
+                        if validator.questions and len(validator.questions) > 0:
+                            first_question = validator.questions[0]
+                            if first_question.text.lower() not in initial_text.lower():
+                                initial_text += f"\n\n{first_question.text}"
+                            next_q = first_question.text
+                    except Exception as e:
+                        print(f"Error generating questions in get_chat_start: {e}")
+            
             return {
-                "text": first_msg["content"],
-                "next_question": None,
+                "text": initial_text,
+                "next_question": next_q,
                 "validation_complete": False,
             }
         else:
+            # Generate initial question if available
+            initial_text = "I'm ready to help you validate and improve your knowledge graph."
+            next_q = None
+            
+            if validator.questions and len(validator.questions) > 0:
+                next_q = validator.questions[0].text
+                initial_text += f"\n\nLet me start by asking: {next_q}"
+            
             return {
-                "text": "I'm ready to help you validate and improve your knowledge graph. What would you like to check first?",
-                "next_question": None,
+                "text": initial_text,
+                "next_question": next_q,
                 "validation_complete": False,
             }
     
@@ -228,23 +260,43 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
     
     def handle_chat(self):
         """Handle flexible chat mode."""
-        if not validator:
-            self.serve_json({"error": "Validator not initialized"})
-            return
-        
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-        data = json.loads(post_data.decode('utf-8'))
-        user_message = data.get("message", "")
-        generate_next_question = data.get("generate_next_question", True)
-        
-        if not user_message:
-            self.serve_json({"error": "Message text is required"})
-            return
-        
-        chat_response = validator.chat(user_message, generate_next_question=generate_next_question)
-        
-        self.serve_json(chat_response)
+        try:
+            if not validator:
+                self.serve_json({"error": "Validator not initialized"})
+                return
+            
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.serve_json({"error": "No message provided"})
+                return
+            
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            user_message = data.get("message", "")
+            generate_next_question = data.get("generate_next_question", True)
+            
+            if not user_message:
+                self.serve_json({"error": "Message text is required"})
+                return
+            
+            chat_response = validator.chat(user_message, generate_next_question=generate_next_question)
+            
+            # Include changes_summary and stats in response
+            response_data = {
+                **chat_response,
+                "changes_summary": chat_response.get("changes_summary", []),
+                "stats": chat_response.get("stats", {}),
+            }
+            
+            self.serve_json(response_data)
+        except json.JSONDecodeError as e:
+            self.serve_json({"error": f"Invalid JSON: {str(e)}"})
+        except Exception as e:
+            import traceback
+            error_msg = f"Error in chat handler: {str(e)}"
+            print(f"ERROR in handle_chat: {error_msg}")
+            print(traceback.format_exc())
+            self.serve_json({"error": error_msg})
     
     def handle_answer(self, question_id: str):
         """Handle answering a question."""
@@ -396,8 +448,13 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 <p>Loading question...</p>
             </div>
             
-            <h3>Graph State</h3>
-            <div id="graphState" class="state-display">
+            <h3>Recent Changes</h3>
+            <div id="changesDisplay" class="state-display">
+                <p>No changes yet</p>
+            </div>
+            
+            <h3>Graph Statistics</h3>
+            <div id="graphStats" class="state-display">
                 <p>Loading...</p>
             </div>
         </div>

@@ -5,7 +5,7 @@ let questionHistory = [];
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     checkStatus();
-    loadFirstQuestion();
+    startChat();
     updateGraphState();
     
     // Set up send button
@@ -22,6 +22,28 @@ document.addEventListener('DOMContentLoaded', () => {
         checkStatus();
     }, 5000);
 });
+
+async function startChat() {
+    try {
+        const response = await fetch('/api/chat/start');
+        const data = await response.json();
+        
+        if (data.error) {
+            addMessage('bot', `Error: ${data.error}`);
+        } else if (data.text) {
+            addMessage('bot', data.text);
+            // If there's a next_question, also display it
+            if (data.next_question) {
+                addMessage('bot', data.next_question);
+            }
+            enableInput();
+        }
+    } catch (error) {
+        console.error('Error starting chat:', error);
+        addMessage('bot', 'Ready to chat. How can I help you validate your graph?');
+        enableInput();
+    }
+}
 
 async function checkStatus() {
     try {
@@ -86,7 +108,7 @@ async function sendAnswer() {
     const input = document.getElementById('answerInput');
     const answer = input.value.trim();
     
-    if (!answer || !currentQuestion) {
+    if (!answer) {
         return;
     }
     
@@ -98,64 +120,119 @@ async function sendAnswer() {
     input.value = '';
     
     try {
-        const response = await fetch(`/api/questions/${currentQuestion.id}/answer`, {
+        // Use chat endpoint for flexible conversation
+        const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ answer: answer }),
+            body: JSON.stringify({ message: answer }),
         });
         
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch (e) {
+            console.error('Failed to parse JSON response:', e);
+            addMessage('bot', 'Error: Invalid response from server. Please try again.');
+            enableInput();
+            return;
+        }
         
         if (data.error) {
             addMessage('bot', `Error: ${data.error}`);
+            enableInput();
         } else {
             // Show bot response
             addMessage('bot', data.text);
+            
+            // Display changes made
+            displayChanges(data.changes_summary || []);
+            
+            // Display stats
+            displayStats(data.stats || {});
             
             // Show widget if needed
             if (data.show_widget) {
                 addMessage('bot', `[Widget: ${data.widget_type}]`);
             }
             
-            // Check if question is completed
-            if (data.question_completed) {
-                addMessage('bot', '✓ Question completed. Moving to next question...');
+            // Show next question if provided
+            if (data.next_question) {
+                addMessage('bot', `Next: ${data.next_question}`);
             }
             
-            // Log hidden actions (for debugging)
-            if (data.hidden_actions && data.hidden_actions.length > 0) {
-                console.log('Hidden actions applied:', data.hidden_actions);
+            // Check if validation is complete
+            if (data.validation_complete) {
+                addMessage('bot', '🎉 Graph validation complete!');
+                disableInput();
+            } else {
+                enableInput();
             }
             
             // Update graph state and status
             updateGraphState();
             checkStatus();
-            
-            // Load next question only if current question is completed
-            if (data.question_completed) {
-                setTimeout(() => {
-                    loadFirstQuestion();
-                    checkStatus(); // Update status after loading next question
-                }, 1500);
-            } else {
-                // Question not complete, re-enable input for follow-up
-                // Only show the annoying message if no actions were taken
-                if (!data.hidden_actions || data.hidden_actions.length === 0) {
-                    enableInput();
-                    addMessage('bot', 'Please provide more information or clarify your answer.');
-                } else {
-                    // Actions were taken but question not marked complete - enable input silently
-                    enableInput();
-                }
-            }
         }
     } catch (error) {
         console.error('Error sending answer:', error);
-        addMessage('bot', 'Error processing answer. Please try again.');
+        let errorMsg = 'Error processing answer. Please try again.';
+        if (error.message) {
+            errorMsg += ` (${error.message})`;
+        }
+        addMessage('bot', errorMsg);
         enableInput();
     }
+}
+
+function displayChanges(changes) {
+    const changesEl = document.getElementById('changesDisplay');
+    
+    if (!changes || changes.length === 0) {
+        changesEl.innerHTML = '<p style="color: #999; font-style: italic;">No changes made</p>';
+        return;
+    }
+    
+    let html = '<ul style="margin: 0; padding-left: 20px; font-size: 13px;">';
+    for (const change of changes.slice(0, 5)) { // Show max 5 changes
+        html += `<li style="margin-bottom: 6px;">${change}</li>`;
+    }
+    if (changes.length > 5) {
+        html += `<li style="color: #999; font-style: italic;">... and ${changes.length - 5} more</li>`;
+    }
+    html += '</ul>';
+    
+    changesEl.innerHTML = html;
+}
+
+function displayStats(stats) {
+    const statsEl = document.getElementById('graphStats');
+    
+    if (!stats || Object.keys(stats).length === 0) {
+        statsEl.innerHTML = '<p style="color: #999;">Loading stats...</p>';
+        return;
+    }
+    
+    let html = '<div style="font-size: 13px; line-height: 1.8;">';
+    
+    // Show only key stats
+    if (stats.total_triples !== undefined) {
+        html += `<p><strong>Total Triples:</strong> ${stats.total_triples}</p>`;
+    }
+    if (stats.total_entities !== undefined) {
+        html += `<p><strong>Total Entities:</strong> ${stats.total_entities}</p>`;
+    }
+    if (stats.triples_changed !== undefined && stats.triples_changed !== 0) {
+        const sign = stats.triples_changed > 0 ? '+' : '';
+        html += `<p><strong>Triples Changed:</strong> <span style="color: ${stats.triples_changed > 0 ? '#2e7d32' : '#c62828'}">${sign}${stats.triples_changed}</span></p>`;
+    }
+    if (stats.entities_changed !== undefined && stats.entities_changed !== 0) {
+        const sign = stats.entities_changed > 0 ? '+' : '';
+        html += `<p><strong>Entities Changed:</strong> <span style="color: ${stats.entities_changed > 0 ? '#2e7d32' : '#c62828'}">${sign}${stats.entities_changed}</span></p>`;
+    }
+    
+    html += '</div>';
+    statsEl.innerHTML = html;
 }
 
 function addMessage(sender, text) {
@@ -180,25 +257,19 @@ async function updateGraphState() {
             return;
         }
         
-        const stateEl = document.getElementById('graphState');
-        let html = '';
+        // Update stats display
+        const statsEl = document.getElementById('graphStats');
+        let html = '<div style="font-size: 13px; line-height: 1.8;">';
         
         if (data.graph) {
-            html += `<p><strong>Graph:</strong> ${data.graph.num_nodes} nodes, ${data.graph.num_edges} edges</p>`;
+            html += `<p><strong>Nodes:</strong> ${data.graph.num_nodes}</p>`;
+            html += `<p><strong>Edges:</strong> ${data.graph.num_edges}</p>`;
         }
         html += `<p><strong>Triples:</strong> ${data.num_triples}</p>`;
         html += `<p><strong>Entities:</strong> ${data.num_entities}</p>`;
+        html += '</div>';
         
-        if (data.changes && Object.keys(data.changes).length > 0) {
-            html += `<p><strong>Changes:</strong></p>`;
-            html += `<ul style="margin-left: 20px; font-size: 12px;">`;
-            for (const [key, value] of Object.entries(data.changes)) {
-                html += `<li>${key}: ${value}</li>`;
-            }
-            html += `</ul>`;
-        }
-        
-        stateEl.innerHTML = html;
+        statsEl.innerHTML = html;
     } catch (error) {
         console.error('Error updating state:', error);
     }

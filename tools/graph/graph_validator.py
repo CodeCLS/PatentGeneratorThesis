@@ -141,17 +141,32 @@ class GraphValidator:
         self.questions = []
         self.conversation_history = {}  # Reset conversation history when analyzing new graph
         
+        # Initialize global_conversation_history if it doesn't exist (for backward compatibility)
+        if not hasattr(self, 'global_conversation_history'):
+            self.global_conversation_history = []
+        
         # Build context for LLM
         context = self._build_context()
         
         # Generate questions using LLM
         self.questions = self._generate_questions(context)
         
-        # Initialize global conversation with a greeting
+        print(f"✅ Generated {len(self.questions)} questions for validation")
+        
+        # Initialize global conversation with a greeting and first question (only if empty)
         if not self.global_conversation_history:
+            # Generate an initial question if we have questions
+            initial_message = "I'm ready to help you validate and improve your knowledge graph."
+            if self.questions and len(self.questions) > 0:
+                first_question = self.questions[0]
+                initial_message += f"\n\nLet me start by asking: {first_question.text}"
+                print(f"✅ Initial message includes question: {first_question.text[:50]}...")
+            else:
+                initial_message += " I've analyzed your graph and will ask you questions about potential issues."
+                print("⚠️  No questions generated - graph might be empty or have no issues")
             self.global_conversation_history.append({
                 "role": "bot",
-                "content": "I'm ready to help you validate and improve your knowledge graph. What would you like to check first?"
+                "content": initial_message
             })
     
     def _build_context(self) -> Dict[str, Any]:
@@ -169,23 +184,37 @@ class GraphValidator:
             context["num_nodes"] = self.graph.number_of_nodes()
             context["num_edges"] = self.graph.number_of_edges()
             
-            # Extract entity information - use human-readable names
+            # Extract entity information - use human-readable names with properties
             entities = []
             for node_id, node_data in self.graph.nodes(data=True):
                 node_type = node_data.get("node_type", "UNKNOWN")
                 name = self.id_to_name.get(node_id, node_data.get("name", node_id))
                 
                 if node_type != "ASSERTION" and node_type != "CLAIM_CONCEPT":
-                    entities.append({
+                    entity_info = {
                         "name": name,  # Only show name, not ID
                         "type": node_type,
-                    })
+                    }
+                    
+                    # Include entity properties
+                    properties = {k: v for k, v in node_data.items() 
+                                if k not in ("node_type", "name") and not k.startswith("_")}
+                    if properties:
+                        entity_info["properties"] = properties
+                    
+                    # Include connection count
+                    in_degree = self.graph.in_degree(node_id)
+                    out_degree = self.graph.out_degree(node_id)
+                    entity_info["connections"] = in_degree + out_degree
+                    
+                    entities.append(entity_info)
             
-            context["entities"] = entities[:50]  # Limit to first 50
+            context["entities"] = entities  # Include all entities (or at least more)
         
         # Extract triple information - use human-readable names only
+        # Include ALL triples, not just first 100
         triples_summary = []
-        for i, triple in enumerate(self.triples[:100]):  # Limit to first 100
+        for i, triple in enumerate(self.triples):  # Include all triples
             # Get human-readable names, prefer id_to_name mapping
             head_id = getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
             tail_id = getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
@@ -1401,6 +1430,10 @@ class GraphValidator:
                 - "validation_complete": Whether validation is done
                 - "actions": Display actions
         """
+        # Initialize global_conversation_history if it doesn't exist (for backward compatibility)
+        if not hasattr(self, 'global_conversation_history'):
+            self.global_conversation_history = []
+        
         # Add user message to global history
         self.global_conversation_history.append({"role": "user", "content": user_message})
         
@@ -1430,35 +1463,99 @@ class GraphValidator:
                 "tail": tail_name,
             })
         
+        # Build entities summary with properties
+        entities_summary = []
+        for entity_id, entity_name in list(self.id_to_name.items())[:100]:  # Limit to 100
+            entity_info = {"name": entity_name, "id": entity_id}
+            
+            # Get entity properties from graph if available
+            if self.graph and self.graph.has_node(entity_id):
+                node_data = self.graph.nodes[entity_id]
+                entity_info["label"] = node_data.get("node_type", "UNKNOWN")
+                entity_info["properties"] = {k: v for k, v in node_data.items() 
+                                            if k not in ("node_type", "name") and not k.startswith("_")}
+            
+            entities_summary.append(entity_info)
+        
         prompt = (
             "You are an intelligent knowledge graph validator having a natural conversation with a user.\n"
             "Your goal is to help validate and improve the knowledge graph through conversation.\n\n"
             "IMPORTANT: Use ONLY human-readable entity names. NEVER mention IDs, UUIDs, or hashes.\n"
             "Write in plain, user-friendly, conversational language.\n\n"
-            f"GRAPH CONTEXT:\n"
+            f"CURRENT GRAPH STATE:\n"
             f"- {context['num_nodes']} nodes, {context['num_edges']} edges\n"
             f"- {context['num_triples']} triples\n"
             f"- {len(context['entities'])} entities\n\n"
-            f"TRIPLES (showing only names, no IDs):\n"
+            f"ALL TRIPLES (showing only names, no IDs):\n"
         )
         
-        for triple_info in triples_summary[:50]:  # Limit to 50 for prompt
+        # Show ALL triples (or at least more of them)
+        for triple_info in triples_summary[:100]:  # Increased from 50 to 100
             prompt += f"  {triple_info['index']}. {triple_info['head']} --[{triple_info['relation']}]--> {triple_info['tail']}\n"
+        
+        if len(triples_summary) > 100:
+            prompt += f"  ... and {len(triples_summary) - 100} more triples\n"
+        
+        prompt += f"\nENTITIES AND THEIR PROPERTIES:\n"
+        for entity_info in entities_summary[:50]:  # Show first 50 entities with properties
+            props_text = ""
+            if entity_info.get("properties"):
+                props_text = f" (Properties: {', '.join([f'{k}={v}' for k, v in list(entity_info['properties'].items())[:3]])})"
+            prompt += f"  - {entity_info['name']} (Type: {entity_info.get('label', 'UNKNOWN')}){props_text}\n"
+        
+        if len(entities_summary) > 50:
+            prompt += f"  ... and {len(entities_summary) - 50} more entities\n"
         
         prompt += f"{conversation_text}\n"
         prompt += (
-            "YOUR CAPABILITIES:\n"
+            "YOUR CAPABILITIES (YOU HAVE FULL FREEDOM):\n"
             "1. Ask questions about the graph to find issues\n"
-            "2. Modify the graph via hidden_actions (add/delete/modify triples, merge entities, etc.)\n"
+            "2. Modify the graph proactively via hidden_actions to improve it:\n"
+            "   - Add missing triples that should exist\n"
+            "   - Delete incorrect or redundant triples\n"
+            "   - Modify triples (change relations, entities)\n"
+            "   - Merge duplicate or similar entities\n"
+            "   - Split entities that represent multiple concepts\n"
+            "   - Rename entities for clarity\n"
+            "   - Change entity labels/types\n"
+            "   - Create new entities if needed\n"
+            "   - Remove entities that don't make sense\n"
             "3. Continue the conversation naturally\n"
             "4. Decide when to move to a new topic or when validation is complete\n\n"
+            "IMPORTANT: BE PROACTIVE AND IMPROVE CLARITY!\n"
+            "- Don't just ask questions - if you see an obvious issue, fix it via hidden_actions\n"
+            "- Even when the user says something is 'correct', you can still improve clarity:\n"
+            "  * Rename entities to be more descriptive or clear\n"
+            "  * Clarify relation names (e.g., 'connects' -> 'connects to', 'has' -> 'contains')\n"
+            "  * Add missing triples that logically should exist\n"
+            "  * Merge entities that are duplicates or very similar\n"
+            "  * Split entities that represent multiple concepts\n"
+            "  * Change entity labels/types for better categorization\n"
+            "- If you notice missing connections that should exist, add them\n"
+            "- If entity names are unclear or ambiguous, rename them for clarity\n"
+            "- If relations are vague or could be more specific, improve them\n"
+            "- Quality over quantity: Make meaningful improvements, not many small changes\n"
+            "- You have full freedom to improve the graph - use it proactively!\n"
+            "- Think: 'Even if this is correct, can I make it clearer or more precise?'\n\n"
             "DECISION LOGIC:\n"
-            "- If the user's message resolves a topic, you can:\n"
-            "  * Modify the graph if needed (via hidden_actions)\n"
+            "- ALWAYS ask questions about the graph - be proactive in finding issues\n"
+            "- If the user asks you to ask questions, IMMEDIATELY generate and ask a specific question about the graph\n"
+            "- After each user response, analyze the current graph state (which may have changed)\n"
+            "- If the user says something is 'correct' or confirms something, you can still:\n"
+            "  * Improve clarity (rename entities, clarify relations)\n"
+            "  * Merge duplicate entities they mentioned\n"
+            "  * Add missing connections\n"
+            "  * Then ask a NEW question about a different issue\n"
+            "- If you made changes, check if they introduced new issues\n"
+            "- If the user's message resolves a topic, you MUST:\n"
+            "  * Modify the graph proactively if you see improvements needed (via hidden_actions)\n"
             "  * Ask a NEW question about a different issue (if generate_next_question=true)\n"
-            "  * Or continue the conversation if more clarification is needed\n"
+            "  * Don't just wait - be proactive!\n"
+            "- After making changes, always check if new issues were introduced\n"
             "- If validation seems complete, set validation_complete=true\n"
-            "- Be natural and conversational - don't be rigid\n\n"
+            "- Be natural and conversational - don't be rigid\n"
+            "- Think like a human expert reviewing the graph - what would you fix?\n"
+            "- IMPORTANT: If the user asks you to ask questions, immediately generate and ask a question about the graph\n\n"
             "Return a JSON object:\n"
             "{\n"
             '  "text": "Your response to the user (conversational, friendly)",\n'
@@ -1474,14 +1571,20 @@ class GraphValidator:
             '      "description": "What this action does"\n'
             '    }\n'
             '  ],\n'
-            '  "next_question": "Optional: A new question to ask about a different issue, or null if continuing current topic",\n'
+            '  "next_question": "A specific question to ask about the graph (REQUIRED if user asked for questions, otherwise optional)",\n'
             '  "validation_complete": false,  // true if validation is done\n'
             '  "actions": [],  // Display actions (show_triples, highlight_entities, etc.)\n'
             '  "show_widget": false,\n'
             '  "widget_type": null\n'
             '}\n\n'
+            "CRITICAL: If the user asks you to ask questions, you MUST:\n"
+            "1. Immediately analyze the graph and find an issue\n"
+            "2. Ask a specific, concrete question about that issue\n"
+            "3. Include the question in your 'text' response AND in 'next_question'\n"
+            "4. Don't just say 'I'll ask questions' - actually ASK a question!\n\n"
             "Be intelligent: If the user confirms something or you've made graph modifications, "
             "you can move to a new question or topic. Don't keep asking about the same thing.\n"
+            "Always be proactive - ask questions about the graph, don't wait for the user to guide you.\n"
         )
         
         try:
@@ -1499,7 +1602,32 @@ class GraphValidator:
             response_text = response_text.strip()
             response_text = response_text.replace("```json", "").replace("```", "").strip()
             
-            response_data = json.loads(response_text)
+            try:
+                response_data = json.loads(response_text)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error in chat method: {e}")
+                print(f"Response text (first 500 chars): {response_text[:500]}")
+                # Return a safe default response
+                return {
+                    "text": "I apologize, but I encountered an error processing my response. The user said: '" + user_message + "'. Could you please rephrase or provide more details?",
+                    "hidden_actions": [],
+                    "next_question": None,
+                    "validation_complete": False,
+                    "actions": [],
+                    "show_widget": False,
+                    "widget_type": None,
+                    "changes_summary": [],
+                    "stats": {
+                        "triples_before": len(self.triples),
+                        "triples_after": len(self.triples),
+                        "triples_changed": 0,
+                        "entities_before": len(self.id_to_name),
+                        "entities_after": len(self.id_to_name),
+                        "entities_changed": 0,
+                        "total_entities": len(self.id_to_name),
+                        "total_triples": len(self.triples),
+                    },
+                }
             
             # Parse hidden actions
             hidden_actions = []
@@ -1525,9 +1653,35 @@ class GraphValidator:
             bot_response_text = response_data.get("text", "Response processed.")
             self.global_conversation_history.append({"role": "bot", "content": bot_response_text})
             
-            # Generate next question if requested and provided
+            # Regenerate questions after each answer, especially if graph was modified
+            # This ensures we catch new issues that may have been introduced
             next_question = response_data.get("next_question")
             validation_complete = response_data.get("validation_complete", False)
+            
+            # If graph was modified or user resolved a topic, regenerate questions
+            # Also regenerate if user explicitly asked for questions
+            user_asked_for_questions = "ask" in user_message.lower() and "question" in user_message.lower()
+            
+            if graph_was_modified or (generate_next_question and not validation_complete) or user_asked_for_questions:
+                # Rebuild context with updated graph/triples
+                updated_context = self._build_context()
+                
+                # Generate new questions based on current state
+                new_questions = self._generate_questions(updated_context)
+                
+                # If we got new questions and no next_question was provided, use the first new one
+                if new_questions and not next_question:
+                    next_question = new_questions[0].text
+                    # Store the new questions for potential future use
+                    self.questions = new_questions
+                    # If user asked for questions or we regenerated, append the question to the response
+                    if next_question:
+                        # Check if question is already in the response
+                        if next_question.lower() not in bot_response_text.lower():
+                            bot_response_text += f"\n\n{next_question}"
+                            response_data["text"] = bot_response_text
+                            # Also update the next_question field
+                            response_data["next_question"] = next_question
             
             return {
                 "text": bot_response_text,
@@ -1544,6 +1698,7 @@ class GraphValidator:
                 "actions": response_data.get("actions", []),
                 "show_widget": response_data.get("show_widget", False),
                 "widget_type": response_data.get("widget_type"),
+                "graph_modified": graph_was_modified,  # Indicate if graph was changed
             }
             
         except Exception as e:

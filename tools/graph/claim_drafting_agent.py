@@ -3,7 +3,7 @@ ClaimDraftingAgent: Drafts patent claims from claim bundles using LLM.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple, Union
 from dataclasses import dataclass, field
 import networkx as nx
 
@@ -24,6 +24,25 @@ class DraftedClaim:
     parent_claim_number: Optional[int] = None
     model: Optional[str] = None
     created_at: Optional[str] = None
+
+
+@dataclass
+class IndependentClaimProposal:
+    """Proposal for an independent claim specifying what it should focus on."""
+    focus: str  # Description of what this claim should focus on (e.g., "water tank mechanism", "bubble generation")
+    focus_keywords: Optional[List[str]] = None  # Optional keywords to match (e.g., ["tank", "water", "storage"])
+    focus_entities: Optional[List[str]] = None  # Optional entity names/IDs to include
+    focus_categories: Optional[List[str]] = None  # Optional assertion categories to prioritize (e.g., ["INVENTIVE_MECHANISM"])
+
+
+@dataclass
+class DependentClaimProposal:
+    """Proposal for a dependent claim specifying what features it should focus on and which independent claim it depends on."""
+    parent_independent_index: int  # Index in the independent_proposals list (0-based)
+    focus: str  # Description of what features this dependent claim should focus on (e.g., "opening portion", "conduit configuration")
+    focus_keywords: Optional[List[str]] = None  # Optional keywords to match
+    focus_entities: Optional[List[str]] = None  # Optional entity names/IDs to include
+    focus_categories: Optional[List[str]] = None  # Optional assertion categories to prioritize
 
 
 class ClaimDraftingAgent:
@@ -118,8 +137,11 @@ class ClaimDraftingAgent:
         previous_claims: Optional[List[str]] = None,
         patent_description: Optional[str] = None,
         use_rag: Optional[bool] = None,
-        num_independent: int = 3,
-        num_dependent: int = 5,
+        independent_proposals: Optional[List[IndependentClaimProposal]] = None,
+        dependent_proposals: Optional[List[DependentClaimProposal]] = None,
+        # Legacy parameters (deprecated, use proposals instead)
+        num_independent: Optional[int] = None,
+        num_dependent: Optional[int] = None,
     ) -> List[DraftedClaim]:
         """
         Draft patent claims from claim bundles or directly from graph.
@@ -131,8 +153,10 @@ class ClaimDraftingAgent:
             previous_claims: Optional list of previously drafted claims (for dependent claims)
             patent_description: Optional full patent description text for context
             use_rag: Override default RAG setting for this call
-            num_independent: Number of independent claims to create if no bundles provided
-            num_dependent: Number of dependent claims to create if no bundles provided
+            independent_proposals: List of IndependentClaimProposal objects specifying what each independent claim should focus on
+            dependent_proposals: List of DependentClaimProposal objects specifying what each dependent claim should focus on
+            num_independent: (Deprecated) Number of independent claims - use independent_proposals instead
+            num_dependent: (Deprecated) Number of dependent claims - use dependent_proposals instead
             
         Returns:
             List of DraftedClaim objects with numbered claims
@@ -141,11 +165,32 @@ class ClaimDraftingAgent:
         previous_claims = previous_claims or []
         use_rag = use_rag if use_rag is not None else self.use_rag
         
+        # Handle legacy parameters
+        if independent_proposals is None and num_independent is not None:
+            print("⚠️  WARNING: num_independent is deprecated. Use independent_proposals instead.")
+            # Create default proposals for backward compatibility
+            independent_proposals = [
+                IndependentClaimProposal(focus=f"Independent claim {i+1}")
+                for i in range(num_independent)
+            ]
+        
+        if dependent_proposals is None and num_dependent is not None:
+            print("⚠️  WARNING: num_dependent is deprecated. Use dependent_proposals instead.")
+            # Create default proposals for backward compatibility
+            dependent_proposals = [
+                DependentClaimProposal(parent_independent_index=0, focus=f"Dependent claim {i+1}")
+                for i in range(num_dependent)
+            ]
+        
         # If no bundles provided, try to create them from graph
         if not claim_bundles:
             if G is not None:
                 print("📦 No claim bundles provided. Creating bundles from graph...")
-                claim_bundles = self._create_bundles_from_graph(G, num_independent, num_dependent)
+                claim_bundles = self._create_bundles_from_proposals(
+                    G, 
+                    independent_proposals=independent_proposals,
+                    dependent_proposals=dependent_proposals
+                )
             else:
                 print("⚠️  WARNING: No claim bundles provided and no graph available!")
                 print("   Provide either claim_bundles or G parameter.")
@@ -219,6 +264,448 @@ class ClaimDraftingAgent:
         
         print(f"✅ Drafted {len(drafted_claims)} claims ({len(independent_bundles)} independent, {len(dependent_bundles)} dependent)")
         return drafted_claims
+    
+    def _create_bundles_from_proposals(
+        self,
+        G: nx.MultiDiGraph,
+        independent_proposals: Optional[List[IndependentClaimProposal]] = None,
+        dependent_proposals: Optional[List[DependentClaimProposal]] = None,
+    ) -> List[ClaimBundle]:
+        """
+        Create claim bundles from graph based on claim proposals.
+        
+        Args:
+            G: NetworkX graph with Assertion nodes or entity edges
+            independent_proposals: List of proposals for independent claims
+            dependent_proposals: List of proposals for dependent claims
+            
+        Returns:
+            List of ClaimBundle objects
+        """
+        from tools.graph.claim_extractor import ClaimBundle, AssertionInfo
+        
+        bundles = []
+        
+        # Get all available assertions
+        assertion_nodes = [
+            (node_id, data)
+            for node_id, data in G.nodes(data=True)
+            if data.get("node_type") == "ASSERTION"
+            and data.get("claim_eligible", False)
+        ]
+        
+        if not assertion_nodes:
+            # Fallback: any assertions
+            assertion_nodes = [
+                (node_id, data)
+                for node_id, data in G.nodes(data=True)
+                if data.get("node_type") == "ASSERTION"
+            ]
+            print(f"   Found {len(assertion_nodes)} assertions (not all claim-eligible)")
+        
+        if not assertion_nodes:
+            # Last resort: create from graph edges (entity-to-entity relationships)
+            print("   ⚠️  No assertions found in graph")
+            print("   💡 Tip: Run AssertionAgent on your graph first to create assertions")
+            print("   🔄 Falling back to creating bundles from graph edges...")
+            return self._create_bundles_from_edges_with_proposals(
+                G, independent_proposals, dependent_proposals
+            )
+        
+        print(f"   Found {len(assertion_nodes)} assertions to work with")
+        
+        # Get id_to_name mapping for entity matching
+        id_to_name = {}
+        if self.graph_rag:
+            id_to_name = self.graph_rag.id_to_name
+        
+        # Create independent claim bundles from proposals
+        independent_bundle_ids = []
+        if independent_proposals:
+            for idx, proposal in enumerate(independent_proposals):
+                matching_assertions = self._match_assertions_to_proposal(
+                    G, assertion_nodes, proposal, id_to_name
+                )
+                
+                if matching_assertions:
+                    assertion_infos = [self._get_assertion_info(G, aid) for aid in matching_assertions]
+                    assertion_infos = [info for info in assertion_infos if info is not None]
+                    
+                    if assertion_infos:
+                        bundle_id = f"proposal_independent_{idx+1}"
+                        bundle = ClaimBundle(
+                            claim_id=bundle_id,
+                            type="independent",
+                            assertions=assertion_infos,
+                            breadth="MEDIUM",
+                            title=proposal.focus,
+                        )
+                        bundles.append(bundle)
+                        independent_bundle_ids.append(bundle_id)
+                        print(f"   ✅ Created independent bundle {idx+1} ('{proposal.focus}') with {len(assertion_infos)} assertions")
+                    else:
+                        print(f"   ⚠️  No valid assertions found for independent proposal {idx+1} ('{proposal.focus}')")
+                else:
+                    print(f"   ⚠️  No matching assertions found for independent proposal {idx+1} ('{proposal.focus}')")
+        else:
+            # Fallback to old method if no proposals
+            print("   No independent proposals provided, using default method...")
+            bundles = self._create_bundles_from_graph(G, num_independent=3, num_dependent=0)
+            independent_bundle_ids = [b.claim_id for b in bundles if b.type == "independent"]
+        
+        # Create dependent claim bundles from proposals
+        if dependent_proposals and independent_bundle_ids:
+            for idx, proposal in enumerate(dependent_proposals):
+                # Validate parent index
+                if proposal.parent_independent_index < 0 or proposal.parent_independent_index >= len(independent_bundle_ids):
+                    print(f"   ⚠️  Invalid parent_independent_index {proposal.parent_independent_index} for dependent proposal {idx+1}")
+                    continue
+                
+                parent_bundle_id = independent_bundle_ids[proposal.parent_independent_index]
+                
+                matching_assertions = self._match_assertions_to_proposal(
+                    G, assertion_nodes, proposal, id_to_name
+                )
+                
+                if matching_assertions:
+                    assertion_infos = [self._get_assertion_info(G, aid) for aid in matching_assertions]
+                    assertion_infos = [info for info in assertion_infos if info is not None]
+                    
+                    if assertion_infos:
+                        bundle_id = f"proposal_dependent_{idx+1}"
+                        bundle = ClaimBundle(
+                            claim_id=bundle_id,
+                            type="dependent",
+                            parent_claim_id=parent_bundle_id,
+                            assertions=assertion_infos,
+                            breadth="NARROW",
+                            title=proposal.focus,
+                        )
+                        bundles.append(bundle)
+                        print(f"   ✅ Created dependent bundle {idx+1} ('{proposal.focus}') for independent {proposal.parent_independent_index+1} with {len(assertion_infos)} assertions")
+                    else:
+                        print(f"   ⚠️  No valid assertions found for dependent proposal {idx+1} ('{proposal.focus}')")
+                else:
+                    print(f"   ⚠️  No matching assertions found for dependent proposal {idx+1} ('{proposal.focus}')")
+        
+        print(f"✅ Created {len(bundles)} claim bundles from proposals ({len(independent_bundle_ids)} independent, {len([b for b in bundles if b.type == 'dependent'])} dependent)")
+        return bundles
+    
+    def _create_bundles_from_edges_with_proposals(
+        self,
+        G: nx.MultiDiGraph,
+        independent_proposals: Optional[List[IndependentClaimProposal]] = None,
+        dependent_proposals: Optional[List[DependentClaimProposal]] = None,
+    ) -> List[ClaimBundle]:
+        """
+        Create claim bundles from graph edges (entity relationships) based on proposals.
+        This is a fallback when no assertions exist in the graph.
+        
+        Args:
+            G: NetworkX graph with entity nodes and edges
+            independent_proposals: List of proposals for independent claims
+            dependent_proposals: List of proposals for dependent claims
+            
+        Returns:
+            List of ClaimBundle objects
+        """
+        from tools.graph.claim_extractor import ClaimBundle, AssertionInfo
+        
+        bundles = []
+        
+        # Get all entity-to-entity edges (skip assertion/claim links)
+        entity_edges = []
+        for u, v, k, data in G.edges(keys=True, data=True):
+            u_type = G.nodes[u].get("node_type", "")
+            v_type = G.nodes[v].get("node_type", "")
+            edge_type = data.get("edge_type", "")
+            
+            # Skip assertion links, claim links, and non-entity nodes
+            if edge_type in ("ASSERTION_LINK", "CLAIM_LINK"):
+                continue
+            if u_type in ("ASSERTION", "CLAIM_CONCEPT", "LEGAL_CLAIM_TEXT"):
+                continue
+            if v_type in ("ASSERTION", "CLAIM_CONCEPT", "LEGAL_CLAIM_TEXT"):
+                continue
+            
+            relation = data.get("label", "")
+            if relation:
+                entity_edges.append((u, v, relation, data))
+        
+        print(f"   Found {len(entity_edges)} entity-to-entity edges")
+        
+        if not entity_edges:
+            print("   ⚠️  No entity edges found in graph")
+            print("   💡 Tip: Make sure your graph has entity relationships (triples)")
+            return []
+        
+        # Get id_to_name mapping
+        id_to_name = {}
+        if self.graph_rag:
+            id_to_name = self.graph_rag.id_to_name
+        
+        # Create independent claim bundles from proposals
+        independent_bundle_ids = []
+        if independent_proposals:
+            for idx, proposal in enumerate(independent_proposals):
+                matching_edges = self._match_edges_to_proposal(
+                    G, entity_edges, proposal, id_to_name
+                )
+                
+                if matching_edges:
+                    assertion_infos = []
+                    for u, v, relation, data in matching_edges:
+                        # Create pseudo-assertion from edge
+                        u_name = id_to_name.get(u, G.nodes[u].get("name", u))
+                        v_name = id_to_name.get(v, G.nodes[v].get("name", v))
+                        
+                        assertion_info = AssertionInfo(
+                            assertion_id=f"edge_{u}_{v}_{relation}",
+                            predicate=relation,
+                            subject_label=u_name,
+                            subject_id=u,
+                            object_label=v_name,
+                            object_id=v,
+                        )
+                        assertion_infos.append(assertion_info)
+                    
+                    if assertion_infos:
+                        bundle_id = f"proposal_independent_{idx+1}"
+                        bundle = ClaimBundle(
+                            claim_id=bundle_id,
+                            type="independent",
+                            assertions=assertion_infos,
+                            breadth="MEDIUM",
+                            title=proposal.focus,
+                        )
+                        bundles.append(bundle)
+                        independent_bundle_ids.append(bundle_id)
+                        print(f"   ✅ Created independent bundle {idx+1} ('{proposal.focus}') with {len(assertion_infos)} edges")
+                    else:
+                        print(f"   ⚠️  No valid edges found for independent proposal {idx+1} ('{proposal.focus}')")
+                else:
+                    print(f"   ⚠️  No matching edges found for independent proposal {idx+1} ('{proposal.focus}')")
+        else:
+            print("   ⚠️  No independent proposals provided")
+            return []
+        
+        # Create dependent claim bundles from proposals
+        if dependent_proposals and independent_bundle_ids:
+            for idx, proposal in enumerate(dependent_proposals):
+                # Validate parent index
+                if proposal.parent_independent_index < 0 or proposal.parent_independent_index >= len(independent_bundle_ids):
+                    print(f"   ⚠️  Invalid parent_independent_index {proposal.parent_independent_index} for dependent proposal {idx+1}")
+                    continue
+                
+                parent_bundle_id = independent_bundle_ids[proposal.parent_independent_index]
+                
+                matching_edges = self._match_edges_to_proposal(
+                    G, entity_edges, proposal, id_to_name
+                )
+                
+                if matching_edges:
+                    assertion_infos = []
+                    for u, v, relation, data in matching_edges:
+                        # Create pseudo-assertion from edge
+                        u_name = id_to_name.get(u, G.nodes[u].get("name", u))
+                        v_name = id_to_name.get(v, G.nodes[v].get("name", v))
+                        
+                        assertion_info = AssertionInfo(
+                            assertion_id=f"edge_{u}_{v}_{relation}",
+                            predicate=relation,
+                            subject_label=u_name,
+                            subject_id=u,
+                            object_label=v_name,
+                            object_id=v,
+                        )
+                        assertion_infos.append(assertion_info)
+                    
+                    if assertion_infos:
+                        bundle_id = f"proposal_dependent_{idx+1}"
+                        bundle = ClaimBundle(
+                            claim_id=bundle_id,
+                            type="dependent",
+                            parent_claim_id=parent_bundle_id,
+                            assertions=assertion_infos,
+                            breadth="NARROW",
+                            title=proposal.focus,
+                        )
+                        bundles.append(bundle)
+                        print(f"   ✅ Created dependent bundle {idx+1} ('{proposal.focus}') for independent {proposal.parent_independent_index+1} with {len(assertion_infos)} edges")
+                    else:
+                        print(f"   ⚠️  No valid edges found for dependent proposal {idx+1} ('{proposal.focus}')")
+                else:
+                    print(f"   ⚠️  No matching edges found for dependent proposal {idx+1} ('{proposal.focus}')")
+        
+        print(f"✅ Created {len(bundles)} claim bundles from edges ({len(independent_bundle_ids)} independent, {len([b for b in bundles if b.type == 'dependent'])} dependent)")
+        return bundles
+    
+    def _match_edges_to_proposal(
+        self,
+        G: nx.MultiDiGraph,
+        entity_edges: List[Tuple[str, str, str, Dict]],
+        proposal: Union[IndependentClaimProposal, DependentClaimProposal],
+        id_to_name: Dict[str, str],
+    ) -> List[Tuple[str, str, str, Dict]]:
+        """
+        Match entity edges to a proposal based on focus, keywords, and entities.
+        
+        Args:
+            G: NetworkX graph
+            entity_edges: List of (u, v, relation, data) tuples
+            proposal: IndependentClaimProposal or DependentClaimProposal
+            id_to_name: Mapping from entity ID to name
+            
+        Returns:
+            List of matching edges
+        """
+        matching_edges = []
+        focus_lower = proposal.focus.lower()
+        
+        for u, v, relation, data in entity_edges:
+            score = 0.0
+            matches = False
+            
+            # Get entity names
+            u_name = id_to_name.get(u, G.nodes[u].get("name", u))
+            v_name = id_to_name.get(v, G.nodes[v].get("name", v))
+            relation_lower = relation.lower()
+            
+            # Check keyword match
+            if proposal.focus_keywords:
+                for keyword in proposal.focus_keywords:
+                    keyword_lower = keyword.lower()
+                    if (keyword_lower in focus_lower or 
+                        keyword_lower in u_name.lower() or 
+                        keyword_lower in v_name.lower() or
+                        keyword_lower in relation_lower):
+                        score += 1.0
+                        matches = True
+            
+            # Check entity match
+            if proposal.focus_entities:
+                for entity_name_or_id in proposal.focus_entities:
+                    entity_lower = entity_name_or_id.lower()
+                    if (entity_lower in u.lower() or 
+                        entity_lower in v.lower() or
+                        entity_lower in u_name.lower() or 
+                        entity_lower in v_name.lower()):
+                        score += 1.5
+                        matches = True
+            
+            # General focus text matching
+            if not proposal.focus_keywords and not proposal.focus_entities:
+                focus_words = set(focus_lower.split())
+                edge_text = f"{u_name} {v_name} {relation}".lower()
+                edge_words = set(edge_text.split())
+                common_words = focus_words.intersection(edge_words)
+                if len(common_words) >= 2:
+                    score += len(common_words) * 0.5
+                    matches = True
+            
+            if matches and score > 0:
+                matching_edges.append((u, v, relation, data, score))
+        
+        # Sort by score and return top matches
+        matching_edges.sort(key=lambda x: x[4] if len(x) > 4 else 0, reverse=True)
+        max_edges = min(10, len(matching_edges))
+        return [(u, v, r, d) for u, v, r, d, *_ in matching_edges[:max_edges]]
+    
+    def _match_assertions_to_proposal(
+        self,
+        G: nx.MultiDiGraph,
+        assertion_nodes: List[Tuple[str, Dict]],
+        proposal: Union[IndependentClaimProposal, DependentClaimProposal],
+        id_to_name: Dict[str, str],
+    ) -> List[str]:
+        """
+        Match assertions to a proposal based on focus, keywords, entities, and categories.
+        
+        Args:
+            G: NetworkX graph
+            assertion_nodes: List of (node_id, data) tuples for assertions
+            proposal: IndependentClaimProposal or DependentClaimProposal
+            id_to_name: Mapping from entity ID to name
+            
+        Returns:
+            List of assertion node IDs that match the proposal
+        """
+        matching_assertion_ids = []
+        
+        for assertion_id, assertion_data in assertion_nodes:
+            score = 0.0
+            matches = False
+            
+            # Check category match
+            if proposal.focus_categories:
+                assertion_category = assertion_data.get("category", "")
+                if assertion_category in proposal.focus_categories:
+                    score += 2.0
+                    matches = True
+            
+            # Check keyword match in focus description
+            focus_lower = proposal.focus.lower()
+            
+            # Get assertion text/description
+            predicate = assertion_data.get("predicate", "").lower()
+            subject_label = assertion_data.get("subject_label", "").lower()
+            object_label = assertion_data.get("object_label", "").lower()
+            assertion_text = f"{predicate} {subject_label} {object_label}".lower()
+            
+            # Check if focus keywords match
+            if proposal.focus_keywords:
+                for keyword in proposal.focus_keywords:
+                    keyword_lower = keyword.lower()
+                    if keyword_lower in focus_lower or keyword_lower in assertion_text:
+                        score += 1.0
+                        matches = True
+            
+            # Check entity match
+            if proposal.focus_entities:
+                subject_id = assertion_data.get("subject_id", "")
+                object_id = assertion_data.get("object_id", "")
+                
+                for entity_name_or_id in proposal.focus_entities:
+                    entity_lower = entity_name_or_id.lower()
+                    
+                    # Check by entity ID
+                    if subject_id and entity_lower in subject_id.lower():
+                        score += 1.5
+                        matches = True
+                    if object_id and entity_lower in object_id.lower():
+                        score += 1.5
+                        matches = True
+                    
+                    # Check by entity name
+                    subject_name = id_to_name.get(subject_id, "").lower()
+                    object_name = id_to_name.get(object_id, "").lower()
+                    
+                    if subject_name and entity_lower in subject_name:
+                        score += 1.5
+                        matches = True
+                    if object_name and entity_lower in object_name:
+                        score += 1.5
+                        matches = True
+            
+            # General focus text matching (if no specific criteria, use focus description)
+            if not proposal.focus_keywords and not proposal.focus_entities and not proposal.focus_categories:
+                # Extract keywords from focus description
+                focus_words = set(focus_lower.split())
+                assertion_words = set(assertion_text.split())
+                common_words = focus_words.intersection(assertion_words)
+                if len(common_words) >= 2:  # At least 2 words in common
+                    score += len(common_words) * 0.5
+                    matches = True
+            
+            if matches and score > 0:
+                matching_assertion_ids.append((assertion_id, score))
+        
+        # Sort by score (highest first) and return top matches
+        matching_assertion_ids.sort(key=lambda x: x[1], reverse=True)
+        
+        # Return top 5-10 assertions per proposal (or all if fewer)
+        max_assertions = min(10, len(matching_assertion_ids))
+        return [aid for aid, _ in matching_assertion_ids[:max_assertions]]
     
     def _create_bundles_from_graph(
         self,
