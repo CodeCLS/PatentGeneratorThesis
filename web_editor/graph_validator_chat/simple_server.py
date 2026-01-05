@@ -14,6 +14,14 @@ import networkx as nx
 from tools.graph.Triple import Triple
 from tools.graph.graph_validator import GraphValidator
 
+# Try to import LangGraph adapter (optional)
+try:
+    from tools.graph.graph_validator_langgraph_adapter import GraphValidatorLangGraphAdapter
+    LANGGRAPH_AVAILABLE = True
+except ImportError:
+    LANGGRAPH_AVAILABLE = False
+    GraphValidatorLangGraphAdapter = None
+
 
 # Global validator instance
 validator: Optional[GraphValidator] = None
@@ -23,11 +31,35 @@ def initialize_validator(
     graph: Optional[nx.MultiDiGraph] = None,
     triples: Optional[List[Triple]] = None,
     id_to_name: Optional[Dict[str, str]] = None,
+    use_langgraph: bool = True,  # Use LangGraph by default if available
 ) -> Optional[GraphValidator]:
-    """Initialize the validator with graph and/or triples."""
+    """
+    Initialize the validator with graph and/or triples.
+    
+    Args:
+        graph: Optional NetworkX graph
+        triples: Optional list of Triple objects
+        id_to_name: Optional mapping from entity ID to display name
+        use_langgraph: Whether to use LangGraph-based validator (default: True if available)
+    
+    Returns:
+        GraphValidator instance (or GraphValidatorLangGraphAdapter if use_langgraph=True)
+    """
     global validator
-    validator = GraphValidator()
-    validator.analyze(graph=graph, triples=triples, id_to_name=id_to_name)
+    
+    # Use LangGraph adapter if requested and available
+    if use_langgraph and LANGGRAPH_AVAILABLE and GraphValidatorLangGraphAdapter:
+        validator = GraphValidatorLangGraphAdapter(
+            graph=graph,
+            triples=triples,
+            id_to_name=id_to_name,
+        )
+        validator.analyze(graph=graph, triples=triples, id_to_name=id_to_name)
+    else:
+        # Fallback to original validator
+        validator = GraphValidator()
+        validator.analyze(graph=graph, triples=triples, id_to_name=id_to_name)
+    
     return validator
 
 
@@ -118,14 +150,33 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         if not validator:
             return {"initialized": False, "message": "Validator not initialized"}
         
-        unanswered = validator.getUnansweredQuestions()
+        # Handle both original validator and LangGraph adapter
+        num_questions = 0
+        num_unanswered = 0
+        num_responses = 0
+        
+        if hasattr(validator, 'questions'):
+            num_questions = len(validator.questions)
+        
+        if hasattr(validator, 'getUnansweredQuestions'):
+            try:
+                unanswered = validator.getUnansweredQuestions()
+                num_unanswered = len(unanswered) if unanswered else 0
+            except:
+                num_unanswered = num_questions  # Fallback
+        else:
+            num_unanswered = num_questions  # Fallback
+        
+        if hasattr(validator, 'responses'):
+            num_responses = len(validator.responses)
+        
         return {
             "initialized": True,
-            "num_questions": len(validator.questions),
-            "num_unanswered": len(unanswered),
-            "num_responses": len(validator.responses),
-            "has_graph": validator.graph is not None,
-            "num_triples": len(validator.triples),
+            "num_questions": num_questions,
+            "num_unanswered": num_unanswered,
+            "num_responses": num_responses,
+            "has_graph": validator.graph is not None if hasattr(validator, 'graph') else False,
+            "num_triples": len(validator.triples) if hasattr(validator, 'triples') else 0,
         }
     
     def get_first_question(self) -> Dict[str, Any]:
@@ -133,63 +184,127 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         if not validator:
             return {"error": "Validator not initialized"}
         
-        question = validator.getFirstQuestion()
-        if not question:
-            # Check if all questions are answered
-            unanswered = validator.getUnansweredQuestions()
-            if not unanswered:
-                return {
-                    "question": None,
-                    "message": "All questions have been answered!",
-                    "all_completed": True,
-                }
+        try:
+            question = validator.getFirstQuestion()
+        except Exception as e:
+            print(f"Error calling getFirstQuestion: {e}")
+            import traceback
+            traceback.print_exc()
             return {"question": None}
         
-        return {
-            "question": {
-                "id": question.id,
-                "text": question.text,
-                "category": question.category,
-                "priority": question.priority,
-                "show_widget": question.show_widget,
-                "widget_type": question.widget_type,
-                "widget_parameters": question.widget_parameters,
-                "answered": question.answered,
-                "num_responses": question.num_responses,
+        if not question:
+            # Check if all questions are answered
+            if hasattr(validator, 'getUnansweredQuestions'):
+                try:
+                    unanswered = validator.getUnansweredQuestions()
+                    if not unanswered:
+                        return {
+                            "question": None,
+                            "message": "All questions have been answered!",
+                            "all_completed": True,
+                        }
+                except:
+                    pass
+            return {"question": None}
+        
+        # Handle both Question object and dict
+        # ALWAYS check isinstance(dict) first - this is the most reliable
+        if isinstance(question, dict):
+            # Dict format - use .get() for all fields
+            return {
+                "question": {
+                    "id": question.get("id", ""),
+                    "text": question.get("text", ""),
+                    "category": question.get("category", "unclear"),
+                    "priority": question.get("priority", 5),
+                    "show_widget": question.get("show_widget", False),
+                    "widget_type": question.get("widget_type", None),
+                    "widget_parameters": question.get("widget_parameters", {}),
+                    "answered": question.get("answered", False),
+                    "num_responses": question.get("num_responses", 0),
+                }
             }
-        }
+        else:
+            # Question object - use getattr for safety
+            try:
+                return {
+                    "question": {
+                        "id": getattr(question, 'id', ''),
+                        "text": getattr(question, 'text', ''),
+                        "category": getattr(question, 'category', 'unclear'),
+                        "priority": getattr(question, 'priority', 5),
+                        "show_widget": getattr(question, 'show_widget', False),
+                        "widget_type": getattr(question, 'widget_type', None),
+                        "widget_parameters": getattr(question, 'widget_parameters', {}),
+                        "answered": getattr(question, 'answered', False),
+                        "num_responses": getattr(question, 'num_responses', 0),
+                    }
+                }
+            except Exception as e:
+                print(f"Error accessing question attributes: {e}")
+                import traceback
+                traceback.print_exc()
+                return {"question": None}
     
     def get_chat_start(self) -> Dict[str, Any]:
         """Get the initial chat message."""
         if not validator:
             return {"error": "Validator not initialized"}
         
+        # For LangGraph adapter, trigger initial question generation via chat
+        if hasattr(validator, 'validator') and hasattr(validator.validator, 'chat'):
+            # This is the LangGraph adapter - trigger initial state
+            try:
+                # Call chat with empty message to trigger initial question generation
+                result = validator.chat("", generate_next_question=True)
+                initial_text = result.get("text", "")
+                next_q = result.get("next_question")
+                
+                # If we got a question, use it as the initial message
+                if next_q:
+                    initial_text = f"Let me start by asking: {next_q}"
+                elif not initial_text or "ready to chat" in initial_text.lower():
+                    # Fallback: generate question directly
+                    if hasattr(validator, 'questions') and validator.questions and len(validator.questions) > 0:
+                        first_q = validator.questions[0]
+                        if isinstance(first_q, dict):
+                            next_q = first_q.get("text", "")
+                        else:
+                            next_q = getattr(first_q, "text", "")
+                        if next_q:
+                            initial_text = f"Let me start by asking: {next_q}"
+                
+                return {
+                    "text": initial_text or "I'm analyzing your graph and will ask you questions shortly.",
+                    "next_question": next_q,
+                    "validation_complete": False,
+                }
+            except Exception as e:
+                print(f"Error in LangGraph initial chat: {e}")
+                import traceback
+                traceback.print_exc()
+                # Fall through to original validator logic
+        
+        # Fallback for original validator
         # Get the first message from global conversation history, or generate one
-        if validator.global_conversation_history:
+        if hasattr(validator, 'global_conversation_history') and validator.global_conversation_history:
             first_msg = validator.global_conversation_history[0]
-            initial_text = first_msg["content"]
+            initial_text = first_msg.get("content", "") if isinstance(first_msg, dict) else str(first_msg)
             
             # Ensure we have a question in the initial message
             next_q = None
-            if validator.questions and len(validator.questions) > 0:
+            if hasattr(validator, 'questions') and validator.questions and len(validator.questions) > 0:
                 first_question = validator.questions[0]
-                # Check if question is already in the message
-                if first_question.text.lower() not in initial_text.lower():
-                    initial_text += f"\n\n{first_question.text}"
-                next_q = first_question.text
-            else:
-                # No questions yet - try to generate them if we have graph/triples
-                if validator.graph or validator.triples:
-                    try:
-                        context = validator._build_context()
-                        validator.questions = validator._generate_questions(context)
-                        if validator.questions and len(validator.questions) > 0:
-                            first_question = validator.questions[0]
-                            if first_question.text.lower() not in initial_text.lower():
-                                initial_text += f"\n\n{first_question.text}"
-                            next_q = first_question.text
-                    except Exception as e:
-                        print(f"Error generating questions in get_chat_start: {e}")
+                # Handle both Question object and dict - check dict first
+                if isinstance(first_question, dict):
+                    question_text = first_question.get("text", "")
+                else:
+                    # Use getattr to safely access attribute (works for both objects and won't fail on dicts)
+                    question_text = getattr(first_question, 'text', str(first_question))
+                
+                if question_text and question_text.lower() not in initial_text.lower():
+                    initial_text = f"Let me start by asking: {question_text}"
+                next_q = question_text
             
             return {
                 "text": initial_text,
@@ -201,9 +316,14 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             initial_text = "I'm ready to help you validate and improve your knowledge graph."
             next_q = None
             
-            if validator.questions and len(validator.questions) > 0:
-                next_q = validator.questions[0].text
-                initial_text += f"\n\nLet me start by asking: {next_q}"
+            if hasattr(validator, 'questions') and validator.questions and len(validator.questions) > 0:
+                first_q = validator.questions[0]
+                if isinstance(first_q, dict):
+                    next_q = first_q.get("text", "")
+                else:
+                    next_q = getattr(first_q, "text", "")
+                if next_q:
+                    initial_text = f"Let me start by asking: {next_q}"
             
             return {
                 "text": initial_text,
@@ -315,29 +435,43 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         
         response = validator.answerQuestion(question_id, answer_text)
         
-        response_data = {
-            "question_id": response.question_id,
-            "text": response.text,
-            "show_widget": response.show_widget,
-            "widget_type": response.widget_type,
-            "question_completed": getattr(response, "question_completed", False),  # Safe access with default
-            "actions": [
-                {
-                    "type": action.type.value,
-                    "parameters": action.parameters,
-                    "description": action.description,
-                }
-                for action in response.actions
-            ],
-            "hidden_actions": [
-                {
-                    "type": action.type.value,
-                    "parameters": action.parameters,
-                    "description": action.description,
-                }
-                for action in response.hidden_actions
-            ],
-        }
+        # Handle both Response object and dict (for adapter compatibility)
+        if isinstance(response, dict):
+            response_data = {
+                "question_id": response.get("question_id", question_id),
+                "text": response.get("text", ""),
+                "show_widget": response.get("show_widget", False),
+                "widget_type": response.get("widget_type", None),
+                "question_completed": response.get("question_completed", False),
+                "actions": response.get("actions", []),
+                "hidden_actions": response.get("hidden_actions", []),
+            }
+        else:
+            # Response object - use getattr for safety
+            actions = getattr(response, "actions", [])
+            response_data = {
+                "question_id": getattr(response, "question_id", question_id),
+                "text": getattr(response, "text", ""),
+                "show_widget": getattr(response, "show_widget", False),
+                "widget_type": getattr(response, "widget_type", None),
+                "question_completed": getattr(response, "question_completed", False),
+                "actions": [
+                    {
+                        "type": getattr(action, "type", type(action)).value if hasattr(getattr(action, "type", None), "value") else str(getattr(action, "type", "")),
+                        "parameters": getattr(action, "parameters", {}),
+                        "description": getattr(action, "description", ""),
+                    }
+                    for action in actions
+                ] if actions else [],
+                "hidden_actions": [
+                    {
+                        "type": getattr(action, "type", type(action)).value if hasattr(getattr(action, "type", None), "value") else str(getattr(action, "type", "")),
+                        "parameters": getattr(action, "parameters", {}),
+                        "description": getattr(action, "description", ""),
+                    }
+                    for action in getattr(response, "hidden_actions", [])
+                ],
+            }
         
         self.serve_json(response_data)
     
@@ -784,18 +918,65 @@ function disableInput() {
 
 def run_server(port: int = 5001, open_browser: bool = True):
     """Run the simple HTTP server."""
-    server = HTTPServer(('127.0.0.1', port), GraphValidatorHandler)
-    print(f"✓ Graph Validator Chat starting on http://localhost:{port}")
+    import socket
     
-    if open_browser:
-        def open_browser_delayed():
-            time.sleep(1.5)
-            webbrowser.open(f"http://localhost:{port}")
-        threading.Thread(target=open_browser_delayed, daemon=True).start()
+    # Check if port is available
+    def is_port_available(port: int) -> bool:
+        """Check if a port is available."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('127.0.0.1', port))
+                return True
+            except OSError:
+                return False
     
-    print(f"✓ Server running. Close the browser window when done.")
+    # Try to find an available port if the default is not available
+    original_port = port
+    if not is_port_available(port):
+        print(f"⚠️  Port {port} is not available. Trying alternative ports...")
+        for alt_port in range(5001, 5010):
+            if is_port_available(alt_port):
+                port = alt_port
+                print(f"✓ Using port {port} instead")
+                break
+        else:
+            # If no port found in range, try a few more
+            for alt_port in [8000, 8001, 8080, 8888]:
+                if is_port_available(alt_port):
+                    port = alt_port
+                    print(f"✓ Using port {port} instead")
+                    break
+            else:
+                print(f"❌ ERROR: Could not find an available port.")
+                print(f"   Port {original_port} and alternatives are all in use.")
+                print(f"   Please close other applications using these ports or specify a different port.")
+                return
+    
     try:
+        server = HTTPServer(('127.0.0.1', port), GraphValidatorHandler)
+        print(f"✓ Graph Validator Chat starting on http://localhost:{port}")
+        
+        if open_browser:
+            def open_browser_delayed():
+                time.sleep(1.5)
+                webbrowser.open(f"http://localhost:{port}")
+            threading.Thread(target=open_browser_delayed, daemon=True).start()
+        
+        print(f"✓ Server running. Close the browser window when done.")
         server.serve_forever()
+    except OSError as e:
+        if "10013" in str(e) or "PermissionError" in str(type(e)):
+            print(f"❌ ERROR: Permission denied for port {port}.")
+            print(f"   This usually means:")
+            print(f"   1. The port is already in use by another application")
+            print(f"   2. Windows Firewall is blocking the port")
+            print(f"   3. The port requires administrator privileges")
+            print(f"\n   Try:")
+            print(f"   - Closing other applications that might be using port {port}")
+            print(f"   - Using a different port: start_validator_chat(..., port=8000)")
+            print(f"   - Running as administrator (if needed)")
+        else:
+            print(f"❌ ERROR starting server: {e}")
     except KeyboardInterrupt:
         print("\n✓ Server stopped.")
 
@@ -806,10 +987,11 @@ def start_validator_chat(
     id_to_name: Optional[Dict[str, str]] = None,
     port: int = 5001,
     open_browser: bool = True,
+    use_langgraph: bool = True,  # Use LangGraph by default if available
 ) -> None:
     """Start the graph validator chat interface using simple HTTP server."""
     # Initialize validator
-    validator = initialize_validator(graph, triples, id_to_name)
+    validator = initialize_validator(graph, triples, id_to_name, use_langgraph=use_langgraph)
     
     if validator:
         print(f"✓ Initialized validator")

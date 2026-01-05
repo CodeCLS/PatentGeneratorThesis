@@ -22,7 +22,8 @@ def start_validator_chat(
     id_to_name: Optional[Dict[str, str]] = None,
     port: int = 5001,
     open_browser: bool = True,
-    debug: bool = False
+    debug: bool = False,
+    use_langgraph: bool = True,  # Use LangGraph by default if available
 ) -> None:
     """
     Start the graph validator chat interface.
@@ -34,6 +35,7 @@ def start_validator_chat(
         port: Port number to run the server on (default: 5001)
         open_browser: Whether to automatically open the browser (default: True)
         debug: Enable Flask debug mode (default: False)
+        use_langgraph: Whether to use LangGraph-based validator (default: True if available)
     
     Example:
         >>> from tools.graph.visualizer import GraphVisualizer
@@ -42,13 +44,25 @@ def start_validator_chat(
         >>> visualizer = GraphVisualizer()
         >>> G = visualizer.build_graph(triples)
         >>> 
+        >>> # Use LangGraph validator (default)
         >>> start_validator_chat(graph=G, triples=triples, id_to_name=id_to_name)
+        >>> 
+        >>> # Or use original validator
+        >>> start_validator_chat(graph=G, triples=triples, id_to_name=id_to_name, use_langgraph=False)
+        >>> 
         >>> # Chat interface opens in browser
         >>> # Answer questions and modify the graph
         >>> # When done, get updated data from get_validator_state()
     """
     # Use simple HTTP server (NO Flask, NO Jinja2!)
-    _start_validator_chat(graph=graph, triples=triples, id_to_name=id_to_name, port=port, open_browser=open_browser)
+    _start_validator_chat(
+        graph=graph, 
+        triples=triples, 
+        id_to_name=id_to_name, 
+        port=port, 
+        open_browser=open_browser,
+        use_langgraph=use_langgraph,
+    )
 
 
 def get_validator_state() -> Dict[str, Any]:
