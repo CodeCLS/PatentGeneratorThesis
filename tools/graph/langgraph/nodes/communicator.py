@@ -256,30 +256,12 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         current_question_id = None
         current_question_text = None
     
-    # Strip common prefixes that LLMs sometimes add - DO THIS FIRST
-    prefixes_to_strip = [
-        "Let me start by asking:",
-        "Let me ask:",
-        "I'll start by asking:",
-        "Let me begin by asking:",
-        "I'd like to ask:",
-        "Let me start by asking",
-        "Let me ask",
-        "I'll start by asking",
-        "Let me begin by asking",
-        "I'd like to ask",
-    ]
-    bot_message_original = bot_message
-    for prefix in prefixes_to_strip:
-        if bot_message.lower().startswith(prefix.lower()):
-            bot_message = bot_message[len(prefix):].strip()
-            bot_message = bot_message.lstrip(": -").strip()
+   
     
     # Check for duplicates - only check exact matches, not substring matches
     # This prevents false positives when legitimate messages contain similar text
     is_duplicate = any(
-        msg.get("content") == bot_message or 
-        msg.get("content") == bot_message_original
+        msg.get("content") == bot_message
         for msg in messages[-5:]  # Only check last 5 messages to avoid false positives
         if msg.get("role") == "bot"
     )

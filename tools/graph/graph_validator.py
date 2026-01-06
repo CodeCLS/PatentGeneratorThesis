@@ -171,7 +171,7 @@ class GraphValidator:
         initial_message = ""
         first_question = self.question_manager.get_first_question()
         if first_question:
-            initial_message += f"\n\nLet me start by asking: {first_question.text}"
+            initial_message += f"\n\nLet me start by asking1: {first_question.text}"
             logger.info(f"First question: {first_question.text[:100]}...")
             print(f"✅ Initial message includes question: {first_question.text[:50]}...")
         else:
