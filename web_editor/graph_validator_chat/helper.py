@@ -127,7 +127,7 @@ def get_updated_entities() -> List[Dict[str, Any]]:
     entity_ids = set()
     
     for triple in triples:
-        head_id = getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
+        head_id = getattr(triple.head, "ref", None) or getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
         tail_id = getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
         
         if head_id and head_id not in entity_ids:

@@ -13,17 +13,20 @@ if TYPE_CHECKING:
 class InMemoryEntityRepository:
     def __init__(self, entities: list[Entity] | None = None):
         self._entities: Dict[str, Entity] = {
-            e.id: e for e in (entities or [])
+            (e.ref or e.id or e.ref_short): e for e in (entities or []) if (e.ref or e.id or e.ref_short)
         }
     def getAll(self):
         return self._entities
     def get_by_id(self, entity_id: str) -> Entity:
+        """Get entity by ref (or id/ref_short). Note: parameter name kept as entity_id for backward compatibility."""
         try:
             return self._entities[entity_id]
         except KeyError:
             raise KeyError(f"Entity with id {entity_id} not found")
     def save(self, entity: "Entity") -> None:
-        self._entities[entity.id] = entity
+        entity_key = entity.ref or entity.id or entity.ref_short
+        if entity_key:
+            self._entities[entity_key] = entity
 
 
 from dataclasses import dataclass, field, asdict
@@ -44,8 +47,8 @@ class Entity:
     end: int = 0
 
     entity_type: Optional[str] = None
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    ref: Optional[str] = None
+    id: Optional[str] = None  # Deprecated: use ref instead
+    ref: str = field(default_factory=lambda: str(uuid.uuid4()))  # Primary identifier (shorter than old id)
     sentence_id: Optional[str] = None
 
     def __repr__(self) -> str:
@@ -92,8 +95,8 @@ class EnhancedEntityTripleRepository(InMemoryEntityRepository):
     
     def _index_triple(self, triple: "Triple") -> None:
         """Index a triple for fast lookups."""
-        head_id = triple.head.id
-        tail_id = triple.tail.id
+        head_id = triple.head.ref or triple.head.id or triple.head.ref_short
+        tail_id = triple.tail.ref or triple.tail.id or triple.tail.ref_short
         relation = triple.relation
         
         # Index by head
@@ -117,8 +120,8 @@ class EnhancedEntityTripleRepository(InMemoryEntityRepository):
             return
         
         triple = self._triples[triple_id]
-        head_id = triple.head.id
-        tail_id = triple.tail.id
+        head_id = triple.head.ref or triple.head.id or triple.head.ref_short
+        tail_id = triple.tail.ref or triple.tail.id or triple.tail.ref_short
         relation = triple.relation
         
         # Remove from head index
@@ -288,9 +291,11 @@ class EnhancedEntityTripleRepository(InMemoryEntityRepository):
             The added Triple object
         """
         # Ensure entities exist in repository
-        if triple.head.id not in self._entities:
+        head_key = triple.head.ref or triple.head.id or triple.head.ref_short
+        tail_key = triple.tail.ref or triple.tail.id or triple.tail.ref_short
+        if head_key and head_key not in self._entities:
             self.save(triple.head)
-        if triple.tail.id not in self._entities:
+        if tail_key and tail_key not in self._entities:
             self.save(triple.tail)
         
         self._triples[triple.id] = triple
@@ -369,11 +374,11 @@ class EnhancedEntityTripleRepository(InMemoryEntityRepository):
         
         # Apply additional filters
         if head_id is not None and tail_id is not None:
-            results = [t for t in results if t.head.id == head_id and t.tail.id == tail_id]
+            results = [t for t in results if (t.head.ref or t.head.id or t.head.ref_short) == head_id and (t.tail.ref or t.tail.id or t.tail.ref_short) == tail_id]
         elif head_id is not None:
-            results = [t for t in results if t.head.id == head_id]
+            results = [t for t in results if (t.head.ref or t.head.id or t.head.ref_short) == head_id]
         elif tail_id is not None:
-            results = [t for t in results if t.tail.id == tail_id]
+            results = [t for t in results if (t.tail.ref or t.tail.id or t.tail.ref_short) == tail_id]
         
         if relation is not None:
             results = [t for t in results if t.relation == relation]

@@ -100,7 +100,7 @@ class NodeGenerator:
         if not sentence or not sentence.strip() or not entities or len(entities) < 2:
             return []
 
-        # Get entity IDs in this sentence
+        # Get entity IDs in this sentence (note: "id" field now contains ref value)
         entity_ids = {ent.get("id") for ent in entities if ent.get("id")}
         
         # Format existing triples for context
@@ -108,8 +108,9 @@ class NodeGenerator:
         if existing_triples:
             for triple in existing_triples:
                 # Check if triple involves any entity in this sentence
-                head_id = getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None) or str(triple.head)
-                tail_id = getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None) or str(triple.tail)
+                # Use ref as primary identifier (fallback to id or ref_short)
+                head_id = getattr(triple.head, "ref", None) or getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None) or str(triple.head)
+                tail_id = getattr(triple.tail, "ref", None) or getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None) or str(triple.tail)
                 
                 # Check if head or tail matches any entity in current sentence
                 if head_id in entity_ids or tail_id in entity_ids:
@@ -157,9 +158,9 @@ class NodeGenerator:
             result = []
             for triple in triple_objects:
                 if isinstance(triple, Triple):
-                    # Get entity IDs
-                    head_id = getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None) or str(triple.head)
-                    tail_id = getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None) or str(triple.tail)
+                    # Get entity IDs (use ref as primary identifier)
+                    head_id = getattr(triple.head, "ref", None) or getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None) or str(triple.head)
+                    tail_id = getattr(triple.tail, "ref", None) or getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None) or str(triple.tail)
                     
                     result.append({
                         "head": head_id,

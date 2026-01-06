@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, List
 import networkx as nx
 from tools.graph.Triple import Triple
 from tools.graph.graph_validator_langgraph import GraphValidatorLangGraph
+from tools.graph.langgraph.nodes.analyzer import build_context, generate_questions
 
 
 class GraphValidatorLangGraphAdapter:
@@ -39,17 +40,16 @@ class GraphValidatorLangGraphAdapter:
     ) -> None:
         """Initialize or update the graph/triples for validation."""
         self.validator.analyze(graph=graph, triples=triples, id_to_name=id_to_name)
-        
-        # Generate initial questions
-        context = self.validator._build_context()
-        self.questions = self.validator._generate_questions(context)
+        initial_message = ""
+        # Generate initial questions using the analyzer helper functions
+        context = build_context(self.validator)
+        self.questions = generate_questions(self.validator, context)
         
         # Initialize conversation history
         if not self.global_conversation_history:
-            initial_message = "I'm ready to help you validate and improve your knowledge graph."
             if self.questions and len(self.questions) > 0:
                 first_question = self.questions[0]
-                initial_message += f"\n\nLet me start by asking: {first_question.get('text', '')}"
+                initial_message += f"{first_question.get('text', '')}"
             self.global_conversation_history.append({
                 "role": "bot",
                 "content": initial_message
@@ -131,7 +131,7 @@ class GraphValidatorLangGraphAdapter:
         if self.questions:
             # Convert to Question-like object
             first_q = self.questions[0]
-            from tools.graph.graph_validator import Question
+            from tools.graph.validator_types import Question
             # Handle both dict and Question object
             if isinstance(first_q, dict):
                 return Question(
@@ -148,7 +148,7 @@ class GraphValidatorLangGraphAdapter:
     
     def getUnansweredQuestions(self):
         """Get all unanswered questions (for backward compatibility)."""
-        from tools.graph.graph_validator import Question
+        from tools.graph.validator_types import Question
         unanswered = []
         for q in self.questions:
             if isinstance(q, dict):
@@ -169,7 +169,7 @@ class GraphValidatorLangGraphAdapter:
     
     def getAllQuestions(self):
         """Get all questions (for backward compatibility)."""
-        from tools.graph.graph_validator import Question
+        from tools.graph.validator_types import Question
         return [
             Question(
                 id=q.get("id", f"q{i}"),

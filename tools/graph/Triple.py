@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 
 from tools.sentence.entity import Entity
@@ -28,6 +28,7 @@ class Triple:
     # Optional extras
     embedding: List[float] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
+    properties: Dict[str, Any] = field(default_factory=dict)  # Relation properties/qualifiers
 
     def __post_init__(self) -> None:
         # clamp bounded scores
@@ -69,6 +70,19 @@ class Triple:
         tag = (tag or "").strip()
         if tag and tag not in self.tags:
             self.tags.append(tag)
+    
+    def set_property(self, key: str, value: Any) -> None:
+        """Set a property/qualifier on the relation."""
+        if key:
+            self.properties[key] = value
+    
+    def get_property(self, key: str, default: Any = None) -> Any:
+        """Get a property/qualifier from the relation."""
+        return self.properties.get(key, default)
+    
+    def has_properties(self) -> bool:
+        """Check if the relation has any properties/qualifiers."""
+        return len(self.properties) > 0
 
     def to_dict(self) -> dict:
         return asdict(self)

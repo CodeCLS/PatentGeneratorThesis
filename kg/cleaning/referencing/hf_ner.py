@@ -20,7 +20,8 @@ class HFNER:
             aggregation_strategy=aggregation_strategy,
             device=device,
         )
-        print(self.ner("Nathan is in the same family."))
+        device_name = "GPU" if device >= 0 else "CPU"
+        print(f"HF NER initialized on {device_name} (device={device})")
 
     def __call__(self, doc: Doc) -> Doc:
         """Extract named entities from document using sentence-wise processing."""

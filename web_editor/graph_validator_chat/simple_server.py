@@ -13,12 +13,14 @@ import networkx as nx
 
 from tools.graph.Triple import Triple
 from tools.graph.graph_validator import GraphValidator
+from tools.graph.langgraph.state import GraphValidatorState 
 
 # Try to import LangGraph adapter (optional)
 try:
     from tools.graph.graph_validator_langgraph_adapter import GraphValidatorLangGraphAdapter
     LANGGRAPH_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    print("Langgraph error: " +str(e))
     LANGGRAPH_AVAILABLE = False
     GraphValidatorLangGraphAdapter = None
 
@@ -32,6 +34,7 @@ def initialize_validator(
     triples: Optional[List[Triple]] = None,
     id_to_name: Optional[Dict[str, str]] = None,
     use_langgraph: bool = True,  # Use LangGraph by default if available
+    debug: bool = False,  # If True, opens browser windows with agent outputs
 ) -> Optional[GraphValidator]:
     """
     Initialize the validator with graph and/or triples.
@@ -57,7 +60,7 @@ def initialize_validator(
         validator.analyze(graph=graph, triples=triples, id_to_name=id_to_name)
     else:
         # Fallback to original validator
-        validator = GraphValidator()
+        validator = GraphValidator(debug=debug)
         validator.analyze(graph=graph, triples=triples, id_to_name=id_to_name)
     
     return validator
@@ -350,8 +353,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         entities = []
         entity_ids = set()
         for triple in updated_triples:
-            head_id = getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
-            tail_id = getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
+            head_id = getattr(triple.head, "ref", None) or getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
+            tail_id = getattr(triple.tail, "ref", None) or getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
             
             if head_id and head_id not in entity_ids:
                 entities.append({
@@ -493,8 +496,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         
         triples_data = []
         for triple in updated_triples:
-            head_id = getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
-            tail_id = getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
+            head_id = getattr(triple.head, "ref", None) or getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
+            tail_id = getattr(triple.tail, "ref", None) or getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
             
             triples_data.append({
                 "head": {
@@ -515,8 +518,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         entities = []
         entity_ids = set()
         for triple in updated_triples:
-            head_id = getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
-            tail_id = getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
+            head_id = getattr(triple.head, "ref", None) or getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
+            tail_id = getattr(triple.tail, "ref", None) or getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
             
             if head_id and head_id not in entity_ids:
                 entities.append({
@@ -987,11 +990,47 @@ def start_validator_chat(
     id_to_name: Optional[Dict[str, str]] = None,
     port: int = 5001,
     open_browser: bool = True,
+    debug: bool = False,  # If True, opens browser windows with agent outputs
     use_langgraph: bool = True,  # Use LangGraph by default if available
 ) -> None:
     """Start the graph validator chat interface using simple HTTP server."""
+    # Configure logging for Jupyter notebooks
+    import logging
+    import sys
+    
+    # Set up logging if not already configured
+    root_logger = logging.getLogger()
+    
+    # Create console handler for Jupyter notebooks
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_handler.setFormatter(formatter)
+    
+    if not root_logger.handlers:
+        # Add handler to root logger
+        root_logger.addHandler(console_handler)
+        root_logger.setLevel(logging.INFO)
+    
+    # Also configure specific loggers for graph validator components
+    for logger_name in ['tools.graph.graph_validator', 'tools.graph.validator.response_handler', 
+                        'tools.graph.validator.question_generator', 'tools.graph.validator.graph_analyzer',
+                        'tools.graph.validator.graph_modifier', 'tools.graph.validator']:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:
+            logger.addHandler(console_handler)
+            logger.propagate = False
+    
     # Initialize validator
-    validator = initialize_validator(graph, triples, id_to_name, use_langgraph=use_langgraph)
+    print("=" * 80)
+    print("Initializing Graph Validator...")
+    validator = initialize_validator(graph, triples, id_to_name, use_langgraph=use_langgraph, debug=debug)
     
     if validator:
         print(f"✓ Initialized validator")
@@ -1001,10 +1040,16 @@ def start_validator_chat(
             print(f"✓ Triples: {len(triples)} triples")
     
     # Start server in a separate thread
+    print(f"Starting server on port {port}...")
     server_thread = threading.Thread(
         target=run_server,
         args=(port, open_browser),
         daemon=True
     )
     server_thread.start()
+    
+    # Give the server a moment to start
+    import time
+    time.sleep(0.5)
+    print("=" * 80)
 

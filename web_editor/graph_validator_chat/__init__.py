@@ -6,12 +6,12 @@ Graph Validator Chat Interface - Simple chat UI for validating and modifying gra
 
 def start_validator_chat(*args, **kwargs):
     """Lazy import to avoid Flask/Jinja2 issues until needed."""
-    from web_editor.graph_validator_chat.server import start_validator_chat as _start_validator_chat
+    from web_editor.graph_validator_chat.api import start_validator_chat as _start_validator_chat
     return _start_validator_chat(*args, **kwargs)
 
 def get_validator_state(*args, **kwargs):
     """Lazy import to avoid Flask/Jinja2 issues until needed."""
-    from web_editor.graph_validator_chat.server import get_validator_state as _get_validator_state
+    from web_editor.graph_validator_chat.api import get_validator_state as _get_validator_state
     return _get_validator_state(*args, **kwargs)
 
 def get_updated_graph(*args, **kwargs):

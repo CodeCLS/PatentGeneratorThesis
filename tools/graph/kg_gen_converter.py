@@ -104,23 +104,26 @@ def kg_gen_graph_to_triples(kg_graph) -> List[Triple]:
 
 def build_id_to_name_map(triples: List[Triple]) -> Dict[str, str]:
     """
-    Build a mapping from entity ID to display name from triples.
+    Build a mapping from entity ref (identifier) to display name from triples.
+    Note: Function name kept as build_id_to_name_map for backward compatibility,
+    but it now uses ref instead of id.
     
     Args:
         triples: List of Triple objects
     
     Returns:
-        Dict mapping entity ID to entity name
+        Dict mapping entity ref to entity name
     """
     id_to_name = {}
     for triple in triples:
-        head_id = getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
-        tail_id = getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
+        # Use ref as primary identifier, fallback to ref_short if ref not available
+        head_ref = getattr(triple.head, "ref", None) or getattr(triple.head, "ref_short", None) or getattr(triple.head, "id", None)
+        tail_ref = getattr(triple.tail, "ref", None) or getattr(triple.tail, "ref_short", None) or getattr(triple.tail, "id", None)
         
-        if head_id:
-            id_to_name[head_id] = getattr(triple.head, "name", str(triple.head))
-        if tail_id:
-            id_to_name[tail_id] = getattr(triple.tail, "name", str(triple.tail))
+        if head_ref:
+            id_to_name[head_ref] = getattr(triple.head, "name", str(triple.head))
+        if tail_ref:
+            id_to_name[tail_ref] = getattr(triple.tail, "name", str(triple.tail))
     
     return id_to_name
 

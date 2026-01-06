@@ -70,7 +70,7 @@ class GraphVisualizer:
 
     @staticmethod
     def _entity_key(e: Entity | str | None) -> str:
-        """Stable id for a node."""
+        """Get entity identifier, prioritizing ref over id. Stable id for a node."""
         if e is None:
             return ""
         if isinstance(e, str):
@@ -428,9 +428,9 @@ class GraphVisualizer:
         id_to_name: Dict[str, str] = {}
         for sent in sentence_split:
             for ent in iter_sentence_entities(sent):
-                # Get entity ID
+                # Get entity ref (primary identifier), fallback to id or ref_short
                 ent_id = None
-                for attr in ("ref", "id", "ref_short"):
+                for attr in ("ref", "id", "ref_short"):  # ref is now primary identifier
                     if hasattr(ent, attr):
                         v = getattr(ent, attr)
                         if v:

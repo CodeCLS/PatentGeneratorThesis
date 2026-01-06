@@ -89,16 +89,16 @@ class LLMEntityExtractor:
                 if not name or start < 0 or end <= start:
                     continue
                 
-                # Generate unique ID
-                entity_id = str(uuid.uuid4())
-                ref_short = entity_id[-4:] if len(entity_id) >= 4 else entity_id
+                # Generate unique ref (primary identifier, shorter than old id)
+                entity_ref = str(uuid.uuid4())
+                ref_short = entity_ref[-4:] if len(entity_ref) >= 4 else entity_ref
                 
                 entity = Entity(
-                    id=entity_id,
+                    id=None,  # Deprecated: use ref instead
                     name=name,
                     label=label,
                     ref_short=ref_short,
-                    ref=entity_id,
+                    ref=entity_ref,  # Primary identifier
                     start=start,
                     end=end,
                     sentence_id=f"s0",  # Will be updated by caller if needed

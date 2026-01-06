@@ -1,12 +1,13 @@
 """
-Server for Graph Validator Chat Interface.
-Allows interactive chat-based graph validation and modification.
+API wrapper for Graph Validator Chat Interface.
+Provides a client-side API for starting the validator chat and getting validator state.
+The actual HTTP server is in simple_server.py.
 """
 from typing import List, Optional, Dict, Any
 import networkx as nx
 import pickle
 import base64
-
+from tools.graph.langgraph.state import GraphValidatorState 
 from tools.graph.Triple import Triple
 
 # Use simple HTTP server instead of Flask - NO Jinja2 dependency!
@@ -22,7 +23,7 @@ def start_validator_chat(
     id_to_name: Optional[Dict[str, str]] = None,
     port: int = 5001,
     open_browser: bool = True,
-    debug: bool = False,
+    debug: bool = False,  # If True, opens browser windows with agent outputs
     use_langgraph: bool = True,  # Use LangGraph by default if available
 ) -> None:
     """
@@ -62,6 +63,7 @@ def start_validator_chat(
         port=port, 
         open_browser=open_browser,
         use_langgraph=use_langgraph,
+        debug=debug,
     )
 
 
@@ -135,8 +137,8 @@ def get_validator_state() -> Dict[str, Any]:
     entities = []
     entity_ids = set()
     for triple in updated_triples:
-        head_id = getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
-        tail_id = getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
+        head_id = getattr(triple.head, "ref", None) or getattr(triple.head, "id", None) or getattr(triple.head, "ref_short", None)
+        tail_id = getattr(triple.tail, "ref", None) or getattr(triple.tail, "id", None) or getattr(triple.tail, "ref_short", None)
         
         if head_id and head_id not in entity_ids:
             entities.append({
