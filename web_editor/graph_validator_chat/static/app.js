@@ -25,22 +25,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function startChat() {
     try {
-        const response = await fetch('/api/chat/start');
+        const response = await fetch('/api/questions/first');
         const data = await response.json();
         
         if (data.error) {
             addMessage('bot', `Error: ${data.error}`);
-        } else if (data.text) {
-            addMessage('bot', data.text);
-            // If there's a next_question, also display it
-            if (data.next_question) {
-                addMessage('bot', data.next_question);
-            }
+        } else if (data.question) {
+            currentQuestion = data.question;
+            addMessage('bot', data.question.text);
+            // Don't add message here - let communicator handle it
+            // Just update the UI display
+            document.getElementById('currentQuestion').innerHTML = `<p>${data.question.text}</p>`;
+            enableInput();
+        } else {
+            addMessage('bot', 'No questions available. The graph validation is complete.');
             enableInput();
         }
     } catch (error) {
         console.error('Error starting chat:', error);
-        addMessage('bot', 'Ready to chat. How can I help you validate your graph?');
+        addMessage('bot', 'Error loading questions. Please refresh the page.');
         enableInput();
     }
 }

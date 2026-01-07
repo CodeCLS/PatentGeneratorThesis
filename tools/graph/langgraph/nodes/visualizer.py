@@ -3,11 +3,7 @@ Visualizer node - decides which widgets to show and with what data.
 """
 
 from typing import TYPE_CHECKING
-
 from tools.helper.json_helper import JsonHelper
-
-# Import GraphValidatorState at runtime (not just TYPE_CHECKING)
-# This is needed because LangGraph might inspect type hints at runtime
 from tools.graph.langgraph.state import GraphValidatorState
 
 if TYPE_CHECKING:
@@ -15,37 +11,23 @@ if TYPE_CHECKING:
 
 
 def visualizer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState") -> "GraphValidatorState":
-    """
-    Visualization agent - decides which widgets to show and with what data.
-    """
+    """Visualization agent - decides which widgets to show."""
     messages = state.get("messages", [])
-    current_question_id = state.get("current_question_id")
-    # Get triples from instance, not state (to avoid serialization)
-    triples = validator.triples
     
-    # Analyze what should be visualized
     prompt = (
-        "You are a visualization agent. Your job is to decide what widgets to show.\n\n"
+        "You are a visualization agent. Decide what widgets to show.\n\n"
         f"Current question: {state.get('current_question_text', 'N/A')}\n"
-        f"Recent conversation: {messages[-3:] if len(messages) >= 3 else messages}\n\n"
-        "Widget types available:\n"
-        "- triple_editor: Edit a specific triple\n"
-        "- entity_selector: Select entities from a list\n"
-        "- importance_selector: Rate importance of a triple\n"
-        "- graph_viewer: Show a subgraph\n"
-        "- confirmation_dialog: Confirm an action\n\n"
-        "CRITICAL: Return ONLY valid JSON. No reasoning, no explanation, just the JSON object.\n\n"
+        f"Recent conversation: {messages[-3:]}\n\n"
+        "Widget types: triple_editor, entity_selector, importance_selector, graph_viewer, confirmation_dialog\n\n"
         "Return JSON:\n"
         '{"show_widget": true/false, '
         '"widget_type": "triple_editor|entity_selector|...", '
-        '"widget_data": {"triple_index": 0, "entities": [...], etc.}, '
-        '"reason": "Why this widget is needed"}\n'
+        '"widget_data": {"triple_index": 0, "entities": [...]}}\n'
     )
     
     response = validator.api_repo.chat(prompt)
-    # Use JsonHelper for robust JSON parsing (handles fences and extraction automatically)
     widget_data = JsonHelper.parse_json(str(response))
-    if widget_data is None:
+    if not widget_data:
         widget_data = {"show_widget": False, "widget_type": None, "widget_data": {}}
     
     return {
@@ -55,4 +37,3 @@ def visualizer_node(validator: "GraphValidatorLangGraph", state: "GraphValidator
         "widget_data": widget_data.get("widget_data", {}),
         "next_agent": "communicator",
     }
-
