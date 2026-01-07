@@ -16,7 +16,7 @@ class ChatResult:
 
 
 class LLmApi_Repo:
-        def __init__(self, llm_client: LLMModel = GPTOSSModel()):
+        def __init__(self, llm_client: LLMModel = DeepSeekModel()):
             self.client = llm_client
         def chat(self, message: str, **kwargs) -> dict:
             return self.client.send(message)

@@ -106,6 +106,42 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
                         changes_summary.append(f"Renamed '{old_name}' to '{new_name}'")
                         break
         
+        elif action_type == "update_entity_label":
+            entity_name = params.get("entity_name")
+            new_label = params.get("new_label")
+            if entity_name and new_label:
+                # Find entity by name
+                entity_id = None
+                for eid, name in id_to_name.items():
+                    if name == entity_name:
+                        entity_id = eid
+                        break
+                
+                if entity_id:
+                    # Update label in all triples that reference this entity
+                    updated_count = 0
+                    old_label = None
+                    for triple in triples:
+                        head_id = get_triple_head_id(triple)
+                        tail_id = get_triple_tail_id(triple)
+                        
+                        if head_id == entity_id and hasattr(triple.head, 'label'):
+                            if old_label is None:
+                                old_label = triple.head.label
+                            triple.head.label = new_label
+                            updated_count += 1
+                        if tail_id == entity_id and hasattr(triple.tail, 'label'):
+                            if old_label is None:
+                                old_label = triple.tail.label
+                            triple.tail.label = new_label
+                            updated_count += 1
+                    
+                    if updated_count > 0:
+                        if old_label:
+                            changes_summary.append(f"Updated label of '{entity_name}' from '{old_label}' to '{new_label}'")
+                        else:
+                            changes_summary.append(f"Updated label of '{entity_name}' to '{new_label}'")
+        
         elif action_type == "modify_triple":
             triple_index = params.get("triple_index")
             new_relation = params.get("new_relation")

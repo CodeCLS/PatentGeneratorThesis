@@ -2,102 +2,75 @@
 Analyzer node - analyzes the graph and generates validation questions.
 """
 
-from typing import TYPE_CHECKING, List, Union
-from tools.helper.json_helper import JsonHelper
+from typing import TYPE_CHECKING, List
 from tools.graph.langgraph.state import GraphValidatorState
-from tools.graph.langgraph.helpers import get_triple_head_id, get_triple_tail_id, get_triple_head_name, get_triple_tail_name
 from tools.graph.langgraph.question import Question
+from tools.graph.langgraph.nodes.question_creators import (
+    DuplicateTripleQuestionCreator,
+    EntityCompletenessQuestionCreator,
+    EntityMergingQuestionCreator,
+    TripleMergingQuestionCreator,
+)
 
 if TYPE_CHECKING:
     from tools.graph.langgraph.validator import GraphValidatorLangGraph
 
 
 def generate_questions(validator: "GraphValidatorLangGraph") -> List[Question]:
-    """Analyze the graph and generate validation questions."""
+    """Analyze the graph and generate validation questions using multiple question creators."""
     if not validator.triples:
         return []
     
-    # Find duplicate relations and build triple info in one pass
-    seen = {}
-    duplicate_triples = []
-    all_triples_info = []
-    
-    for i, triple in enumerate(validator.triples):
-        head_id = get_triple_head_id(triple)
-        tail_id = get_triple_tail_id(triple)
-        head_name = validator.id_to_name.get(head_id, get_triple_head_name(triple))
-        tail_name = validator.id_to_name.get(tail_id, get_triple_tail_name(triple))
-        
-        triple_info = {
-            "index": i,
-            "head": head_name,
-            "relation": triple.relation,
-            "tail": tail_name
-        }
-        all_triples_info.append(triple_info)
-        
-        # Check for duplicates
-        key = (head_name, tail_name, triple.relation)
-        if key in seen:
-            duplicate_triples.append(triple_info)
-        else:
-            seen[key] = i
-    
-    if not duplicate_triples:
-        return []
-    
-    # Build prompt with duplicate triples
-    duplicates_text = "\n".join([
-        f"  Triple {t['index']}: {t['head']} --[{t['relation']}]--> {t['tail']}"
-        for t in duplicate_triples[:5]
-    ])
-    
-    prompt = (
-        f"Graph: {len(validator.triples)} triples, {len(validator.id_to_name)} entities\n\n"
-        f"Found {len(duplicate_triples)} duplicate relations:\n{duplicates_text}\n\n"
-        "Generate 3-4 SPECIFIC questions. Each must:\n"
-        "- Include triple index (e.g., 'triple 5')\n"
-        "- Use actual entity names\n"
-        "- Focus on ONE duplicate triple\n"
-        "- Be conversational\n\n"
-        "Return ONLY JSON array:\n"
-        '[{"id": "q1", "text": "Triple 5: Entity A --[connects]--> Entity B. Should this be removed?", "category": "mistake", "priority": 8}]\n'
-    )
-    
     all_questions = []
-    for batch_num in range(3):
-        response = validator.api_repo.chat(prompt)
-        questions = JsonHelper.parse_json(str(response))
-        
-        if not questions:
-            break
-        
-        if not isinstance(questions, list):
-            questions = [questions]
-        
-        for q in questions:
-            if isinstance(q, dict):
-                q["id"] = f"q{len(all_questions) + 1}"
-                all_questions.append(Question.from_dict(q))
-            else:
-                all_questions.append(q)
     
-    return all_questions[:12]
+    # Use all question creators
+    creators = [
+        DuplicateTripleQuestionCreator(validator),
+        EntityCompletenessQuestionCreator(validator),
+        EntityMergingQuestionCreator(validator),
+        TripleMergingQuestionCreator(validator),
+    ]
+    
+    for creator in creators:
+        try:
+            questions = creator.generate_questions()
+            all_questions.extend(questions)
+        except Exception as e:
+            # Continue with other creators if one fails
+            print(f"Warning: {creator.__class__.__name__} failed: {e}")
+            continue
+    
+    return all_questions
 
 
 def analyzer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState") -> "GraphValidatorState":
     """Analysis agent - generates new questions and analyzes the graph."""
-    questions = generate_questions(validator)
+    # Check if questions already exist (avoid regenerating)
+    existing_questions = state.get("questions", [])
+    if existing_questions:
+        questions = existing_questions
+    else:
+        questions = generate_questions(validator)
+    
+    # Convert Question objects to dictionaries for state
+    questions_dict = []
+    for q in questions:
+        if isinstance(q, Question):
+            questions_dict.append(q.to_dict())
+        elif isinstance(q, dict):
+            questions_dict.append(q)
+        else:
+            questions_dict.append(q.to_dict() if hasattr(q, 'to_dict') else {"id": "", "text": str(q)})
     
     messages = state.get("messages", [])
     next_question = None
     question_id = None
     
-    if questions:
-        first_q = questions[0]
-        if isinstance(first_q, Question):
-            next_question = first_q.text
-            question_id = first_q.id
+    if questions_dict:
+        first_q = questions_dict[0]
+        if isinstance(first_q, dict):
+            next_question = first_q.get("text")
+            question_id = first_q.get("id")
         else:
             question = Question.from_dict(first_q.to_dict() if hasattr(first_q, 'to_dict') else {"id": "", "text": str(first_q)})
             next_question = question.text
@@ -108,9 +81,9 @@ def analyzer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
     return {
         **state,
         "messages": messages,
-        "questions": questions,
+        "questions": questions_dict,  # Use converted dicts
         "current_question_text": next_question,
         "current_question_id": question_id,
-        "validation_complete": not questions,
-        "next_agent": None if not questions else "communicator",
+        "validation_complete": not questions_dict,
+        "next_agent": None if not questions_dict else "communicator",
     }

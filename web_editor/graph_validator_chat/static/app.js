@@ -160,11 +160,6 @@ async function sendAnswer() {
                 addMessage('bot', `[Widget: ${data.widget_type}]`);
             }
             
-            // Show next question if provided
-            if (data.next_question) {
-                addMessage('bot', `Next: ${data.next_question}`);
-            }
-            
             // Check if validation is complete
             if (data.validation_complete) {
                 addMessage('bot', '🎉 Graph validation complete!');

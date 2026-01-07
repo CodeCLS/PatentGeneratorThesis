@@ -38,7 +38,6 @@ def initialize_validator(
         triples=triples,
         id_to_name=id_to_name,
     )
-    validator.analyze(graph=graph, triples=triples, id_to_name=id_to_name)
     return validator
 
 

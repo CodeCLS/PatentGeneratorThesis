@@ -55,8 +55,42 @@ class GraphValidatorLangGraph:
         self.workflow = self._build_graph()
         self.app = self.workflow.compile()
         self.recursion_limit = 10
-        self._current_state = None
         self._initial_questions = []
+        
+        # Run initial stream to generate questions (starts at "analyzer" entry point)
+        initial_state: Dict[str, Any] = {
+            "messages": [],
+            "current_question_id": None,
+            "current_question_text": None,
+            "questions": [],
+            "graph_nodes_count": self.graph.number_of_nodes() if self.graph else 0,
+            "graph_edges_count": self.graph.number_of_edges() if self.graph else 0,
+            "triples_count": len(self.triples),
+            "entities_count": len(self.id_to_name),
+            "next_agent": None,
+            "validation_complete": False,
+            "hidden_actions": [],
+            "display_actions": [],
+            "show_widget": False,
+            "widget_type": None,
+            "widget_data": {},
+            "conversation_turn": 0,
+            "changes_summary": [],
+            "stats": {},
+        }
+        
+        # Run stream once to generate questions
+        try:
+            config = {"recursion_limit": self.recursion_limit}
+            for state in self.app.stream(initial_state, config=config):
+                if state:
+                    last_node = list(state.keys())[-1] if state else None
+                    if last_node:
+                        self._current_state = state[last_node]
+        except Exception as e:
+            # If initialization fails, start with empty state
+            self._current_state = initial_state
+            print(f"Warning: Failed to initialize questions: {e}")
     
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph state graph with all agent nodes."""
@@ -83,7 +117,7 @@ class GraphValidatorLangGraph:
         workflow.add_node("analyzer", analyzer_wrapper)
         workflow.add_node("modifier", modifier_wrapper)
         
-        workflow.set_entry_point("communicator")
+        workflow.set_entry_point("analyzer")
         
         routing_map = {
             "retriever": "retriever",
@@ -104,30 +138,8 @@ class GraphValidatorLangGraph:
     
     def chat(self, user_message: str, config: Optional[Dict] = None) -> Dict[str, Any]:
         """Process a user message through the agent graph."""
-        if not self._current_state:
-            initial_state: Dict[str, Any] = {
-                "messages": [],
-                "current_question_id": None,
-                "current_question_text": None,
-                "questions": self._initial_questions,
-                "graph_nodes_count": self.graph.number_of_nodes() if self.graph else 0,
-                "graph_edges_count": self.graph.number_of_edges() if self.graph else 0,
-                "triples_count": len(self.triples),
-                "entities_count": len(self.id_to_name),
-                "next_agent": None,
-                "validation_complete": False,
-                "hidden_actions": [],
-                "display_actions": [],
-                "show_widget": False,
-                "widget_type": None,
-                "widget_data": {},
-                "conversation_turn": 0,
-                "changes_summary": [],
-                "stats": {},
-            }
-            self._current_state = initial_state
-        else:
-            initial_state = self._current_state.copy()
+        # _current_state is already initialized in __init__
+        initial_state = self._current_state.copy()
         
         initial_state["messages"] = initial_state.get("messages", []) + [
             {"role": "user", "content": user_message}
@@ -191,26 +203,3 @@ class GraphValidatorLangGraph:
             "stats": state_values.get("stats", {}),
         }
     
-    def analyze(
-        self,
-        graph: Optional[nx.MultiDiGraph] = None,
-        triples: Optional[List[Triple]] = None,
-        id_to_name: Optional[Dict[str, str]] = None,
-    ) -> None:
-        """Analyze a graph and/or triples to find issues."""
-        if graph is not None:
-            self.graph = graph
-        if triples is not None:
-            self.triples = triples
-        if id_to_name is not None:
-            self.id_to_name = id_to_name
-        
-        self.tools = GraphValidatorTools(
-            graph=self.graph or nx.MultiDiGraph(),
-            triples=self.triples,
-            id_to_name=self.id_to_name,
-        )
-        
-        from tools.graph.langgraph.nodes.analyzer import generate_questions
-        self._initial_questions = generate_questions(self)
-        self._current_state = None
