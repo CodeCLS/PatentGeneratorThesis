@@ -6,6 +6,11 @@ import json
 from typing import TYPE_CHECKING
 from tools.helper.json_helper import JsonHelper
 from tools.graph.langgraph.state import GraphValidatorState
+from tools.graph.constants_graph import (
+    AGENT_COMMUNICATOR,
+    STATE_MESSAGES,
+    STATE_NEXT_AGENT,
+)
 
 if TYPE_CHECKING:
     from tools.graph.langgraph.validator import GraphValidatorLangGraph
@@ -13,7 +18,7 @@ if TYPE_CHECKING:
 
 def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState") -> "GraphValidatorState":
     """Retrieval agent - fetches detailed information about entities and triples."""
-    messages = state.get("messages", [])
+    messages = state.get(STATE_MESSAGES, [])
     last_bot_message = None
     for msg in reversed(messages):
         if msg.get("role") == "bot":
@@ -53,6 +58,6 @@ def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorS
     
     return {
         **state,
-        "messages": messages + [{"role": "system", "content": retrieval_message}],
-        "next_agent": "communicator",
+        STATE_MESSAGES: messages + [{"role": "system", "content": retrieval_message}],
+        STATE_NEXT_AGENT: AGENT_COMMUNICATOR,
     }

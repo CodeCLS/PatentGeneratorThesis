@@ -7,6 +7,19 @@ from tools.graph.Triple import Triple
 from tools.sentence.entity import Entity
 from tools.graph.langgraph.state import GraphValidatorState
 from tools.graph.langgraph.helpers import get_triple_head_id, get_triple_tail_id
+from tools.graph.constants_graph import (
+    AGENT_COMMUNICATOR,
+    ACTION_ADD_TRIPLES,
+    ACTION_DELETE_TRIPLES,
+    ACTION_MERGE_ENTITIES,
+    ACTION_RENAME_ENTITY,
+    ACTION_UPDATE_ENTITY_LABEL,
+    ACTION_MODIFY_TRIPLE,
+    STATE_HIDDEN_ACTIONS,
+    STATE_CHANGES_SUMMARY,
+    STATE_STATS,
+    STATE_NEXT_AGENT,
+)
 
 if TYPE_CHECKING:
     from tools.graph.langgraph.validator import GraphValidatorLangGraph
@@ -14,7 +27,7 @@ if TYPE_CHECKING:
 
 def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState") -> "GraphValidatorState":
     """Modification agent - applies graph modifications based on hidden actions."""
-    hidden_actions = state.get("hidden_actions", [])
+    hidden_actions = state.get(STATE_HIDDEN_ACTIONS, [])
     changes_summary = []
     graph = validator.graph
     triples = validator.triples.copy()
@@ -24,7 +37,7 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
         action_type = action.get("type")
         params = action.get("parameters", {})
         
-        if action_type == "add_triples":
+        if action_type == ACTION_ADD_TRIPLES:
             new_triples_data = params.get("triples", [])
             added_count = 0
             for triple_data in new_triples_data:
@@ -57,7 +70,7 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
             if added_count > 0:
                 changes_summary.append(f"Added {added_count} triples")
         
-        elif action_type == "delete_triples":
+        elif action_type == ACTION_DELETE_TRIPLES:
             indices = sorted(params.get("triple_indices", []), reverse=True)
             deleted_count = 0
             for idx in indices:
@@ -67,7 +80,7 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
             if deleted_count > 0:
                 changes_summary.append(f"Deleted {deleted_count} triples")
         
-        elif action_type == "merge_entities":
+        elif action_type == ACTION_MERGE_ENTITIES:
             entity_names = params.get("entity_names", [])
             if len(entity_names) >= 2:
                 target_name = entity_names[0]
@@ -96,7 +109,7 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
                     
                     changes_summary.append(f"Merged {len(source_names)} entities into '{target_name}'")
         
-        elif action_type == "rename_entity":
+        elif action_type == ACTION_RENAME_ENTITY:
             old_name = params.get("old_name")
             new_name = params.get("new_name")
             if old_name and new_name:
@@ -106,7 +119,7 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
                         changes_summary.append(f"Renamed '{old_name}' to '{new_name}'")
                         break
         
-        elif action_type == "update_entity_label":
+        elif action_type == ACTION_UPDATE_ENTITY_LABEL:
             entity_name = params.get("entity_name")
             new_label = params.get("new_label")
             if entity_name and new_label:
@@ -142,7 +155,7 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
                         else:
                             changes_summary.append(f"Updated label of '{entity_name}' to '{new_label}'")
         
-        elif action_type == "modify_triple":
+        elif action_type == ACTION_MODIFY_TRIPLE:
             triple_index = params.get("triple_index")
             new_relation = params.get("new_relation")
             if triple_index is not None and 0 <= triple_index < len(triples):
@@ -165,8 +178,8 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
     
     return {
         **state,
-        "hidden_actions": [],
-        "changes_summary": state.get("changes_summary", []) + changes_summary,
-        "stats": stats,
-        "next_agent": "communicator",
+        STATE_HIDDEN_ACTIONS: [],
+        STATE_CHANGES_SUMMARY: state.get(STATE_CHANGES_SUMMARY, []) + changes_summary,
+        STATE_STATS: stats,
+        STATE_NEXT_AGENT: AGENT_COMMUNICATOR,
     }

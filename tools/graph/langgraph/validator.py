@@ -13,8 +13,25 @@ except ImportError:
 
 from tools.api.llm_api_repo import LLmApi_Repo
 from tools.graph.Triple import Triple
-from tools.graph.langgraph.state import GraphValidatorState
+from tools.graph.langgraph.state import GraphValidatorState, create_state
 from tools.graph.langgraph.tools import GraphValidatorTools
+from tools.graph.constants_graph import (
+    AGENT_COMMUNICATOR,
+    AGENT_ANALYZER,
+    AGENT_MODIFIER,
+    AGENT_RETRIEVER,
+    AGENT_VISUALIZER,
+    STATE_MESSAGES,
+    STATE_CONVERSATION_TURN,
+    STATE_CURRENT_QUESTION_TEXT,
+    STATE_VALIDATION_COMPLETE,
+    STATE_HIDDEN_ACTIONS,
+    STATE_SHOW_WIDGET,
+    STATE_WIDGET_TYPE,
+    STATE_WIDGET_DATA,
+    STATE_CHANGES_SUMMARY,
+    STATE_STATS,
+)
 
 # Ensure GraphValidatorState is available in module globals for LangGraph evaluation
 globals()['GraphValidatorState'] = GraphValidatorState
@@ -57,27 +74,13 @@ class GraphValidatorLangGraph:
         self.recursion_limit = 10
         self._initial_questions = []
         
-        # Run initial stream to generate questions (starts at "analyzer" entry point)
-        initial_state: Dict[str, Any] = {
-            "messages": [],
-            "current_question_id": None,
-            "current_question_text": None,
-            "questions": [],
-            "graph_nodes_count": self.graph.number_of_nodes() if self.graph else 0,
-            "graph_edges_count": self.graph.number_of_edges() if self.graph else 0,
-            "triples_count": len(self.triples),
-            "entities_count": len(self.id_to_name),
-            "next_agent": None,
-            "validation_complete": False,
-            "hidden_actions": [],
-            "display_actions": [],
-            "show_widget": False,
-            "widget_type": None,
-            "widget_data": {},
-            "conversation_turn": 0,
-            "changes_summary": [],
-            "stats": {},
-        }
+        # Run initial stream to generate questions (starts at analyzer entry point)
+        initial_state = create_state(
+            graph_nodes_count=self.graph.number_of_nodes() if self.graph else 0,
+            graph_edges_count=self.graph.number_of_edges() if self.graph else 0,
+            triples_count=len(self.triples),
+            entities_count=len(self.id_to_name),
+        )
         
         # Run stream once to generate questions
         try:
@@ -94,7 +97,7 @@ class GraphValidatorLangGraph:
     
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph state graph with all agent nodes."""
-        workflow = StateGraph(GraphValidatorState)
+        workflow = StateGraph[GraphValidatorState, None, GraphValidatorState, GraphValidatorState](GraphValidatorState)
         
         def communicator_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
             return communicator_node(self, state)
@@ -111,28 +114,28 @@ class GraphValidatorLangGraph:
         def modifier_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
             return modifier_node(self, state)
         
-        workflow.add_node("communicator", communicator_wrapper)
-        workflow.add_node("retriever", retriever_wrapper)
-        workflow.add_node("visualizer", visualizer_wrapper)
-        workflow.add_node("analyzer", analyzer_wrapper)
-        workflow.add_node("modifier", modifier_wrapper)
+        workflow.add_node(AGENT_COMMUNICATOR, communicator_wrapper)
+        workflow.add_node(AGENT_RETRIEVER, retriever_wrapper)
+        workflow.add_node(AGENT_VISUALIZER, visualizer_wrapper)
+        workflow.add_node(AGENT_ANALYZER, analyzer_wrapper)
+        workflow.add_node(AGENT_MODIFIER, modifier_wrapper)
         
-        workflow.set_entry_point("analyzer")
+        workflow.set_entry_point(AGENT_ANALYZER)
         
         routing_map = {
-            "retriever": "retriever",
-            "visualizer": "visualizer",
-            "analyzer": "analyzer",
-            "modifier": "modifier",
+            AGENT_RETRIEVER: AGENT_RETRIEVER,
+            AGENT_VISUALIZER: AGENT_VISUALIZER,
+            AGENT_ANALYZER: AGENT_ANALYZER,
+            AGENT_MODIFIER: AGENT_MODIFIER,
             END: END,
             "__end__": END,
         }
         
-        workflow.add_conditional_edges("communicator", route_from_communicator, routing_map)
-        workflow.add_conditional_edges("retriever", route_from_retriever, {**routing_map, "communicator": "communicator"})
-        workflow.add_conditional_edges("visualizer", route_from_visualizer, {**routing_map, "communicator": "communicator"})
-        workflow.add_conditional_edges("analyzer", route_from_analyzer, {**routing_map, "communicator": "communicator"})
-        workflow.add_conditional_edges("modifier", route_from_modifier, {**routing_map, "communicator": "communicator"})
+        workflow.add_conditional_edges(AGENT_COMMUNICATOR, route_from_communicator, routing_map)
+        workflow.add_conditional_edges(AGENT_RETRIEVER, route_from_retriever, {**routing_map, AGENT_COMMUNICATOR: AGENT_COMMUNICATOR})
+        workflow.add_conditional_edges(AGENT_VISUALIZER, route_from_visualizer, {**routing_map, AGENT_COMMUNICATOR: AGENT_COMMUNICATOR})
+        workflow.add_conditional_edges(AGENT_ANALYZER, route_from_analyzer, {**routing_map, AGENT_COMMUNICATOR: AGENT_COMMUNICATOR})
+        workflow.add_conditional_edges(AGENT_MODIFIER, route_from_modifier, {**routing_map, AGENT_COMMUNICATOR: AGENT_COMMUNICATOR})
         
         return workflow
     
@@ -141,10 +144,10 @@ class GraphValidatorLangGraph:
         # _current_state is already initialized in __init__
         initial_state = self._current_state.copy()
         
-        initial_state["messages"] = initial_state.get("messages", []) + [
+        initial_state[STATE_MESSAGES] = initial_state.get(STATE_MESSAGES, []) + [
             {"role": "user", "content": user_message}
         ]
-        initial_state["conversation_turn"] = initial_state.get("conversation_turn", 0) + 1
+        initial_state[STATE_CONVERSATION_TURN] = initial_state.get(STATE_CONVERSATION_TURN, 0) + 1
         
         final_state = None
         try:
@@ -159,32 +162,32 @@ class GraphValidatorLangGraph:
             return {
                 "text": f"Error: {str(e)}",
                 "next_question": None,
-                "validation_complete": False,
-                "hidden_actions": [],
-                "show_widget": False,
-                "widget_type": None,
-                "widget_data": {},
-                "changes_summary": [],
-                "stats": {},
+                STATE_VALIDATION_COMPLETE: False,
+                STATE_HIDDEN_ACTIONS: [],
+                STATE_SHOW_WIDGET: False,
+                STATE_WIDGET_TYPE: None,
+                STATE_WIDGET_DATA: {},
+                STATE_CHANGES_SUMMARY: [],
+                STATE_STATS: {},
             }
         
         if not final_state:
             return {
                 "text": "No response generated.",
                 "next_question": None,
-                "validation_complete": False,
-                "hidden_actions": [],
-                "show_widget": False,
-                "widget_type": None,
-                "widget_data": {},
-                "changes_summary": [],
-                "stats": {},
+                STATE_VALIDATION_COMPLETE: False,
+                STATE_HIDDEN_ACTIONS: [],
+                STATE_SHOW_WIDGET: False,
+                STATE_WIDGET_TYPE: None,
+                STATE_WIDGET_DATA: {},
+                STATE_CHANGES_SUMMARY: [],
+                STATE_STATS: {},
             }
         
         last_node = list(final_state.keys())[-1] if final_state else None
         state_values = final_state[last_node] if last_node else initial_state
         
-        messages = state_values.get("messages", [])
+        messages = state_values.get(STATE_MESSAGES, [])
         last_bot_msg = None
         for msg in reversed(messages):
             if msg.get("role") == "bot":
@@ -193,13 +196,13 @@ class GraphValidatorLangGraph:
         
         return {
             "text": last_bot_msg or "Response processed.",
-            "next_question": state_values.get("current_question_text"),
-            "validation_complete": state_values.get("validation_complete", False),
-            "hidden_actions": state_values.get("hidden_actions", []),
-            "show_widget": state_values.get("show_widget", False),
-            "widget_type": state_values.get("widget_type"),
-            "widget_data": state_values.get("widget_data", {}),
-            "changes_summary": state_values.get("changes_summary", []),
-            "stats": state_values.get("stats", {}),
+            "next_question": state_values.get(STATE_CURRENT_QUESTION_TEXT),
+            STATE_VALIDATION_COMPLETE: state_values.get(STATE_VALIDATION_COMPLETE, False),
+            STATE_HIDDEN_ACTIONS: state_values.get(STATE_HIDDEN_ACTIONS, []),
+            STATE_SHOW_WIDGET: state_values.get(STATE_SHOW_WIDGET, False),
+            STATE_WIDGET_TYPE: state_values.get(STATE_WIDGET_TYPE),
+            STATE_WIDGET_DATA: state_values.get(STATE_WIDGET_DATA, {}),
+            STATE_CHANGES_SUMMARY: state_values.get(STATE_CHANGES_SUMMARY, []),
+            STATE_STATS: state_values.get(STATE_STATS, {}),
         }
     

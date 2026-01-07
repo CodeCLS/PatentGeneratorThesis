@@ -3,6 +3,26 @@ State definition for LangGraph-based Graph Validator.
 """
 
 from typing import Dict, List, Optional, Any, TypedDict, Annotated
+from tools.graph.constants_graph import (
+    STATE_MESSAGES,
+    STATE_CURRENT_QUESTION_ID,
+    STATE_CURRENT_QUESTION_TEXT,
+    STATE_QUESTIONS,
+    STATE_GRAPH_NODES_COUNT,
+    STATE_GRAPH_EDGES_COUNT,
+    STATE_TRIPLES_COUNT,
+    STATE_ENTITIES_COUNT,
+    STATE_NEXT_AGENT,
+    STATE_VALIDATION_COMPLETE,
+    STATE_HIDDEN_ACTIONS,
+    STATE_DISPLAY_ACTIONS,
+    STATE_SHOW_WIDGET,
+    STATE_WIDGET_TYPE,
+    STATE_WIDGET_DATA,
+    STATE_CONVERSATION_TURN,
+    STATE_CHANGES_SUMMARY,
+    STATE_STATS,
+)
 
 
 class GraphValidatorState(TypedDict):
@@ -38,4 +58,30 @@ class GraphValidatorState(TypedDict):
     conversation_turn: int  # Current turn number
     changes_summary: List[str]  # Summary of changes made
     stats: Dict[str, Any]  # Graph statistics
+
+
+def create_state(**kwargs) -> GraphValidatorState:
+    """Create a GraphValidatorState dict with defaults."""
+    defaults: GraphValidatorState = {
+        STATE_MESSAGES: [],
+        STATE_CURRENT_QUESTION_ID: None,
+        STATE_CURRENT_QUESTION_TEXT: None,
+        STATE_QUESTIONS: [],
+        STATE_GRAPH_NODES_COUNT: 0,
+        STATE_GRAPH_EDGES_COUNT: 0,
+        STATE_TRIPLES_COUNT: 0,
+        STATE_ENTITIES_COUNT: 0,
+        STATE_NEXT_AGENT: None,
+        STATE_VALIDATION_COMPLETE: False,
+        STATE_HIDDEN_ACTIONS: [],
+        STATE_DISPLAY_ACTIONS: [],
+        STATE_SHOW_WIDGET: False,
+        STATE_WIDGET_TYPE: None,
+        STATE_WIDGET_DATA: {},
+        STATE_CONVERSATION_TURN: 0,
+        STATE_CHANGES_SUMMARY: [],
+        STATE_STATS: {},
+    }
+    defaults.update(kwargs)
+    return defaults
 

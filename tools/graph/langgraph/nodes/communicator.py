@@ -13,6 +13,22 @@ from tools.helper.json_helper import JsonHelper
 from tools.graph.langgraph.helpers import extract_text_from_response, get_triple_head_name, get_triple_tail_name
 from tools.graph.langgraph.state import GraphValidatorState
 from tools.graph.langgraph.question import Question
+from tools.graph.constants_graph import (
+    AGENT_ANALYZER,
+    AGENT_MODIFIER,
+    ACTION_DELETE_TRIPLES,
+    ACTION_UPDATE_ENTITY_LABEL,
+    ACTION_MERGE_ENTITIES,
+    STATE_MESSAGES,
+    STATE_CURRENT_QUESTION_TEXT,
+    STATE_QUESTIONS,
+    STATE_CHANGES_SUMMARY,
+    STATE_CURRENT_QUESTION_ID,
+    STATE_VALIDATION_COMPLETE,
+    STATE_NEXT_AGENT,
+    STATE_HIDDEN_ACTIONS,
+    STATE_SHOW_WIDGET,
+)
 
 if TYPE_CHECKING:
     from tools.graph.langgraph.validator import GraphValidatorLangGraph
@@ -20,9 +36,9 @@ if TYPE_CHECKING:
 
 def build_communicator_prompt(validator: "GraphValidatorLangGraph", state: "GraphValidatorState", user_message: Optional[str]) -> str:
     """Build prompt for the communicator agent."""
-    messages = state.get("messages", [])
-    current_question = state.get("current_question_text")
-    questions = state.get("questions", [])
+    messages = state.get(STATE_MESSAGES, [])
+    current_question = state.get(STATE_CURRENT_QUESTION_TEXT)
+    questions = state.get(STATE_QUESTIONS, [])
     remaining_count = len(questions)
     triples = validator.triples
     id_to_name = validator.id_to_name
@@ -60,7 +76,7 @@ def build_communicator_prompt(validator: "GraphValidatorLangGraph", state: "Grap
     )
     
     # Add changes that were actually made
-    changes_summary = state.get("changes_summary", [])
+    changes_summary = state.get(STATE_CHANGES_SUMMARY, [])
     if changes_summary:
         changes_text = "\n".join([f"- {c}" for c in changes_summary[-5:]])  # Last 5 changes
         prompt += (
@@ -91,9 +107,11 @@ def build_communicator_prompt(validator: "GraphValidatorLangGraph", state: "Grap
             "- ASKING A FOLLOW-UP (clarification, more info, etc.) - keep current question active\n"
             "- RESOLVING/ANSWERING the question (yes/no, explicit answer, 'move on', 'next', etc.) - mark question as resolved\n\n"
             "If they want to DELETE/REMOVE a triple, include hidden_actions: "
-            '[{"type": "delete_triples", "parameters": {"triple_indices": [0]}}]\n'
+            f'[{{"type": "{ACTION_DELETE_TRIPLES}", "parameters": {{"triple_indices": [0]}}}}]\n'
             "If they want to UPDATE an entity label, include: "
-            '[{"type": "update_entity_label", "parameters": {"entity_name": "Entity Name", "new_label": "NEW_LABEL"}}]\n'
+            f'[{{"type": "{ACTION_UPDATE_ENTITY_LABEL}", "parameters": {{"entity_name": "Entity Name", "new_label": "NEW_LABEL"}}}}]\n'
+            "If they want to MERGE entities, include: "
+            f'[{{"type": "{ACTION_MERGE_ENTITIES}", "parameters": {{"entity_names": ["Entity1", "Entity2"]}}}}]\n'
             "If they RESOLVED the question AND there are more questions, you can mention moving to the next one.\n"
             "If they're asking a FOLLOW-UP, stay focused on the current question.\n\n"
         )
@@ -111,11 +129,11 @@ def build_communicator_prompt(validator: "GraphValidatorLangGraph", state: "Grap
 
 def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState") -> "GraphValidatorState":
     """Main communication agent - handles user messages and coordinates other agents."""
-    messages = state.get("messages", [])
-    current_question_id = state.get("current_question_id")
-    current_question_text = state.get("current_question_text")
-    questions = state.get("questions", [])
-    validation_complete = state.get("validation_complete", False)
+    messages = state.get(STATE_MESSAGES, [])
+    current_question_id = state.get(STATE_CURRENT_QUESTION_ID)
+    current_question_text = state.get(STATE_CURRENT_QUESTION_TEXT)
+    questions = state.get(STATE_QUESTIONS, [])
+    validation_complete = state.get(STATE_VALIDATION_COMPLETE, False)
     
     # Get the last user message
     user_message = None
@@ -130,22 +148,22 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         if "[Retrieved Information]" in last_message.get("content", ""):
             return {
                 **state,
-                "messages": messages + [{"role": "bot", "content": "I've retrieved the information. How would you like to proceed?"}],
-                "next_agent": END,
+                STATE_MESSAGES: messages + [{"role": "bot", "content": "I've retrieved the information. How would you like to proceed?"}],
+                STATE_NEXT_AGENT: END,
             }
-        elif state.get("show_widget"):
+        elif state.get(STATE_SHOW_WIDGET):
             return {
                 **state,
-                "messages": messages + [{"role": "bot", "content": "I've prepared a visualization. Please interact with it."}],
-                "next_agent": END,
+                STATE_MESSAGES: messages + [{"role": "bot", "content": "I've prepared a visualization. Please interact with it."}],
+                STATE_NEXT_AGENT: END,
             }
-        elif state.get("changes_summary"):
-            changes = state.get("changes_summary", [])
+        elif state.get(STATE_CHANGES_SUMMARY):
+            changes = state.get(STATE_CHANGES_SUMMARY, [])
             changes_text = "\n".join([f"- {c}" for c in changes[-3:]])
             return {
                 **state,
-                "messages": messages + [{"role": "bot", "content": f"I've made these changes:\n{changes_text}\n\nWhat would you like to do next?"}],
-                "next_agent": END,
+                STATE_MESSAGES: messages + [{"role": "bot", "content": f"I've made these changes:\n{changes_text}\n\nWhat would you like to do next?"}],
+                STATE_NEXT_AGENT: END,
             }
     
     # Initial state - present first question
@@ -158,17 +176,17 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         
         return {
             **state,
-            "messages": messages + [{"role": "bot", "content": question.text}],
-            "current_question_id": question.id,
-            "current_question_text": question.text,
-            "next_agent": END,
+            STATE_MESSAGES: messages + [{"role": "bot", "content": question.text}],
+            STATE_CURRENT_QUESTION_ID: question.id,
+            STATE_CURRENT_QUESTION_TEXT: question.text,
+            STATE_NEXT_AGENT: END,
         }
     
     # No questions - route to analyzer
     if not questions:
         return {
             **state,
-            "next_agent": "analyzer",
+            STATE_NEXT_AGENT: AGENT_ANALYZER,
         }
     
     # Build prompt and call LLM
@@ -219,14 +237,13 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         current_question_text = None
     
     # Determine next agent
-        # Determine next agent
     if next_agent:
         agent_to_call = next_agent
     elif hidden_actions:
-        agent_to_call = "modifier"
+        agent_to_call = AGENT_MODIFIER
     elif not validation_complete and not updated_questions:
         # Only route to analyzer if there are NO questions (to generate new ones)
-        agent_to_call = "analyzer"
+        agent_to_call = AGENT_ANALYZER
     else:
         agent_to_call = END
     
@@ -254,11 +271,11 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
     
     return {
         **state,
-        "messages": messages + [{"role": "bot", "content": bot_message}],
-        "questions": updated_questions,
-        "next_agent": agent_to_call,
-        "hidden_actions": hidden_actions,
-        "current_question_text": final_question_text,
-        "current_question_id": final_question_id,
-        "validation_complete": validation_complete,
+        STATE_MESSAGES: messages + [{"role": "bot", "content": bot_message}],
+        STATE_QUESTIONS: updated_questions,
+        STATE_NEXT_AGENT: agent_to_call,
+        STATE_HIDDEN_ACTIONS: hidden_actions,
+        STATE_CURRENT_QUESTION_TEXT: final_question_text,
+        STATE_CURRENT_QUESTION_ID: final_question_id,
+        STATE_VALIDATION_COMPLETE: validation_complete,
     }

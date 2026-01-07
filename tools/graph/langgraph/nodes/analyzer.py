@@ -11,6 +11,15 @@ from tools.graph.langgraph.nodes.question_creators import (
     EntityMergingQuestionCreator,
     TripleMergingQuestionCreator,
 )
+from tools.graph.constants_graph import (
+    AGENT_COMMUNICATOR,
+    STATE_MESSAGES,
+    STATE_QUESTIONS,
+    STATE_CURRENT_QUESTION_TEXT,
+    STATE_CURRENT_QUESTION_ID,
+    STATE_VALIDATION_COMPLETE,
+    STATE_NEXT_AGENT,
+)
 
 if TYPE_CHECKING:
     from tools.graph.langgraph.validator import GraphValidatorLangGraph
@@ -46,7 +55,7 @@ def generate_questions(validator: "GraphValidatorLangGraph") -> List[Question]:
 def analyzer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState") -> "GraphValidatorState":
     """Analysis agent - generates new questions and analyzes the graph."""
     # Check if questions already exist (avoid regenerating)
-    existing_questions = state.get("questions", [])
+    existing_questions = state.get(STATE_QUESTIONS, [])
     if existing_questions:
         questions = existing_questions
     else:
@@ -62,7 +71,7 @@ def analyzer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
         else:
             questions_dict.append(q.to_dict() if hasattr(q, 'to_dict') else {"id": "", "text": str(q)})
     
-    messages = state.get("messages", [])
+    messages = state.get(STATE_MESSAGES, [])
     next_question = None
     question_id = None
     
@@ -80,10 +89,10 @@ def analyzer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
     
     return {
         **state,
-        "messages": messages,
-        "questions": questions_dict,  # Use converted dicts
-        "current_question_text": next_question,
-        "current_question_id": question_id,
-        "validation_complete": not questions_dict,
-        "next_agent": None if not questions_dict else "communicator",
+        STATE_MESSAGES: messages,
+        STATE_QUESTIONS: questions_dict,  # Use converted dicts
+        STATE_CURRENT_QUESTION_TEXT: next_question,
+        STATE_CURRENT_QUESTION_ID: question_id,
+        STATE_VALIDATION_COMPLETE: not questions_dict,
+        STATE_NEXT_AGENT: None if not questions_dict else AGENT_COMMUNICATOR,
     }
