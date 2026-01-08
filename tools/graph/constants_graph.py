@@ -2,14 +2,15 @@
 Constants for graph-related operations.
 """
 
-# Agent names for LangGraph validator
+AGENT_ORCHESTRATOR = "orchestrator"
 AGENT_COMMUNICATOR = "communicator"
 AGENT_ANALYZER = "analyzer"
 AGENT_MODIFIER = "modifier"
 AGENT_RETRIEVER = "retriever"
 AGENT_VISUALIZER = "visualizer"
+AGENT_FORK = "fork"  # Fork node for parallel execution
+AGENT_MERGE = "merge"  # Merge node for combining parallel results
 
-# Action types for graph modifications
 ACTION_ADD_TRIPLES = "add_triples"
 ACTION_DELETE_TRIPLES = "delete_triples"
 ACTION_MERGE_ENTITIES = "merge_entities"
@@ -17,7 +18,6 @@ ACTION_RENAME_ENTITY = "rename_entity"
 ACTION_UPDATE_ENTITY_LABEL = "update_entity_label"
 ACTION_MODIFY_TRIPLE = "modify_triple"
 
-# State dictionary keys for GraphValidatorState
 STATE_MESSAGES = "messages"
 STATE_CURRENT_QUESTION_ID = "current_question_id"
 STATE_CURRENT_QUESTION_TEXT = "current_question_text"
@@ -36,4 +36,10 @@ STATE_WIDGET_DATA = "widget_data"
 STATE_CONVERSATION_TURN = "conversation_turn"
 STATE_CHANGES_SUMMARY = "changes_summary"
 STATE_STATS = "stats"
+STATE_AGENT_QUEUE = "agent_queue"
+STATE_MODE = "mode"
+STATE_PLAN = "plan"
+STATE_NEEDS_RETRIEVAL = "needs_retrieval"
+STATE_WRITE = "write"
+STATE_RESPONSE_STYLE = "response_style"
 

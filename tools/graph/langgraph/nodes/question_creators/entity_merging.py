@@ -65,6 +65,7 @@ class EntityMergingQuestionCreator(BaseQuestionCreator):
             "Generate 2-4 SPECIFIC questions. Each must:\n"
             "- Identify specific entity pairs that might be merged\n"
             "- Use actual entity names\n"
+            "- And contain all important inforation about this triple \n\n"
             "- Ask if they represent the same concept\n"
             "- Be conversational\n\n"
             "Return ONLY JSON array:\n"

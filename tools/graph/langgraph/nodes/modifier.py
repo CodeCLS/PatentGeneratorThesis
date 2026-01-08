@@ -34,8 +34,16 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
     id_to_name = validator.id_to_name.copy()
     
     for action in hidden_actions:
+        # Skip if action is not a dictionary
+        if not isinstance(action, dict):
+            continue
+        
         action_type = action.get("type")
         params = action.get("parameters", {})
+        
+        # Ensure params is a dictionary
+        if not isinstance(params, dict):
+            params = {}
         
         if action_type == ACTION_ADD_TRIPLES:
             new_triples_data = params.get("triples", [])

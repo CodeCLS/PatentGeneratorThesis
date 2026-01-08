@@ -47,6 +47,7 @@ class TripleMergingQuestionCreator(BaseQuestionCreator):
             "- Include triple indices (e.g., 'triple 5')\n"
             "- Use actual entity names and relations\n"
             "- Be conversational\n\n"
+            "- And contain all important inforation about this triple \n\n"
             "Return ONLY JSON array:\n"
             '[{"id": "q1", "text": "Triples 5 and 7 both connect Entity A to Entity B. Should these be merged into one?", "category": "merging", "priority": 6}]\n'
         )

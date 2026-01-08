@@ -318,7 +318,6 @@ header h1 {
     font-weight: 400;
 }
 
-/* Scrollbar styling for Notion-like appearance */
 .triples-scroll::-webkit-scrollbar,
 .messages::-webkit-scrollbar {
     width: 8px;
@@ -340,7 +339,6 @@ header h1 {
     background: rgba(55, 53, 47, 0.3);
 }
 
-/* Widget styles */
 .widget-container {
     margin: 16px 0;
 }
@@ -443,3 +441,4 @@ header h1 {
 .connection-widget li.info {
     color: rgba(55, 53, 47, 0.7);
 }
+

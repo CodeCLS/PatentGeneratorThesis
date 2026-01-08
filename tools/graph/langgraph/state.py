@@ -2,7 +2,10 @@
 State definition for LangGraph-based Graph Validator.
 """
 
-from typing import Dict, List, Optional, Any, TypedDict, Annotated
+from typing import Dict, List, Optional, Any, TypedDict, Annotated, Union
+from tools.graph.langgraph.question import Question
+from tools.graph.langgraph.message import Message
+from tools.graph.langgraph.message.widgets import Widget
 from tools.graph.constants_graph import (
     STATE_MESSAGES,
     STATE_CURRENT_QUESTION_ID,
@@ -13,6 +16,7 @@ from tools.graph.constants_graph import (
     STATE_TRIPLES_COUNT,
     STATE_ENTITIES_COUNT,
     STATE_NEXT_AGENT,
+    STATE_AGENT_QUEUE,
     STATE_VALIDATION_COMPLETE,
     STATE_HIDDEN_ACTIONS,
     STATE_DISPLAY_ACTIONS,
@@ -22,18 +26,23 @@ from tools.graph.constants_graph import (
     STATE_CONVERSATION_TURN,
     STATE_CHANGES_SUMMARY,
     STATE_STATS,
+    STATE_MODE,
+    STATE_PLAN,
+    STATE_NEEDS_RETRIEVAL,
+    STATE_WRITE,
+    STATE_RESPONSE_STYLE,
 )
 
 
 class GraphValidatorState(TypedDict):
     """State passed between agent nodes in the graph."""
     # Current conversation
-    messages: Annotated[List[Dict[str, str]], "append"]  # Chat messages: [{"role": "user/bot", "content": "..."}]
+    messages: Annotated[List[Union[Message, Dict[str, Any]]], "append"]  # Chat messages: Message objects or dicts for compatibility
     
     # Current question being handled
     current_question_id: Optional[str]  # ID of the current question
     current_question_text: Optional[str]  # Text of the current question
-    questions: List[Dict[str, Any]]  # All available questions
+    questions: List[Question]  # All available questions
     
     # Graph data (metadata only - actual graph stored separately to avoid serialization issues)
     graph_nodes_count: int  # Number of nodes in graph
@@ -42,8 +51,16 @@ class GraphValidatorState(TypedDict):
     entities_count: int  # Number of entities
     
     # Agent decisions
-    next_agent: Optional[str]  # Which agent to route to next
+    next_agent: Optional[str]  # Which agent to route to next (legacy, use agent_queue)
+    agent_queue: List[str]  # Queue of agents to run in sequence
     validation_complete: bool  # Whether validation is done
+    
+    # Orchestrator planning
+    mode: Optional[str]  # Mode: "WRITE", "Q&A", "EXPLORATION", "DEBUG"
+    plan: Optional[str]  # Plan description
+    needs_retrieval: bool  # Whether retrieval is needed
+    write: bool  # Whether graph modifications are needed
+    response_style: Optional[str]  # Response style preference
     
     # Actions to perform
     hidden_actions: List[Dict[str, Any]]  # Graph modification actions
@@ -52,7 +69,7 @@ class GraphValidatorState(TypedDict):
     # Widget information
     show_widget: bool
     widget_type: Optional[str]
-    widget_data: Dict[str, Any]
+    widget_data: Union[Widget, Dict[str, Any]]  # Widget object or dict for compatibility
     
     # Context and metadata
     conversation_turn: int  # Current turn number
@@ -72,7 +89,13 @@ def create_state(**kwargs) -> GraphValidatorState:
         STATE_TRIPLES_COUNT: 0,
         STATE_ENTITIES_COUNT: 0,
         STATE_NEXT_AGENT: None,
+        STATE_AGENT_QUEUE: [],
         STATE_VALIDATION_COMPLETE: False,
+        STATE_MODE: None,
+        STATE_PLAN: None,
+        STATE_NEEDS_RETRIEVAL: False,
+        STATE_WRITE: False,
+        STATE_RESPONSE_STYLE: None,
         STATE_HIDDEN_ACTIONS: [],
         STATE_DISPLAY_ACTIONS: [],
         STATE_SHOW_WIDGET: False,

@@ -5,6 +5,7 @@ Analyzer node - analyzes the graph and generates validation questions.
 from typing import TYPE_CHECKING, List
 from tools.graph.langgraph.state import GraphValidatorState
 from tools.graph.langgraph.question import Question
+from tools.graph.langgraph.message import Message, MessageRole
 from tools.graph.langgraph.nodes.question_creators import (
     DuplicateTripleQuestionCreator,
     EntityCompletenessQuestionCreator,
@@ -57,42 +58,32 @@ def analyzer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
     # Check if questions already exist (avoid regenerating)
     existing_questions = state.get(STATE_QUESTIONS, [])
     if existing_questions:
-        questions = existing_questions
+        # Ensure all questions are Question objects
+        questions = []
+        for q in existing_questions:
+            if isinstance(q, Question):
+                questions.append(q)
     else:
         questions = generate_questions(validator)
-    
-    # Convert Question objects to dictionaries for state
-    questions_dict = []
-    for q in questions:
-        if isinstance(q, Question):
-            questions_dict.append(q.to_dict())
-        elif isinstance(q, dict):
-            questions_dict.append(q)
-        else:
-            questions_dict.append(q.to_dict() if hasattr(q, 'to_dict') else {"id": "", "text": str(q)})
     
     messages = state.get(STATE_MESSAGES, [])
     next_question = None
     question_id = None
     
-    if questions_dict:
-        first_q = questions_dict[0]
-        if isinstance(first_q, dict):
-            next_question = first_q.get("text")
-            question_id = first_q.get("id")
-        else:
-            question = Question.from_dict(first_q.to_dict() if hasattr(first_q, 'to_dict') else {"id": "", "text": str(first_q)})
-            next_question = question.text
-            question_id = question.id
+    if questions:
+        first_q = questions[0]
+        if isinstance(first_q, Question):
+            next_question = first_q.text
+            question_id = first_q.id
     else:
-        messages.append({"role": "bot", "content": "I've analyzed your graph and found no issues. Validation is complete!"})
+        messages.append(Message(role=MessageRole.BOT, content="I've analyzed your graph and found no issues. Validation is complete!"))
     
     return {
         **state,
         STATE_MESSAGES: messages,
-        STATE_QUESTIONS: questions_dict,  # Use converted dicts
+        STATE_QUESTIONS: questions,  # Keep as Question objects
         STATE_CURRENT_QUESTION_TEXT: next_question,
         STATE_CURRENT_QUESTION_ID: question_id,
-        STATE_VALIDATION_COMPLETE: not questions_dict,
-        STATE_NEXT_AGENT: None if not questions_dict else AGENT_COMMUNICATOR,
+        STATE_VALIDATION_COMPLETE: not questions,
+        STATE_NEXT_AGENT: None if not questions else AGENT_COMMUNICATOR,
     }

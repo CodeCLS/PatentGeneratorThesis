@@ -16,11 +16,14 @@ from tools.graph.Triple import Triple
 from tools.graph.langgraph.state import GraphValidatorState, create_state
 from tools.graph.langgraph.tools import GraphValidatorTools
 from tools.graph.constants_graph import (
+    AGENT_ORCHESTRATOR,
     AGENT_COMMUNICATOR,
     AGENT_ANALYZER,
     AGENT_MODIFIER,
     AGENT_RETRIEVER,
     AGENT_VISUALIZER,
+    AGENT_FORK,
+    AGENT_MERGE,
     STATE_MESSAGES,
     STATE_CONVERSATION_TURN,
     STATE_CURRENT_QUESTION_TEXT,
@@ -36,12 +39,15 @@ from tools.graph.constants_graph import (
 # Ensure GraphValidatorState is available in module globals for LangGraph evaluation
 globals()['GraphValidatorState'] = GraphValidatorState
 
+from tools.graph.langgraph.message import Message, MessageRole
+from tools.graph.langgraph.nodes.orchestrator import orchestrator_node
 from tools.graph.langgraph.nodes.communicator import communicator_node
 from tools.graph.langgraph.nodes.retriever import retriever_node
 from tools.graph.langgraph.nodes.visualizer import visualizer_node
 from tools.graph.langgraph.nodes.analyzer import analyzer_node
 from tools.graph.langgraph.nodes.modifier import modifier_node
 from tools.graph.langgraph.routing import (
+    route_from_orchestrator,
     route_from_communicator,
     route_from_retriever,
     route_from_visualizer,
@@ -51,7 +57,6 @@ from tools.graph.langgraph.routing import (
 
 
 class GraphValidatorLangGraph:
-    """Multi-agent graph validator using LangGraph."""
     
     def __init__(
         self,
@@ -74,68 +79,64 @@ class GraphValidatorLangGraph:
         self.recursion_limit = 10
         self._initial_questions = []
         
-        # Run initial stream to generate questions (starts at analyzer entry point)
-        initial_state = create_state(
+        self._current_state = create_state(
             graph_nodes_count=self.graph.number_of_nodes() if self.graph else 0,
             graph_edges_count=self.graph.number_of_edges() if self.graph else 0,
             triples_count=len(self.triples),
             entities_count=len(self.id_to_name),
         )
-        
-        # Run stream once to generate questions
-        try:
-            config = {"recursion_limit": self.recursion_limit}
-            for state in self.app.stream(initial_state, config=config):
-                if state:
-                    last_node = list(state.keys())[-1] if state else None
-                    if last_node:
-                        self._current_state = state[last_node]
-        except Exception as e:
-            # If initialization fails, start with empty state
-            self._current_state = initial_state
-            print(f"Warning: Failed to initialize questions: {e}")
     
     def _build_graph(self) -> StateGraph:
-        """Build the LangGraph state graph with all agent nodes."""
         workflow = StateGraph[GraphValidatorState, None, GraphValidatorState, GraphValidatorState](GraphValidatorState)
+
         
-        def communicator_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
-            return communicator_node(self, state)
+        def fork_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
+            return {
+                **state,
+                "_from_fork": True,
+            }
         
-        def retriever_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
-            return retriever_node(self, state)
+        def merge_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
+
+            merged_state = {**state}
+            merged_state.pop("_from_fork", None)
+            merged_state.pop("needs_widget", None)
+            return merged_state
         
-        def visualizer_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
-            return visualizer_node(self, state)
-        
-        def analyzer_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
-            return analyzer_node(self, state)
-        
-        def modifier_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
-            return modifier_node(self, state)
-        
-        workflow.add_node(AGENT_COMMUNICATOR, communicator_wrapper)
-        workflow.add_node(AGENT_RETRIEVER, retriever_wrapper)
-        workflow.add_node(AGENT_VISUALIZER, visualizer_wrapper)
-        workflow.add_node(AGENT_ANALYZER, analyzer_wrapper)
-        workflow.add_node(AGENT_MODIFIER, modifier_wrapper)
-        
+        workflow.add_node(AGENT_COMMUNICATOR,communicator_node )
+        workflow.add_node(AGENT_RETRIEVER, retriever_node)
+        workflow.add_node(AGENT_VISUALIZER, visualizer_node)
+        workflow.add_node(AGENT_ANALYZER, analyzer_node)
+        workflow.add_node(AGENT_MODIFIER, modifier_node)
+        workflow.add_node(AGENT_FORK, fork_wrapper)
+        workflow.add_node(AGENT_MERGE, merge_wrapper)
+
         workflow.set_entry_point(AGENT_ANALYZER)
         
         routing_map = {
+            AGENT_ORCHESTRATOR: AGENT_ORCHESTRATOR,
             AGENT_RETRIEVER: AGENT_RETRIEVER,
             AGENT_VISUALIZER: AGENT_VISUALIZER,
             AGENT_ANALYZER: AGENT_ANALYZER,
             AGENT_MODIFIER: AGENT_MODIFIER,
+            AGENT_COMMUNICATOR: AGENT_COMMUNICATOR,
+            AGENT_FORK: AGENT_FORK,
+            AGENT_MERGE: AGENT_MERGE,
             END: END,
             "__end__": END,
         }
         
+        workflow.add_conditional_edges(AGENT_ORCHESTRATOR, route_from_orchestrator, routing_map)
         workflow.add_conditional_edges(AGENT_COMMUNICATOR, route_from_communicator, routing_map)
-        workflow.add_conditional_edges(AGENT_RETRIEVER, route_from_retriever, {**routing_map, AGENT_COMMUNICATOR: AGENT_COMMUNICATOR})
-        workflow.add_conditional_edges(AGENT_VISUALIZER, route_from_visualizer, {**routing_map, AGENT_COMMUNICATOR: AGENT_COMMUNICATOR})
-        workflow.add_conditional_edges(AGENT_ANALYZER, route_from_analyzer, {**routing_map, AGENT_COMMUNICATOR: AGENT_COMMUNICATOR})
-        workflow.add_conditional_edges(AGENT_MODIFIER, route_from_modifier, {**routing_map, AGENT_COMMUNICATOR: AGENT_COMMUNICATOR})
+        workflow.add_conditional_edges(AGENT_RETRIEVER, route_from_retriever, routing_map)
+        workflow.add_conditional_edges(AGENT_VISUALIZER, route_from_visualizer, routing_map)
+        workflow.add_conditional_edges(AGENT_ANALYZER, route_from_analyzer, routing_map)
+        workflow.add_conditional_edges(AGENT_MODIFIER, route_from_modifier, routing_map)
+        
+        workflow.add_edge(AGENT_FORK, AGENT_MODIFIER)
+        workflow.add_edge(AGENT_FORK, AGENT_VISUALIZER)
+        
+        workflow.add_edge(AGENT_MERGE, AGENT_COMMUNICATOR)
         
         return workflow
     
@@ -145,7 +146,7 @@ class GraphValidatorLangGraph:
         initial_state = self._current_state.copy()
         
         initial_state[STATE_MESSAGES] = initial_state.get(STATE_MESSAGES, []) + [
-            {"role": "user", "content": user_message}
+            Message(role=MessageRole.USER, content=user_message)
         ]
         initial_state[STATE_CONVERSATION_TURN] = initial_state.get(STATE_CONVERSATION_TURN, 0) + 1
         
@@ -190,7 +191,12 @@ class GraphValidatorLangGraph:
         messages = state_values.get(STATE_MESSAGES, [])
         last_bot_msg = None
         for msg in reversed(messages):
-            if msg.get("role") == "bot":
+            # Handle both Message objects and dicts for compatibility
+            if isinstance(msg, Message):
+                if msg.role == MessageRole.BOT or (isinstance(msg.role, str) and msg.role == "bot"):
+                    last_bot_msg = msg.content
+                    break
+            elif isinstance(msg, dict) and msg.get("role") == "bot":
                 last_bot_msg = msg.get("content", "")
                 break
         

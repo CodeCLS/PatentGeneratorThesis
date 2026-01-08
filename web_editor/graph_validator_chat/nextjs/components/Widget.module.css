@@ -1,0 +1,99 @@
+.widget {
+    background: rgba(55, 53, 47, 0.03);
+    border: 1px solid rgba(55, 53, 47, 0.09);
+    border-radius: 3px;
+    padding: 16px;
+    margin: 12px 0;
+}
+
+.widget h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: rgb(55, 53, 47);
+}
+
+.widget ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.widget li {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+    font-size: 13px;
+}
+
+.widget li:last-child {
+    border-bottom: none;
+}
+
+.widgetInput {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid rgba(55, 53, 47, 0.16);
+    border-radius: 3px;
+    font-size: 14px;
+    font-family: inherit;
+    margin: 8px 0;
+    resize: vertical;
+    min-height: 60px;
+}
+
+.widgetButton {
+    padding: 6px 12px;
+    background: rgb(55, 53, 47);
+    color: rgba(255, 255, 255, 0.9);
+    border: none;
+    border-radius: 3px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 8px;
+}
+
+.widgetButton:hover {
+    background: rgba(55, 53, 47, 0.8);
+}
+
+.widgetButtonSmall {
+    padding: 4px 8px;
+    background: rgba(55, 53, 47, 0.1);
+    color: rgb(55, 53, 47);
+    border: 1px solid rgba(55, 53, 47, 0.16);
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    margin-left: 8px;
+}
+
+.widgetButtonSmall:hover {
+    background: rgba(55, 53, 47, 0.2);
+}
+
+.widgetSlider {
+    width: 100%;
+    margin: 12px 0;
+}
+
+.graphPlaceholder {
+    padding: 40px;
+    text-align: center;
+    color: rgba(55, 53, 47, 0.5);
+    font-size: 13px;
+    background: rgba(55, 53, 47, 0.03);
+    border-radius: 3px;
+}
+
+.widget li.error {
+    color: #d32f2f;
+}
+
+.widget li.warning {
+    color: #f57c00;
+}
+
+.widget li.info {
+    color: rgba(55, 53, 47, 0.7);
+}
+
