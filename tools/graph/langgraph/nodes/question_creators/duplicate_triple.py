@@ -60,6 +60,8 @@ class DuplicateTripleQuestionCreator(BaseQuestionCreator):
             "- Use actual entity names\n"
             "- Focus on ONE duplicate triple\n"
             "- Be conversational\n\n"
+            "- And contain all important inforation about this triple \n\n"
+
             "Return ONLY JSON array:\n"
             '[{"id": "q1", "text": "Triple 5: Entity A --[connects]--> Entity B. Should this be removed?", "category": "mistake", "priority": 8}]\n'
         )

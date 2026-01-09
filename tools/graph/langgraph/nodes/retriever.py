@@ -13,6 +13,22 @@ from tools.graph.constants_graph import (
     AGENT_RETRIEVER,
     STATE_MESSAGES,
     STATE_NEXT_AGENT,
+    MESSAGE_ROLE_USER,
+    MESSAGE_ROLE_BOT,
+    KEY_ROLE,
+    KEY_CONTENT,
+    KEY_ACTION,
+    KEY_PARAMETERS,
+    KEY_RELATED_TRIPLES,
+    KEY_SEARCH_RESULTS,
+    KEY_ERROR,
+    KEY_NAME,
+    ACTION_GET_ENTITY_INFO,
+    ACTION_GET_TRIPLE_INFO,
+    ACTION_GET_RELATED_TRIPLES,
+    ACTION_SEARCH_ENTITIES,
+    KEY_RETRIEVED_INFO_MARKER,
+    DEFAULT_REASON,
 )
 
 if TYPE_CHECKING:
@@ -29,15 +45,15 @@ def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorS
     for msg in reversed(messages):
         # Handle both Message objects and dicts
         if isinstance(msg, Message):
-            if (msg.role == MessageRole.USER or (isinstance(msg.role, str) and msg.role == "user")) and user_message is None:
+            if (msg.role == MessageRole.USER or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_USER)) and user_message is None:
                 user_message = msg.content
-            elif (msg.role == MessageRole.BOT or (isinstance(msg.role, str) and msg.role == "bot")) and last_bot_message is None:
+            elif (msg.role == MessageRole.BOT or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_BOT)) and last_bot_message is None:
                 last_bot_message = msg.content
         elif isinstance(msg, dict):
-            if msg.get("role") == "user" and user_message is None:
-                user_message = msg.get("content", "")
-            elif msg.get("role") == "bot" and last_bot_message is None:
-                last_bot_message = msg.get("content", "")
+            if msg.get(KEY_ROLE) == MESSAGE_ROLE_USER and user_message is None:
+                user_message = msg.get(KEY_CONTENT, "")
+            elif msg.get(KEY_ROLE) == MESSAGE_ROLE_BOT and last_bot_message is None:
+                last_bot_message = msg.get(KEY_CONTENT, "")
         if user_message and last_bot_message:
             break
     
@@ -51,27 +67,27 @@ def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorS
     response = validator.api_repo.chat(prompt)
     action_data = JsonHelper.parse_json(str(response))
     if not action_data:
-        action_data = {"action": "get_entity_info", "parameters": {}, "reason": "Default"}
+        action_data = {KEY_ACTION: ACTION_GET_ENTITY_INFO, KEY_PARAMETERS: {}, "reason": DEFAULT_REASON}
     
-    action = action_data.get("action", "get_entity_info")
-    params = action_data.get("parameters", {})
+    action = action_data.get(KEY_ACTION, ACTION_GET_ENTITY_INFO)
+    params = action_data.get(KEY_PARAMETERS, {})
     
-    if action == "get_entity_info":
-        entity_info = validator.tools.get_entity_info(params.get("entity_name", ""))
+    if action == ACTION_GET_ENTITY_INFO:
+        entity_info = validator.tools.get_entity_info(params.get(KEY_NAME, ""))
         info = entity_info.to_dict() if hasattr(entity_info, 'to_dict') else entity_info
-    elif action == "get_triple_info":
-        triple_info = validator.tools.get_triple_info(params.get("triple_index", -1))
+    elif action == ACTION_GET_TRIPLE_INFO:
+        triple_info = validator.tools.get_triple_info(params.get(KEY_INDEX, -1))
         info = triple_info.to_dict() if hasattr(triple_info, 'to_dict') else triple_info
-    elif action == "get_related_triples":
-        related_triples = validator.tools.get_related_triples(params.get("entity_name", ""))
-        info = {"related_triples": [t.to_dict() if hasattr(t, 'to_dict') else t for t in related_triples]}
-    elif action == "search_entities":
-        info = {"search_results": validator.tools.search_entities(params.get("query", ""))}
+    elif action == ACTION_GET_RELATED_TRIPLES:
+        related_triples = validator.tools.get_related_triples(params.get(KEY_NAME, ""))
+        info = {KEY_RELATED_TRIPLES: [t.to_dict() if hasattr(t, 'to_dict') else t for t in related_triples]}
+    elif action == ACTION_SEARCH_ENTITIES:
+        info = {KEY_SEARCH_RESULTS: validator.tools.search_entities(params.get("query", ""))}
     else:
-        info = {"error": f"Unknown action: {action}"}
+        info = {KEY_ERROR: f"Unknown action: {action}"}
     
     info_text = json.dumps(info, indent=2)
-    retrieval_message = f"[Retrieved Information]\n{info_text}\n\nReason: {action_data.get('reason', 'N/A')}"
+    retrieval_message = f"{KEY_RETRIEVED_INFO_MARKER}\n{info_text}\n\nReason: {action_data.get('reason', DEFAULT_N_A)}"
     
     return {
         **state,

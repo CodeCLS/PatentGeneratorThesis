@@ -15,11 +15,18 @@ from tools.graph.constants_graph import (
     AGENT_VISUALIZER,
     STATE_MESSAGES,
     STATE_AGENT_QUEUE,
+    STATE_QUESTIONS,
+    STATE_VALIDATION_COMPLETE,
     STATE_MODE,
     STATE_PLAN,
     STATE_NEEDS_RETRIEVAL,
     STATE_WRITE,
     STATE_RESPONSE_STYLE,
+    MESSAGE_ROLE_USER,
+    KEY_ROLE,
+    KEY_CONTENT,
+    MODE_INITIAL,
+    MODE_QA,
 )
 
 if TYPE_CHECKING:
@@ -31,7 +38,7 @@ def _get_message_content(msg: Union[Message, dict]) -> str:
     if isinstance(msg, Message):
         return msg.content
     elif isinstance(msg, dict):
-        return msg.get("content", "")
+        return msg.get(KEY_CONTENT, "")
     return ""
 
 
@@ -43,19 +50,35 @@ def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
     user_message = None
     for msg in reversed(messages):
         if isinstance(msg, Message):
-            if msg.role == MessageRole.USER or (isinstance(msg.role, str) and msg.role == "user"):
+            if msg.role == MessageRole.USER or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_USER):
                 user_message = msg.content
                 break
-        elif isinstance(msg, dict) and msg.get("role") == "user":
-            user_message = msg.get("content", "")
+        elif isinstance(msg, dict) and msg.get(KEY_ROLE) == MESSAGE_ROLE_USER:
+            user_message = msg.get(KEY_CONTENT, "")
             break
     
     # If no user message, this is initial startup - analyze graph first
     if not user_message:
+        # Check if we already have questions (analyzer already ran)
+        existing_questions = state.get(STATE_QUESTIONS, [])
+        validation_complete = state.get(STATE_VALIDATION_COMPLETE, False)
+        
+        # If no questions and validation complete, just go to communicator to handle gracefully
+        if not existing_questions and validation_complete:
+            return {
+                **state,
+                STATE_AGENT_QUEUE: [AGENT_COMMUNICATOR],
+                STATE_MODE: MODE_INITIAL,
+                STATE_PLAN: "No questions found, communicate completion to user",
+                STATE_NEEDS_RETRIEVAL: False,
+                STATE_WRITE: False,
+            }
+        
+        # Otherwise, analyze graph first
         return {
             **state,
             STATE_AGENT_QUEUE: [AGENT_ANALYZER, AGENT_COMMUNICATOR],
-            STATE_MODE: "INITIAL",
+            STATE_MODE: MODE_INITIAL,
             STATE_PLAN: "Initial analysis: analyze graph, then communicate with user",
             STATE_NEEDS_RETRIEVAL: False,
             STATE_WRITE: False,
@@ -73,15 +96,15 @@ def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
     if not decision:
         # Default to Q&A flow
         decision = {
-            "mode": "Q&A",
-            "needs_retrieval": True,
-            "write": False,
-            "response_style": "conversational",
-            "agent_queue": [AGENT_RETRIEVER, AGENT_ANALYZER, AGENT_COMMUNICATOR],
-            "plan": "Standard Q&A flow: retrieve info, analyze, communicate"
+            STATE_MODE: MODE_QA,
+            STATE_NEEDS_RETRIEVAL: True,
+            STATE_WRITE: False,
+            STATE_RESPONSE_STYLE: "conversational",
+            STATE_AGENT_QUEUE: [AGENT_RETRIEVER, AGENT_ANALYZER, AGENT_COMMUNICATOR],
+            STATE_PLAN: "Standard Q&A flow: retrieve info, analyze, communicate"
         }
     
-    agent_queue = decision.get("agent_queue", [AGENT_COMMUNICATOR])
+    agent_queue = decision.get(STATE_AGENT_QUEUE, [AGENT_COMMUNICATOR])
     # Ensure communicator is always last
     if AGENT_COMMUNICATOR not in agent_queue:
         agent_queue.append(AGENT_COMMUNICATOR)
@@ -92,10 +115,10 @@ def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
     return {
         **state,
         STATE_AGENT_QUEUE: agent_queue,
-        STATE_MODE: decision.get("mode", "Q&A"),
-        STATE_PLAN: decision.get("plan", "Process user request"),
-        STATE_NEEDS_RETRIEVAL: decision.get("needs_retrieval", False),
-        STATE_WRITE: decision.get("write", False),
-        STATE_RESPONSE_STYLE: decision.get("response_style", "conversational"),
+        STATE_MODE: decision.get(STATE_MODE, MODE_QA),
+        STATE_PLAN: decision.get(STATE_PLAN, "Process user request"),
+        STATE_NEEDS_RETRIEVAL: decision.get(STATE_NEEDS_RETRIEVAL, False),
+        STATE_WRITE: decision.get(STATE_WRITE, False),
+        STATE_RESPONSE_STYLE: decision.get(STATE_RESPONSE_STYLE, "conversational"),
     }
 

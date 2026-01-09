@@ -19,6 +19,15 @@ from tools.graph.constants_graph import (
     STATE_CHANGES_SUMMARY,
     STATE_STATS,
     STATE_NEXT_AGENT,
+    KEY_TYPE,
+    KEY_PARAMETERS,
+    KEY_TRIPLES,
+    KEY_HEAD,
+    KEY_TAIL,
+    KEY_RELATION,
+    KEY_NAME,
+    STATE_INTERNAL_NODE_TYPE,
+    DEFAULT_UNKNOWN,
 )
 
 if TYPE_CHECKING:
@@ -38,20 +47,20 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
         if not isinstance(action, dict):
             continue
         
-        action_type = action.get("type")
-        params = action.get("parameters", {})
+        action_type = action.get(KEY_TYPE)
+        params = action.get(KEY_PARAMETERS, {})
         
         # Ensure params is a dictionary
         if not isinstance(params, dict):
             params = {}
         
         if action_type == ACTION_ADD_TRIPLES:
-            new_triples_data = params.get("triples", [])
+            new_triples_data = params.get(KEY_TRIPLES, [])
             added_count = 0
             for triple_data in new_triples_data:
-                head_name = triple_data.get("head", "")
-                tail_name = triple_data.get("tail", "")
-                relation = triple_data.get("relation", "")
+                head_name = triple_data.get(KEY_HEAD, "")
+                tail_name = triple_data.get(KEY_TAIL, "")
+                relation = triple_data.get(KEY_RELATION, "")
                 
                 head_id = None
                 tail_id = None
@@ -65,12 +74,12 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
                     head_entity = Entity(
                         id=head_id,
                         name=head_name,
-                        label=graph.nodes[head_id].get("node_type", "UNKNOWN") if graph and graph.has_node(head_id) else "UNKNOWN"
+                        label=graph.nodes[head_id].get(STATE_INTERNAL_NODE_TYPE, DEFAULT_UNKNOWN) if graph and graph.has_node(head_id) else DEFAULT_UNKNOWN
                     )
                     tail_entity = Entity(
                         id=tail_id,
                         name=tail_name,
-                        label=graph.nodes[tail_id].get("node_type", "UNKNOWN") if graph and graph.has_node(tail_id) else "UNKNOWN"
+                        label=graph.nodes[tail_id].get(STATE_INTERNAL_NODE_TYPE, DEFAULT_UNKNOWN) if graph and graph.has_node(tail_id) else DEFAULT_UNKNOWN
                     )
                     triples.append(Triple(head=head_entity, relation=relation, tail=tail_entity))
                     added_count += 1
@@ -118,8 +127,8 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
                     changes_summary.append(f"Merged {len(source_names)} entities into '{target_name}'")
         
         elif action_type == ACTION_RENAME_ENTITY:
-            old_name = params.get("old_name")
-            new_name = params.get("new_name")
+            old_name = params.get("old_name", "")
+            new_name = params.get("new_name", "")
             if old_name and new_name:
                 for eid, name in list(id_to_name.items()):
                     if name == old_name:
@@ -128,8 +137,8 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
                         break
         
         elif action_type == ACTION_UPDATE_ENTITY_LABEL:
-            entity_name = params.get("entity_name")
-            new_label = params.get("new_label")
+            entity_name = params.get(KEY_NAME, "")
+            new_label = params.get("new_label", "")
             if entity_name and new_label:
                 # Find entity by name
                 entity_id = None

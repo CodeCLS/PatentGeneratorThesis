@@ -34,6 +34,11 @@ from tools.graph.constants_graph import (
     STATE_WIDGET_DATA,
     STATE_CHANGES_SUMMARY,
     STATE_STATS,
+    STATE_TEXT,
+    STATE_NEXT_QUESTION,
+    MESSAGE_ROLE_BOT,
+    KEY_ROLE,
+    KEY_CONTENT,
 )
 
 # Ensure GraphValidatorState is available in module globals for LangGraph evaluation
@@ -102,17 +107,18 @@ class GraphValidatorLangGraph:
             merged_state.pop("_from_fork", None)
             merged_state.pop("needs_widget", None)
             return merged_state
-        
-        workflow.add_node(AGENT_COMMUNICATOR,communicator_node )
-        workflow.add_node(AGENT_RETRIEVER, retriever_node)
-        workflow.add_node(AGENT_VISUALIZER, visualizer_node)
-        workflow.add_node(AGENT_ANALYZER, analyzer_node)
-        workflow.add_node(AGENT_MODIFIER, modifier_node)
+
+        workflow.add_node(AGENT_COMMUNICATOR, lambda state: communicator_node(self, state))
+        workflow.add_node(AGENT_RETRIEVER, lambda state: retriever_node(self, state))
+        workflow.add_node(AGENT_VISUALIZER, lambda state: visualizer_node(self, state))
+        workflow.add_node(AGENT_ANALYZER, lambda state: analyzer_node(self, state))
+        workflow.add_node(AGENT_MODIFIER, lambda state: modifier_node(self, state))
         workflow.add_node(AGENT_FORK, fork_wrapper)
         workflow.add_node(AGENT_MERGE, merge_wrapper)
+        workflow.add_node(AGENT_ORCHESTRATOR, lambda state: orchestrator_node(self, state))
 
-        workflow.set_entry_point(AGENT_ANALYZER)
-        
+
+        workflow.set_entry_point(AGENT_ORCHESTRATOR)        
         routing_map = {
             AGENT_ORCHESTRATOR: AGENT_ORCHESTRATOR,
             AGENT_RETRIEVER: AGENT_RETRIEVER,
@@ -142,7 +148,6 @@ class GraphValidatorLangGraph:
     
     def chat(self, user_message: str, config: Optional[Dict] = None) -> Dict[str, Any]:
         """Process a user message through the agent graph."""
-        # _current_state is already initialized in __init__
         initial_state = self._current_state.copy()
         
         initial_state[STATE_MESSAGES] = initial_state.get(STATE_MESSAGES, []) + [
@@ -161,8 +166,8 @@ class GraphValidatorLangGraph:
                         self._current_state = state[last_node]
         except Exception as e:
             return {
-                "text": f"Error: {str(e)}",
-                "next_question": None,
+                STATE_TEXT: f"Error: {str(e)}",
+                STATE_NEXT_QUESTION: None,
                 STATE_VALIDATION_COMPLETE: False,
                 STATE_HIDDEN_ACTIONS: [],
                 STATE_SHOW_WIDGET: False,
@@ -174,8 +179,8 @@ class GraphValidatorLangGraph:
         
         if not final_state:
             return {
-                "text": "No response generated.",
-                "next_question": None,
+                STATE_TEXT: "No response generated.",
+                STATE_NEXT_QUESTION: None,
                 STATE_VALIDATION_COMPLETE: False,
                 STATE_HIDDEN_ACTIONS: [],
                 STATE_SHOW_WIDGET: False,
@@ -193,16 +198,16 @@ class GraphValidatorLangGraph:
         for msg in reversed(messages):
             # Handle both Message objects and dicts for compatibility
             if isinstance(msg, Message):
-                if msg.role == MessageRole.BOT or (isinstance(msg.role, str) and msg.role == "bot"):
+                if msg.role == MessageRole.BOT or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_BOT):
                     last_bot_msg = msg.content
                     break
-            elif isinstance(msg, dict) and msg.get("role") == "bot":
-                last_bot_msg = msg.get("content", "")
+            elif isinstance(msg, dict) and msg.get(KEY_ROLE) == MESSAGE_ROLE_BOT:
+                last_bot_msg = msg.get(KEY_CONTENT, "")
                 break
         
         return {
-            "text": last_bot_msg or "Response processed.",
-            "next_question": state_values.get(STATE_CURRENT_QUESTION_TEXT),
+            STATE_TEXT: last_bot_msg or "Response processed.",
+            STATE_NEXT_QUESTION: state_values.get(STATE_CURRENT_QUESTION_TEXT),
             STATE_VALIDATION_COMPLETE: state_values.get(STATE_VALIDATION_COMPLETE, False),
             STATE_HIDDEN_ACTIONS: state_values.get(STATE_HIDDEN_ACTIONS, []),
             STATE_SHOW_WIDGET: state_values.get(STATE_SHOW_WIDGET, False),

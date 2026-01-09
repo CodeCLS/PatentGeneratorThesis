@@ -200,7 +200,6 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         triples = validator.triples
         changes_summary = validator._current_state.get("changes_summary", []) if hasattr(validator, '_current_state') and validator._current_state else []
         stats = validator.tools.calculate_stats() if hasattr(validator, 'tools') else {}
-        
         changes = {
             "triples_added": max(0, stats.get("triples_changed", 0)),
             "triples_deleted": max(0, -stats.get("triples_changed", 0)),
@@ -244,9 +243,10 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 raise ValueError("validator.chat() returned None")
             if not isinstance(response, dict):
                 raise ValueError(f"validator.chat() returned {type(response)}, expected dict")
+            from tools.graph.constants_graph import STATE_TEXT, STATE_NEXT_QUESTION
             print(f"[API] Chat response keys: {list(response.keys())}")
-            if response.get("text", "").startswith("Error:"):
-                print(f"[API] Warning: Response contains error: {response.get('text')}")
+            if response.get(STATE_TEXT, "").startswith("Error:"):
+                print(f"[API] Warning: Response contains error: {response.get(STATE_TEXT)}")
             self._send_json(response)
         except json.JSONDecodeError as e:
             print(f"[API] JSON decode error: {e}")

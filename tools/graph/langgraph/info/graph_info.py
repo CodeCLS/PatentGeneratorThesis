@@ -3,7 +3,7 @@ GraphInfo dataclass for graph statistics.
 """
 
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Any
 
 
 @dataclass
@@ -35,4 +35,6 @@ class GraphInfo:
             graph_edges=data.get("graph_edges", 0),
             triples_changed=data.get("triples_changed", 0),
         )
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key , default)
 

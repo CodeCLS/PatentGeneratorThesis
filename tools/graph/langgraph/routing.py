@@ -25,6 +25,8 @@ from tools.graph.constants_graph import (
     STATE_HIDDEN_ACTIONS,
     STATE_SHOW_WIDGET,
     AGENT_MERGE,
+    STATE_INTERNAL_NEEDS_WIDGET,
+    STATE_INTERNAL_FROM_FORK,
 )
 
 # Ensure GraphValidatorState is in module globals for type hint evaluation
@@ -43,7 +45,7 @@ def route_from_orchestrator(state: GraphValidatorState):
 
 
 def route_from_communicator(state: GraphValidatorState):
-    """Route from communicator - check agent queue or use legacy routing."""
+    """Route from communicator - check agent queue or end gracefully."""
     # Check if there's an agent queue (orchestrator-driven)
     agent_queue = state.get(STATE_AGENT_QUEUE, [])
     if agent_queue:
@@ -51,6 +53,28 @@ def route_from_communicator(state: GraphValidatorState):
         next_agent = agent_queue[0] if agent_queue else None
         if next_agent:
             return next_agent
+    
+    # If validation is complete or no questions, end gracefully
+    validation_complete = state.get(STATE_VALIDATION_COMPLETE, False)
+    questions = state.get(STATE_QUESTIONS, [])
+    if validation_complete or not questions:
+        return END
+    
+    # Legacy routing for backward compatibility
+    next_agent = state.get(STATE_NEXT_AGENT)
+    hidden_actions = state.get(STATE_HIDDEN_ACTIONS, [])
+    needs_widget = state.get(STATE_INTERNAL_NEEDS_WIDGET, False)
+    
+    # Check if we need parallel execution (both modifier and visualizer)
+    if hidden_actions and needs_widget:
+        return AGENT_FORK
+    
+    if next_agent is END or (isinstance(next_agent, str) and next_agent.lower() == "null"):
+        return END
+    
+    if next_agent in (AGENT_RETRIEVER, AGENT_VISUALIZER, AGENT_ANALYZER, AGENT_MODIFIER):
+        return next_agent
+    
     return END
 
 
@@ -65,7 +89,7 @@ def route_from_retriever(state: GraphValidatorState) -> str:
 def route_from_visualizer(state: GraphValidatorState) -> str:
     """Route from visualizer - check queue, merge, or communicator."""
     # If we came from fork (parallel execution), route to merge
-    if state.get("_from_fork", False):
+    if state.get(STATE_INTERNAL_FROM_FORK, False):
         return AGENT_MERGE
     
     # Check agent queue
@@ -92,7 +116,7 @@ def route_from_analyzer(state: GraphValidatorState) -> str:
 def route_from_modifier(state: GraphValidatorState) -> str:
     """Route from modifier - check queue, merge, or communicator."""
     # If we came from fork (parallel execution), route to merge
-    if state.get("_from_fork", False):
+    if state.get(STATE_INTERNAL_FROM_FORK, False):
         return AGENT_MERGE
     
     # Check agent queue

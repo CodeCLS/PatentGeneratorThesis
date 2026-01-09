@@ -7,6 +7,12 @@ import networkx as nx
 from tools.graph.Triple import Triple
 from tools.graph.langgraph.helpers import get_triple_head_id, get_triple_tail_id, get_triple_head_name, get_triple_tail_name
 from tools.graph.langgraph.info import EntityInfo, TripleInfo, GraphInfo, ConnectedEntity
+from tools.graph.constants_graph import (
+    STATE_INTERNAL_NODE_TYPE,
+    KEY_NAME,
+    DEFAULT_UNKNOWN,
+    KEY_ID,
+)
 
 
 class GraphValidatorTools:
@@ -45,8 +51,8 @@ class GraphValidatorTools:
         if self.graph and self.graph.has_node(entity_id):
             node_data = self.graph.nodes[entity_id]
             info.properties = {k: v for k, v in node_data.items() 
-                              if k not in ("node_type", "name") and not k.startswith("_")}
-            info.label = node_data.get("node_type", "UNKNOWN")
+                              if k not in (STATE_INTERNAL_NODE_TYPE, KEY_NAME) and not k.startswith("_")}
+            info.label = node_data.get(STATE_INTERNAL_NODE_TYPE, DEFAULT_UNKNOWN)
             info.connections = self.graph.degree(entity_id)
             
             for neighbor in self.graph.neighbors(entity_id):
@@ -126,7 +132,7 @@ class GraphValidatorTools:
         results = []
         for eid, name in self.id_to_name.items():
             if query_lower in name.lower():
-                results.append({"id": eid, "name": name})
+                results.append({KEY_ID: eid, KEY_NAME: name})
                 if len(results) >= limit:
                     break
         return results

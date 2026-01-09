@@ -15,6 +15,9 @@ from tools.graph.constants_graph import (
     STATE_WIDGET_TYPE,
     STATE_WIDGET_DATA,
     STATE_NEXT_AGENT,
+    STATE_INTERNAL_RETRIEVED_TRIPLES,
+    WIDGET_TYPE_EDGES,
+    KEY_TRIPLES,
 )
 
 if TYPE_CHECKING:
@@ -26,17 +29,17 @@ def visualizer_node(validator: "GraphValidatorLangGraph", state: "GraphValidator
     messages = state.get(STATE_MESSAGES, [])
     
     # Check if we have retrieved triples to show
-    retrieved_triples = state.get("_retrieved_triples")
+    retrieved_triples = state.get(STATE_INTERNAL_RETRIEVED_TRIPLES)
     if retrieved_triples:
         # Automatically show edges_widget with the retrieved triples
         # Clear _retrieved_triples to prevent reprocessing
         new_state = {**state}
-        new_state.pop("_retrieved_triples", None)
+        new_state.pop(STATE_INTERNAL_RETRIEVED_TRIPLES, None)
         return {
             **new_state,
             STATE_SHOW_WIDGET: True,
-            STATE_WIDGET_TYPE: "edges_widget",
-            STATE_WIDGET_DATA: {"triples": retrieved_triples},
+            STATE_WIDGET_TYPE: WIDGET_TYPE_EDGES,
+            STATE_WIDGET_DATA: {KEY_TRIPLES: retrieved_triples},
             STATE_NEXT_AGENT: AGENT_COMMUNICATOR,
         }
     

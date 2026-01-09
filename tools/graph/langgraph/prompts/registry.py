@@ -126,7 +126,10 @@ class PromptRegistry:
                         "CONVERSATION CONTEXT:\n"
                         "- Current question: {current_question}\n"
                         "- Remaining questions: {remaining_count}\n"
-                        "- Graph stats: {triples_count} triples, {entities_count} entities\n"
+                        "- Graph stats: {triples_count} triples, {entities_count} entities\n\n"
+                        "WIDGET CONTEXT:\n"
+                        "If a widget has been shown with triples, give a natural, conversational response about what was found. "
+                        "Do NOT list the triples - they're already displayed in the widget above.\n"
                     ),
                 ),
             },

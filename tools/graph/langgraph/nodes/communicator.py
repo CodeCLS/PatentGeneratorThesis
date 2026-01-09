@@ -11,7 +11,13 @@ except ImportError:
 
 import json
 from tools.helper.json_helper import JsonHelper
-from tools.graph.langgraph.helpers import extract_text_from_response, get_triple_head_name, get_triple_tail_name
+from tools.graph.langgraph.helpers import (
+    extract_text_from_response,
+    get_triple_head_name,
+    get_triple_tail_name,
+    process_retrieved_info_for_widget,
+    extract_retrieved_info,
+)
 from tools.graph.langgraph.state import GraphValidatorState
 from tools.graph.langgraph.question import Question
 from tools.graph.langgraph.message import Message, MessageRole
@@ -38,6 +44,29 @@ from tools.graph.constants_graph import (
     STATE_SHOW_WIDGET,
     STATE_WIDGET_TYPE,
     STATE_WIDGET_DATA,
+    STATE_TEXT,
+    STATE_NEXT_QUESTION,
+    MESSAGE_ROLE_USER,
+    MESSAGE_ROLE_SYSTEM,
+    KEY_CONTENT,
+    KEY_ROLE,
+    KEY_RELATED_TRIPLES,
+    KEY_SEARCH_RESULTS,
+    KEY_TRIPLES,
+    KEY_NAME,
+    KEY_ERROR,
+    KEY_INDEX,
+    KEY_HEAD,
+    KEY_TAIL,
+    KEY_RELATION,
+    KEY_RETRIEVED_INFO_MARKER,
+    KEY_REASON,
+    WIDGET_TYPE_EDGES,
+    WIDGET_TYPE_VISUALIZATION,
+    STATE_INTERNAL_RETRIEVED_TRIPLES,
+    STATE_INTERNAL_RETRIEVED_INFO_PROCESSED,
+    STATE_INTERNAL_NEEDS_WIDGET,
+    DEFAULT_ENTITY,
 )
 
 if TYPE_CHECKING:
@@ -46,62 +75,45 @@ if TYPE_CHECKING:
 
 def _format_retrieved_info(info_text: str, user_message: Optional[str] = None) -> str:
     """Format retrieved information into a readable response."""
-    try:
-        # Extract JSON from message (format: "[Retrieved Information]\n{json}\n\nReason: ...")
-        lines = info_text.split('\n')
-        json_lines = []
-        in_json = False
+    info_data = extract_retrieved_info(info_text)
+    
+    if info_data:
+        # Format based on data type
+        if KEY_RELATED_TRIPLES in info_data:
+            triples = info_data[KEY_RELATED_TRIPLES]
+            if not triples:
+                return "No triples found."
+            response = "Here are the related triples:\n\n"
+            for t in triples[:30]:
+                response += f"  {t.get(KEY_INDEX, '?')}. {t.get(KEY_HEAD, '')} --[{t.get(KEY_RELATION, '')}]--> {t.get(KEY_TAIL, '')}\n"
+            if len(triples) > 30:
+                response += f"\n  ... and {len(triples) - 30} more"
+            return response
         
-        for line in lines:
-            if line.strip().startswith('{'):
-                in_json = True
-            if in_json:
-                if line.strip().startswith('Reason:'):
-                    break
-                json_lines.append(line)
+        if KEY_SEARCH_RESULTS in info_data:
+            results = info_data[KEY_SEARCH_RESULTS]
+            if not results:
+                return "No entities found."
+            response = "Found entities:\n\n"
+            for r in results[:20]:
+                response += f"  - {r.get(KEY_NAME, '')}\n"
+            return response
         
-        if json_lines:
-            json_text = '\n'.join(json_lines)
-            info_data = json.loads(json_text)
-            
-            # Format based on data type
-            if "related_triples" in info_data:
-                triples = info_data["related_triples"]
-                if not triples:
-                    return "No triples found."
-                response = "Here are the related triples:\n\n"
-                for t in triples[:30]:
-                    response += f"  {t.get('index', '?')}. {t.get('head', '')} --[{t.get('relation', '')}]--> {t.get('tail', '')}\n"
-                if len(triples) > 30:
-                    response += f"\n  ... and {len(triples) - 30} more"
-                return response
-            
-            if "search_results" in info_data:
-                results = info_data["search_results"]
-                if not results:
-                    return "No entities found."
-                response = "Found entities:\n\n"
-                for r in results[:20]:
-                    response += f"  - {r.get('name', '')}\n"
-                return response
-            
-            if "triples" in info_data:
-                entity_name = info_data.get("name", "Entity")
-                triples = info_data.get("triples", [])
-                response = f"Information about '{entity_name}':\n"
-                if triples:
-                    response += "\nRelated triples:\n"
-                    for t in triples[:20]:
-                        response += f"  {t.get('index', '?')}. {t.get('head', '')} --[{t.get('relation', '')}]--> {t.get('tail', '')}\n"
-                return response
-            
-            if "error" in info_data:
-                return f"Error: {info_data['error']}"
-            
-            # Default: show the data
-            return f"Retrieved information:\n{json.dumps(info_data, indent=2)}"
-    except:
-        pass
+        if KEY_TRIPLES in info_data:
+            entity_name = info_data.get(KEY_NAME, DEFAULT_ENTITY)
+            triples = info_data.get(KEY_TRIPLES, [])
+            response = f"Information about '{entity_name}':\n"
+            if triples:
+                response += "\nRelated triples:\n"
+                for t in triples[:20]:
+                    response += f"  {t.get(KEY_INDEX, '?')}. {t.get(KEY_HEAD, '')} --[{t.get(KEY_RELATION, '')}]--> {t.get(KEY_TAIL, '')}\n"
+            return response
+        
+        if KEY_ERROR in info_data:
+            return f"Error: {info_data[KEY_ERROR]}"
+        
+        # Default: show the data
+        return f"Retrieved information:\n{json.dumps(info_data, indent=2)}"
     
     # Fallback if parsing fails
     return "I've retrieved the information. Here it is:\n\n" + info_text
@@ -131,7 +143,7 @@ def _get_message_content(msg: Union[Message, dict]) -> str:
     if isinstance(msg, Message):
         return msg.content
     elif isinstance(msg, dict):
-        return msg.get("content", "")
+        return msg.get(KEY_CONTENT, "")
     return ""
 
 
@@ -140,7 +152,7 @@ def _get_message_role(msg: Union[Message, dict]) -> str:
     if isinstance(msg, Message):
         return msg.role.value if isinstance(msg.role, MessageRole) else str(msg.role)
     elif isinstance(msg, dict):
-        return msg.get("role", "")
+        return msg.get(KEY_ROLE, "")
     return ""
 
 
@@ -244,7 +256,7 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
     user_message = None
     for msg in reversed(messages):
         role = _get_message_role(msg)
-        if role == "user":
+        if role == MESSAGE_ROLE_USER:
             user_message = _get_message_content(msg)
             break
     
@@ -262,25 +274,16 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
             STATE_NEXT_AGENT: END,
         }
     
-    # No questions - route to analyzer (check this before widget checks)
-    # But only if we haven't just come from analyzer (to avoid loops)
-    if not questions and state.get(STATE_NEXT_AGENT) != AGENT_ANALYZER:
-        return {
-            **state,
-            STATE_NEXT_AGENT: AGENT_ANALYZER,
-        }
-    
     # Handle retrieved information from retriever
     retrieved_info = None
     for msg in reversed(messages):
-        if isinstance(msg, dict) and msg.get("role") == "system":
-            content = msg.get("content", "")
-            if "[Retrieved Information]" in content:
+        if isinstance(msg, dict) and msg.get(KEY_ROLE) == MESSAGE_ROLE_SYSTEM:
+            content = msg.get(KEY_CONTENT, "")
+            if KEY_RETRIEVED_INFO_MARKER in content:
                 retrieved_info = content
                 break
     
     if retrieved_info:
-        # Extract triples from retrieved info and show as widget
         try:
             lines = retrieved_info.split('\n')
             json_lines = []
@@ -298,16 +301,15 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
                 json_text = '\n'.join(json_lines)
                 info_data = json.loads(json_text)
                 
-                # If we have related_triples, show them as a widget
-                if "related_triples" in info_data:
-                    triples = info_data["related_triples"]
+                if KEY_RELATED_TRIPLES in info_data:
+                    triples = info_data[KEY_RELATED_TRIPLES]
                     # Route to visualizer to show edges_widget
                     return {
                         **state,
                         STATE_MESSAGES: messages,  # Don't add bot message yet
                         STATE_NEXT_AGENT: AGENT_VISUALIZER,
-                        "_retrieved_triples": triples,  # Pass triples to visualizer
-                        "_retrieved_info_processed": True,  # Mark as processed to prevent loops
+                        STATE_INTERNAL_RETRIEVED_TRIPLES: triples,  # Pass triples to visualizer
+                        STATE_INTERNAL_RETRIEVED_INFO_PROCESSED: True,  # Mark as processed to prevent loops
                     }
         except:
             pass
@@ -324,20 +326,20 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
     show_widget = state.get(STATE_SHOW_WIDGET, False)
     widget_type = state.get(STATE_WIDGET_TYPE)
     # Check if we already processed retrieved_info (to prevent loops)
-    already_processed = state.get("_retrieved_info_processed", False)
+    already_processed = state.get(STATE_INTERNAL_RETRIEVED_INFO_PROCESSED, False)
     
-    if show_widget and widget_type == "edges_widget" and not user_message and not already_processed:
+    if show_widget and widget_type == WIDGET_TYPE_EDGES and not user_message and not already_processed:
         # Visualizer just showed a widget, now generate a natural response
         # Get the original user message from messages
         original_user_msg = None
         for msg in reversed(messages):
             role = _get_message_role(msg)
-            if role == "user":
+            if role == MESSAGE_ROLE_USER:
                 original_user_msg = _get_message_content(msg)
                 break
         
         prompt = build_communicator_prompt(validator, state, original_user_msg)
-        prompt += "\nA widget has been shown with the triples. Give a natural, conversational response about what was found. Do NOT list the triples - they're already displayed in the widget above.\n"
+        # Widget context is already included in the prompt registry templates
         response = validator.api_repo.chat(prompt)
         response_text = extract_text_from_response(response)
         response_data = JsonHelper.parse_json(response_text)
@@ -347,51 +349,31 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
             **state,
             STATE_MESSAGES: messages + [Message(role=MessageRole.BOT, content=bot_message)],
             STATE_NEXT_AGENT: END,
-            "_retrieved_info_processed": True,  # Mark as processed to prevent loops
+            STATE_INTERNAL_RETRIEVED_INFO_PROCESSED: True,  # Mark as processed to prevent loops
         }
     
-    # Handle retrieved information from retriever (only if widget not already shown and not already processed)
     retrieved_info = None
     if not show_widget and not already_processed:
         for msg in reversed(messages):
-            if isinstance(msg, dict) and msg.get("role") == "system":
-                content = msg.get("content", "")
-                if "[Retrieved Information]" in content:
+            if isinstance(msg, dict) and msg.get(KEY_ROLE) == MESSAGE_ROLE_SYSTEM:
+                content = msg.get(KEY_CONTENT, "")
+                if KEY_RETRIEVED_INFO_MARKER in content:
                     retrieved_info = content
                     break
     
     if retrieved_info:
-        # Extract triples from retrieved info and show as widget
-        try:
-            lines = retrieved_info.split('\n')
-            json_lines = []
-            in_json = False
-            
-            for line in lines:
-                if line.strip().startswith('{'):
-                    in_json = True
-                if in_json:
-                    if line.strip().startswith('Reason:'):
-                        break
-                    json_lines.append(line)
-            
-            if json_lines:
-                json_text = '\n'.join(json_lines)
-                info_data = json.loads(json_text)
-                
-                # If we have related_triples, show them as a widget
-                if "related_triples" in info_data:
-                    triples = info_data["related_triples"]
-                    # Route to visualizer to show edges_widget
-                    return {
-                        **state,
-                        STATE_MESSAGES: messages,  # Don't add bot message yet
-                        STATE_NEXT_AGENT: AGENT_VISUALIZER,
-                        "_retrieved_triples": triples,  # Pass triples to visualizer
-                        "_retrieved_info_processed": True,  # Mark as processed to prevent loops
-                    }
-        except:
-            pass
+        # Use helper to process retrieved info
+        triples, info_data = process_retrieved_info_for_widget(retrieved_info)
+        
+        # If we have related_triples, show them as a widget
+        if triples:
+            return {
+                **state,
+                STATE_MESSAGES: messages,  # Don't add bot message yet
+                STATE_NEXT_AGENT: AGENT_VISUALIZER,
+                STATE_INTERNAL_RETRIEVED_TRIPLES: triples,  # Pass triples to visualizer
+                STATE_INTERNAL_RETRIEVED_INFO_PROCESSED: True,  # Mark as processed to prevent loops
+            }
         
         # Fallback: format and show normally
         response_text = _format_retrieved_info(retrieved_info, user_message)
@@ -407,7 +389,7 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
     if changes_summary and show_widget:
         # Both modifier and visualizer have completed in parallel
         changes_text = "\n".join([f"- {c}" for c in changes_summary[-3:]])
-        widget_type = state.get(STATE_WIDGET_TYPE, "visualization")
+        widget_type = state.get(STATE_WIDGET_TYPE, WIDGET_TYPE_VISUALIZATION)
         bot_message = f"I've made these changes:\n{changes_text}\n\n"
         bot_message += f"I've also prepared a {widget_type} for you to interact with."
         return {
@@ -439,16 +421,16 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
     response_data = JsonHelper.parse_json(response_text)
     if not response_data:
         response_data = {
-            "text": response_text[:500],
-            "next_agent": None,
-            "hidden_actions": [],
-            "next_question": None,
+            STATE_TEXT: response_text[:500],
+            STATE_NEXT_AGENT: None,
+            STATE_HIDDEN_ACTIONS: [],
+            STATE_NEXT_QUESTION: None,
             "question_resolved": False,
         }
     
-    bot_message = response_data.get("text", response_text)
-    next_agent = response_data.get("next_agent")
-    hidden_actions = response_data.get("hidden_actions", [])
+    bot_message = response_data.get(STATE_TEXT, response_text)
+    next_agent = response_data.get(STATE_NEXT_AGENT)
+    hidden_actions = response_data.get(STATE_HIDDEN_ACTIONS, [])
     question_resolved = response_data.get("question_resolved", False)
     # Don't use next_question from LLM - it might just be an index like "1"
     # Always get the actual question text from the questions list
@@ -486,10 +468,8 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         agent_to_call = next_agent
     elif hidden_actions:
         agent_to_call = AGENT_MODIFIER
-    elif not validation_complete and not updated_questions:
-        # Only route to analyzer if there are NO questions (to generate new ones)
-        agent_to_call = AGENT_ANALYZER
     else:
+        # End gracefully - orchestrator will decide what to do next when user chats again
         agent_to_call = END
     
     # Only prepare next question if current one was resolved, otherwise keep current question
@@ -522,7 +502,7 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         updated_messages = messages + [Message(role=MessageRole.BOT, content=bot_message)]
     
     # Clear agent queue if we're ending the conversation
-    agent_queue = state.get("agent_queue", [])
+    agent_queue = state.get(STATE_AGENT_QUEUE, [])
     if agent_to_call == END or agent_to_call is None:
         agent_queue = []
     elif AGENT_COMMUNICATOR in agent_queue:
@@ -539,5 +519,5 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         STATE_CURRENT_QUESTION_TEXT: final_question_text,
         STATE_CURRENT_QUESTION_ID: final_question_id,
         STATE_VALIDATION_COMPLETE: validation_complete,
-        "needs_widget": needs_widget,  # Flag for parallel execution
+        STATE_INTERNAL_NEEDS_WIDGET: needs_widget,  # Flag for parallel execution
     }

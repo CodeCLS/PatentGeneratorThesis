@@ -102,6 +102,7 @@ class EntityCompletenessQuestionCreator(BaseQuestionCreator):
             "- Use actual entity names\n"
             "- Ask if the invention needs more descriptive connections\n"
             "- Be conversational\n\n"
+            "- And contain all important inforation about this triple \n\n"
             "Return ONLY JSON array:\n"
             '[{"id": "q1", "text": "Is the invention \'Entity Name\' properly explained? Should it be connected to more descriptive entities?", "category": "completeness", "priority": 7}]\n'
         )
