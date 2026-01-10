@@ -8,6 +8,7 @@ from tools.graph.langgraph.state import GraphValidatorState
 from tools.graph.langgraph.message import Message, MessageRole
 from tools.graph.langgraph.prompts import get_registry
 from tools.graph.constants_graph import (
+    AGENT_ORCHESTRATOR,
     AGENT_COMMUNICATOR,
     AGENT_ANALYZER,
     AGENT_RETRIEVER,
@@ -53,9 +54,6 @@ def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
             if msg.role == MessageRole.USER or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_USER):
                 user_message = msg.content
                 break
-        elif isinstance(msg, dict) and msg.get(KEY_ROLE) == MESSAGE_ROLE_USER:
-            user_message = msg.get(KEY_CONTENT, "")
-            break
     
     # If no user message, this is initial startup - analyze graph first
     if not user_message:
@@ -77,7 +75,7 @@ def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         # Otherwise, analyze graph first
         return {
             **state,
-            STATE_AGENT_QUEUE: [AGENT_ANALYZER, AGENT_COMMUNICATOR],
+            STATE_AGENT_QUEUE: [AGENT_ANALYZER],
             STATE_MODE: MODE_INITIAL,
             STATE_PLAN: "Initial analysis: analyze graph, then communicate with user",
             STATE_NEEDS_RETRIEVAL: False,
@@ -100,8 +98,8 @@ def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
             STATE_NEEDS_RETRIEVAL: True,
             STATE_WRITE: False,
             STATE_RESPONSE_STYLE: "conversational",
-            STATE_AGENT_QUEUE: [AGENT_RETRIEVER, AGENT_ANALYZER, AGENT_COMMUNICATOR],
-            STATE_PLAN: "Standard Q&A flow: retrieve info, analyze, communicate"
+            STATE_AGENT_QUEUE: [AGENT_COMMUNICATOR],
+            STATE_PLAN: "Please tell the user that something"
         }
     
     agent_queue = decision.get(STATE_AGENT_QUEUE, [AGENT_COMMUNICATOR])

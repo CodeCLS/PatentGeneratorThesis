@@ -11,7 +11,7 @@ from tools.graph.langgraph.info import TripleInfo
 @dataclass
 class Widget:
     """Base widget class."""
-    widget_type: str
+    widget_type: str = ""
     
     def to_dict(self) -> dict:
         """Convert to dictionary - override in subclasses."""
@@ -181,7 +181,7 @@ class GraphSubsectionWidget(Widget):
 @dataclass
 class QuestionWidgetGeneral(Widget):
     """Widget asking an open-ended question with text input."""
-    question: str
+    question: str = ""
     placeholder: Optional[str] = None
     
     def __post_init__(self):
@@ -214,7 +214,7 @@ class QuestionWidgetGeneral(Widget):
 @dataclass
 class QuestionWidgetTriple(Widget):
     """Widget asking to confirm or correct a specific triple."""
-    triple: Union[TripleInfo, dict]
+    triple: Union[TripleInfo, dict] = field(default_factory=dict)
     question: Optional[str] = None
     
     def __post_init__(self):
@@ -252,7 +252,7 @@ class QuestionWidgetTriple(Widget):
 @dataclass
 class QuestionWidgetEntity(Widget):
     """Widget asking to validate or explain an entity."""
-    entity_name: str
+    entity_name: str = ""
     entity_id: Optional[str] = None
     question: Optional[str] = None
     

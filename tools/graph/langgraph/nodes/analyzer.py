@@ -20,6 +20,8 @@ from tools.graph.constants_graph import (
     STATE_CURRENT_QUESTION_ID,
     STATE_VALIDATION_COMPLETE,
     STATE_NEXT_AGENT,
+    STATE_AGENT_QUEUE,
+    AGENT_ANALYZER,
 )
 
 if TYPE_CHECKING:
@@ -78,6 +80,11 @@ def analyzer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
     else:
         messages.append(Message(role=MessageRole.BOT, content="I've analyzed your graph and found no issues. Validation is complete!"))
     
+    # Consume current agent from queue if it's at the front
+    agent_queue = state.get(STATE_AGENT_QUEUE, [])
+    if agent_queue and agent_queue[0] == AGENT_ANALYZER:
+        agent_queue = agent_queue[1:]
+    
     return {
         **state,
         STATE_MESSAGES: messages,
@@ -85,5 +92,5 @@ def analyzer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
         STATE_CURRENT_QUESTION_TEXT: next_question,
         STATE_CURRENT_QUESTION_ID: question_id,
         STATE_VALIDATION_COMPLETE: not questions,
-        STATE_NEXT_AGENT: None if not questions else AGENT_COMMUNICATOR,
+        STATE_AGENT_QUEUE: agent_queue,
     }

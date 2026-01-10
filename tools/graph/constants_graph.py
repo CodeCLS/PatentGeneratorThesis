@@ -8,8 +8,6 @@ AGENT_ANALYZER = "analyzer"
 AGENT_MODIFIER = "modifier"
 AGENT_RETRIEVER = "retriever"
 AGENT_VISUALIZER = "visualizer"
-AGENT_FORK = "fork"  # Fork node for parallel execution
-AGENT_MERGE = "merge"  # Merge node for combining parallel results
 
 ACTION_ADD_TRIPLES = "add_triples"
 ACTION_DELETE_TRIPLES = "delete_triples"
@@ -58,6 +56,7 @@ KEY_ACTION = "action"
 KEY_PARAMETERS = "parameters"
 KEY_NAME = "name"
 KEY_ID = "id"
+KEY_ENTITY_ID = "entity_id"
 KEY_INDEX = "index"
 KEY_HEAD = "head"
 KEY_TAIL = "tail"
@@ -96,8 +95,7 @@ DEFAULT_REASON = "Default"
 
 # Internal state keys
 STATE_INTERNAL_RETRIEVED_TRIPLES = "_retrieved_triples"
-STATE_INTERNAL_RETRIEVED_INFO_PROCESSED = "_retrieved_info_processed"
-STATE_INTERNAL_FROM_FORK = "_from_fork"
-STATE_INTERNAL_NEEDS_WIDGET = "needs_widget"
+    STATE_INTERNAL_RETRIEVED_INFO_PROCESSED = "_retrieved_info_processed"
+    STATE_INTERNAL_NEEDS_WIDGET = "needs_widget"
 STATE_INTERNAL_NODE_TYPE = "node_type"
 

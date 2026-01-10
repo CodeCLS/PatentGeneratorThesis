@@ -51,7 +51,6 @@ class GraphValidatorState(TypedDict):
     entities_count: int  # Number of entities
     
     # Agent decisions
-    next_agent: Optional[str]  # Which agent to route to next (legacy, use agent_queue)
     agent_queue: List[str]  # Queue of agents to run in sequence
     validation_complete: bool  # Whether validation is done
     
@@ -88,7 +87,6 @@ def create_state(**kwargs) -> GraphValidatorState:
         STATE_GRAPH_EDGES_COUNT: 0,
         STATE_TRIPLES_COUNT: 0,
         STATE_ENTITIES_COUNT: 0,
-        STATE_NEXT_AGENT: None,
         STATE_AGENT_QUEUE: [],
         STATE_VALIDATION_COMPLETE: False,
         STATE_MODE: None,

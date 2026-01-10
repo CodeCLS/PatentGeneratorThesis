@@ -22,8 +22,6 @@ from tools.graph.constants_graph import (
     AGENT_MODIFIER,
     AGENT_RETRIEVER,
     AGENT_VISUALIZER,
-    AGENT_FORK,
-    AGENT_MERGE,
     STATE_MESSAGES,
     STATE_CONVERSATION_TURN,
     STATE_CURRENT_QUESTION_TEXT,
@@ -39,6 +37,7 @@ from tools.graph.constants_graph import (
     MESSAGE_ROLE_BOT,
     KEY_ROLE,
     KEY_CONTENT,
+    STATE_AGENT_QUEUE
 )
 
 # Ensure GraphValidatorState is available in module globals for LangGraph evaluation
@@ -83,6 +82,10 @@ class GraphValidatorLangGraph:
         self.app = self.workflow.compile()
         self.recursion_limit = 10
         self._initial_questions = []
+        self.config = {"recursion_limit": self.recursion_limit}
+
+        
+        self.initial_analysis_complete = False
         
         self._current_state = create_state(
             graph_nodes_count=self.graph.number_of_nodes() if self.graph else 0,
@@ -90,31 +93,34 @@ class GraphValidatorLangGraph:
             triples_count=len(self.triples),
             entities_count=len(self.id_to_name),
         )
+
+    def run_initial_analysis(self):
+        """Run the initial analysis stream in the background."""
+        initial_state = self._current_state.copy()
+        try:
+            for state in self.app.stream(initial_state, config=self.config):
+                final_state = state
+                if state:
+                    last_node = list(state.keys())[-1] if state else None
+                    if last_node:
+                        self._current_state = state[last_node]
+            self.initial_analysis_complete = True
+        except Exception as e:
+            print(f"Error in background analysis: {e}")
+            # Still mark as complete or handle error to avoid infinite waiting
+            self.initial_analysis_complete = True
     
     def _build_graph(self) -> StateGraph:
         workflow = StateGraph[GraphValidatorState, None, GraphValidatorState, GraphValidatorState](GraphValidatorState)
 
         
-        def fork_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
-            return {
-                **state,
-                "_from_fork": True,
-            }
-        
-        def merge_wrapper(state: "GraphValidatorState") -> "GraphValidatorState":
-
-            merged_state = {**state}
-            merged_state.pop("_from_fork", None)
-            merged_state.pop("needs_widget", None)
-            return merged_state
+    
 
         workflow.add_node(AGENT_COMMUNICATOR, lambda state: communicator_node(self, state))
         workflow.add_node(AGENT_RETRIEVER, lambda state: retriever_node(self, state))
         workflow.add_node(AGENT_VISUALIZER, lambda state: visualizer_node(self, state))
         workflow.add_node(AGENT_ANALYZER, lambda state: analyzer_node(self, state))
         workflow.add_node(AGENT_MODIFIER, lambda state: modifier_node(self, state))
-        workflow.add_node(AGENT_FORK, fork_wrapper)
-        workflow.add_node(AGENT_MERGE, merge_wrapper)
         workflow.add_node(AGENT_ORCHESTRATOR, lambda state: orchestrator_node(self, state))
 
 
@@ -126,8 +132,6 @@ class GraphValidatorLangGraph:
             AGENT_ANALYZER: AGENT_ANALYZER,
             AGENT_MODIFIER: AGENT_MODIFIER,
             AGENT_COMMUNICATOR: AGENT_COMMUNICATOR,
-            AGENT_FORK: AGENT_FORK,
-            AGENT_MERGE: AGENT_MERGE,
             END: END,
             "__end__": END,
         }
@@ -139,26 +143,28 @@ class GraphValidatorLangGraph:
         workflow.add_conditional_edges(AGENT_ANALYZER, route_from_analyzer, routing_map)
         workflow.add_conditional_edges(AGENT_MODIFIER, route_from_modifier, routing_map)
         
-        workflow.add_edge(AGENT_FORK, AGENT_MODIFIER)
-        workflow.add_edge(AGENT_FORK, AGENT_VISUALIZER)
-        
-        workflow.add_edge(AGENT_MERGE, AGENT_COMMUNICATOR)
-        
+
         return workflow
     
     def chat(self, user_message: str, config: Optional[Dict] = None) -> Dict[str, Any]:
         """Process a user message through the agent graph."""
         initial_state = self._current_state.copy()
+        print(f"Initial state: {initial_state}")
         
         initial_state[STATE_MESSAGES] = initial_state.get(STATE_MESSAGES, []) + [
             Message(role=MessageRole.USER, content=user_message)
         ]
         initial_state[STATE_CONVERSATION_TURN] = initial_state.get(STATE_CONVERSATION_TURN, 0) + 1
+        print(f"Initial state: {initial_state}")
+
         
         final_state = None
         try:
-            config = {"recursion_limit": self.recursion_limit}
-            for state in self.app.stream(initial_state, config=config):
+            for state in self.app.stream(initial_state, config=self.config):
+                for node_name, node_state in state.items():
+                    queue = node_state.get(STATE_AGENT_QUEUE, "N/A")
+                    print(f"--- Node '{node_name}' finished ---")
+                    print(f"Agent Queue: {queue}")
                 final_state = state
                 if state:
                     last_node = list(state.keys())[-1] if state else None
@@ -201,9 +207,6 @@ class GraphValidatorLangGraph:
                 if msg.role == MessageRole.BOT or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_BOT):
                     last_bot_msg = msg.content
                     break
-            elif isinstance(msg, dict) and msg.get(KEY_ROLE) == MESSAGE_ROLE_BOT:
-                last_bot_msg = msg.get(KEY_CONTENT, "")
-                break
         
         return {
             STATE_TEXT: last_bot_msg or "Response processed.",

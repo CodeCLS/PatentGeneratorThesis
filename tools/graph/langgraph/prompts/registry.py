@@ -106,6 +106,10 @@ class PromptRegistry:
                     developer=base_developer,
                     task=(
                         "TASK: Engage in natural conversation about the knowledge graph.\n\n"
+                                                # Updated Developer instructions:
+                        "- Never explain the retrieval process or the widgets or mention 'retrieved triples'."
+                        "- If you have the wrong info, route back to retriever silently."
+                        "- Talk about the graph data as if you are looking at it with the user."
                         "Your responsibilities:\n"
                         "- Present validation questions to the user\n"
                         "- Answer questions about the graph\n"
@@ -139,29 +143,34 @@ class PromptRegistry:
                     developer=base_developer,
                     task=(
                         "TASK: Determine what information to retrieve based on user request.\n\n"
+                        "If the user says 'this entity' or 'this invention', and a validation question "
+                        "is active about {{current_question}}, assume they mean that entity. \n\n"
+                        "Do not ask for permission to retrieve; just provide the action."
                         "Available actions:\n"
                         "- 'get_entity_info': Get detailed information about a specific entity\n"
                         "- 'get_triple_info': Get information about a specific triple by index\n"
                         "- 'get_related_triples': Get all triples connected to an entity\n"
-                        "- 'search_entities': Search for entities by name (ONLY for name searches, not for triples)\n\n"
+                        #"- 'search_entities': Search for entities by name (ONLY for name searches, not for triples)\n\n"
                         "Action selection guide:\n"
                         "- Use 'get_related_triples' when user asks for triples/connections/relationships related to an entity\n"
                         "- Use 'get_entity_info' when user asks for information about a specific entity\n"
                         "- Use 'get_triple_info' when user asks about a specific triple by index\n"
-                        "- Use 'search_entities' ONLY when user is searching/looking for entities by name, NOT when asking for triples\n\n"
+                        #"- Use 'search_entities' ONLY when user is searching/looking for entities by name, NOT when asking for triples\n\n"
                         "IMPORTANT: If the user mentions 'triples', 'connections', 'connected to', 'relationships', 'elaborate', "
                         "or asks about what something is connected to, use 'get_related_triples' with entity_name parameter.\n"
                         "Extract the entity name from the user's message."
                     ),
                     templates=(
                         "OUTPUT SCHEMA (JSON):\n"
-                        '{{"action": "get_entity_info|get_triple_info|get_related_triples|search_entities", '
-                        '"parameters": {{"entity_name": "...", "triple_index": 0, "query": "..."}}, '
+                        '{{"action": "get_entity_info|get_triple_info|get_related_triples| '+
+                        #'search_entities", '
+                        '"parameters": {{"entity_name": "...", entity_id: "...", triple_index": 0, "query": "..."}}, '
                         '"reason": "Why this information is needed"}}\n\n'
                         "CONTEXT:\n"
                         "- User request: {user_message}\n"
                         "- Last bot message: {last_bot_message}\n"
-                    ),
+                        "- Current question: {current_question}\n"
+                        ),
                 ),
             },
             AGENT_VISUALIZER: {
@@ -169,7 +178,7 @@ class PromptRegistry:
                     system=base_system + " You are a visualization agent that decides which widgets to show to the user.",
                     developer=base_developer,
                     task=(
-                        "TASK: Decide what visualization widgets to display.\n\n"
+                        "TASK: Decide what visualization widgets to display if any at all.\n\n"
                         "Available widget types:\n"
                         "- edges_widget: Show subject-relation-object edges as a list\n"
                         "- graph_widget: Visualize the full knowledge graph\n"

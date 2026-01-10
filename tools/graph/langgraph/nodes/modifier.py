@@ -19,6 +19,8 @@ from tools.graph.constants_graph import (
     STATE_CHANGES_SUMMARY,
     STATE_STATS,
     STATE_NEXT_AGENT,
+    STATE_AGENT_QUEUE,
+    AGENT_MODIFIER,
     KEY_TYPE,
     KEY_PARAMETERS,
     KEY_TRIPLES,
@@ -193,10 +195,15 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
     
     stats = validator.tools.calculate_stats()
     
+    # Consume current agent from queue if it's at the front
+    agent_queue = state.get(STATE_AGENT_QUEUE, [])
+    if agent_queue and agent_queue[0] == AGENT_MODIFIER:
+        agent_queue = agent_queue[1:]
+    
     return {
         **state,
         STATE_HIDDEN_ACTIONS: [],
         STATE_CHANGES_SUMMARY: state.get(STATE_CHANGES_SUMMARY, []) + changes_summary,
         STATE_STATS: stats,
-        STATE_NEXT_AGENT: AGENT_COMMUNICATOR,
+        STATE_AGENT_QUEUE: agent_queue,
     }

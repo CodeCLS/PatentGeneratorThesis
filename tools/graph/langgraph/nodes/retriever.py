@@ -12,6 +12,7 @@ from tools.graph.constants_graph import (
     AGENT_COMMUNICATOR,
     AGENT_RETRIEVER,
     STATE_MESSAGES,
+    STATE_AGENT_QUEUE,
     STATE_NEXT_AGENT,
     MESSAGE_ROLE_USER,
     MESSAGE_ROLE_BOT,
@@ -26,9 +27,12 @@ from tools.graph.constants_graph import (
     ACTION_GET_ENTITY_INFO,
     ACTION_GET_TRIPLE_INFO,
     ACTION_GET_RELATED_TRIPLES,
+    KEY_INDEX,
     ACTION_SEARCH_ENTITIES,
     KEY_RETRIEVED_INFO_MARKER,
     DEFAULT_REASON,
+    DEFAULT_N_A,
+    KEY_ENTITY_ID
 )
 
 if TYPE_CHECKING:
@@ -49,11 +53,6 @@ def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorS
                 user_message = msg.content
             elif (msg.role == MessageRole.BOT or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_BOT)) and last_bot_message is None:
                 last_bot_message = msg.content
-        elif isinstance(msg, dict):
-            if msg.get(KEY_ROLE) == MESSAGE_ROLE_USER and user_message is None:
-                user_message = msg.get(KEY_CONTENT, "")
-            elif msg.get(KEY_ROLE) == MESSAGE_ROLE_BOT and last_bot_message is None:
-                last_bot_message = msg.get(KEY_CONTENT, "")
         if user_message and last_bot_message:
             break
     
@@ -71,15 +70,19 @@ def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorS
     
     action = action_data.get(KEY_ACTION, ACTION_GET_ENTITY_INFO)
     params = action_data.get(KEY_PARAMETERS, {})
+    entity_id = params.get(KEY_ENTITY_ID, "")
     
+    print("Name of entity: ", params.get(KEY_NAME, ""))
+
     if action == ACTION_GET_ENTITY_INFO:
-        entity_info = validator.tools.get_entity_info(params.get(KEY_NAME, ""))
+        entity_info = validator.tools.get_entity_info(params.get(KEY_NAME, ""), id = entity_id)
+        print("Name of entity: ", params.get(KEY_NAME, ""))
         info = entity_info.to_dict() if hasattr(entity_info, 'to_dict') else entity_info
     elif action == ACTION_GET_TRIPLE_INFO:
         triple_info = validator.tools.get_triple_info(params.get(KEY_INDEX, -1))
         info = triple_info.to_dict() if hasattr(triple_info, 'to_dict') else triple_info
     elif action == ACTION_GET_RELATED_TRIPLES:
-        related_triples = validator.tools.get_related_triples(params.get(KEY_NAME, ""))
+        related_triples = validator.tools.get_related_triples(params.get(KEY_NAME, ""), id = entity_id)
         info = {KEY_RELATED_TRIPLES: [t.to_dict() if hasattr(t, 'to_dict') else t for t in related_triples]}
     elif action == ACTION_SEARCH_ENTITIES:
         info = {KEY_SEARCH_RESULTS: validator.tools.search_entities(params.get("query", ""))}
@@ -89,8 +92,13 @@ def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorS
     info_text = json.dumps(info, indent=2)
     retrieval_message = f"{KEY_RETRIEVED_INFO_MARKER}\n{info_text}\n\nReason: {action_data.get('reason', DEFAULT_N_A)}"
     
+    # Consume current agent from queue if it's at the front
+    agent_queue = state.get(STATE_AGENT_QUEUE, [])
+    if agent_queue and agent_queue[0] == AGENT_RETRIEVER:
+        agent_queue = agent_queue[1:]
+    
     return {
         **state,
         STATE_MESSAGES: messages + [Message(role=MessageRole.SYSTEM, content=retrieval_message)],
-        STATE_NEXT_AGENT: AGENT_COMMUNICATOR,
+        STATE_AGENT_QUEUE: agent_queue,
     }

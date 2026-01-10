@@ -24,14 +24,17 @@ class GraphValidatorTools:
         self.id_to_name = id_to_name
         self._original_triples = triples.copy()
     
-    def get_entity_info(self, entity_name: str) -> EntityInfo:
+    def get_entity_info(self, entity_name: str, id: str = "") -> EntityInfo:
         """Retrieve detailed information about an entity by name."""
         entity_id = None
-        for eid, name in self.id_to_name.items():
-            if name.lower() == entity_name.lower():
-                entity_id = eid
-                break
-        
+        if id:
+            entity_id = id
+        else:
+            for eid, name in self.id_to_name.items():
+                if name.lower() == entity_name.lower():
+                    entity_id = eid
+                    break
+            print("Entity ID: ", entity_id)
         if not entity_id:
             return EntityInfo(
                 name=entity_name,
@@ -94,6 +97,7 @@ class GraphValidatorTools:
     
     def get_triple_info(self, triple_index: int) -> TripleInfo:
         """Retrieve detailed information about a triple by index."""
+        
         if not self.triples or triple_index < 0 or triple_index >= len(self.triples):
             return TripleInfo(
                 index=triple_index,
@@ -137,16 +141,18 @@ class GraphValidatorTools:
                     break
         return results
     
-    def get_related_triples(self, entity_name: str, max_depth: int = 1) -> List[TripleInfo]:
+    def get_related_triples(self, entity_name: str, max_depth: int = 1, id: str = "") -> List[TripleInfo]:
         """Get triples directly related to an entity (where entity is head or tail)."""
         entity_id = None
         entity_name_lower = entity_name.lower().strip()
-        
+        if id:
+            entity_id = id
+        else:
         # Try exact match first
-        for eid, name in self.id_to_name.items():
-            if name.lower() == entity_name_lower:
-                entity_id = eid
-                break
+            for eid, name in self.id_to_name.items():
+                if name.lower() == entity_name_lower:
+                    entity_id = eid
+                    break
         
         # Try partial match if exact match fails
         if not entity_id:

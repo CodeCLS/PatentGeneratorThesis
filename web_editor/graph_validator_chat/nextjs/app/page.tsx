@@ -30,39 +30,29 @@ interface WidgetData {
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'bot', content: 'Analyzing your graph and triples...' }
+    { role: 'bot', content: 'Welcome! I am setting up the environment. You can explore the sidebar while I analyze the graph.' }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [inputDisabled, setInputDisabled] = useState(true);
-  const [status, setStatus] = useState('Initializing...');
+  const [status, setStatus] = useState('Connecting to backend...');
+  const [isBackendReady, setIsBackendReady] = useState(false);
   const [allTriples, setAllTriples] = useState<Triple[]>([]);
   const [filteredTriples, setFilteredTriples] = useState<Triple[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [changes, setChanges] = useState<string[]>([]);
   const [stats, setStats] = useState<any>({});
+  const chatStartedRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Show UI immediately - don't wait for API calls
-    setInputDisabled(false);
-    
-    // Run critical requests in parallel
-    Promise.all([
-      startChat(),  // Most important - get first question
-      checkStatus(), // Quick status check
-    ]).catch(console.error);
-    
-    // Load non-critical data after a short delay (don't block UI)
-    setTimeout(() => {
-      Promise.all([
-        updateGraphState(),
-        loadTriples(),
-      ]).catch(console.error);
-    }, 100);
+    // Run initial checks immediately
+    checkStatus();
+    updateGraphState();
+    loadTriples();
 
     const interval = setInterval(() => {
-      updateGraphState();
       checkStatus();
+      updateGraphState();
       loadTriples();
     }, 5000);
 
@@ -82,13 +72,26 @@ export default function ChatPage() {
       const response = await fetch('/api/status');
       const data = await response.json();
       if (data.initialized) {
+        setIsBackendReady(true);
+        setInputDisabled(false);
         const unanswered = data.num_unanswered !== undefined ? data.num_unanswered : data.num_questions;
         setStatus(`Ready | ${unanswered} question${unanswered !== 1 ? 's' : ''} remaining | ${data.num_triples} triples`);
+        
+        // If we haven't started the chat yet, start it
+        if (!chatStartedRef.current) {
+          chatStartedRef.current = true;
+          startChat();
+        }
       } else {
-        setStatus('Not initialized');
+        setIsBackendReady(false);
+        setInputDisabled(true);
+        setStatus('Initializing Backend...');
       }
     } catch (error) {
       console.error('Error checking status:', error);
+      setIsBackendReady(false);
+      setInputDisabled(true);
+      setStatus('Waiting for server...');
     }
   };
 
@@ -279,7 +282,7 @@ export default function ChatPage() {
             className={styles.input}
           />
           <button
-            onClick={sendAnswer}
+            onClick={() => sendAnswer()}
             disabled={inputDisabled}
             className={styles.sendButton}
           >

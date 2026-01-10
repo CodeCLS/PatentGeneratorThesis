@@ -3,7 +3,7 @@ Question dataclass for graph validation questions.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 
 @dataclass
@@ -14,7 +14,8 @@ class Question:
     category: str = "unclear"
     priority: int = 5
     answered: bool = False
-    num_responses: int = 0
+    num_responses: int = 0,
+    entities_contained: List[str] = field(default_factory=list),
     context: Dict[str, Any] = field(default_factory=dict)
     
     @classmethod
@@ -27,6 +28,7 @@ class Question:
             priority=data.get("priority", 5),
             answered=data.get("answered", False),
             num_responses=data.get("num_responses", 0),
+            entities_contained=data.get("entities_contained", []),
             context=data.get("context", {}),
         )
     
@@ -39,6 +41,7 @@ class Question:
             "priority": self.priority,
             "answered": self.answered,
             "num_responses": self.num_responses,
+            "entities_contained": self.entities_contained,
             "context": self.context,
         }
-
+ 

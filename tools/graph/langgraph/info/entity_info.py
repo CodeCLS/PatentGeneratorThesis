@@ -4,7 +4,10 @@ EntityInfo dataclass for entity information.
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
-
+from typing import Dict, List, Optional, Any, TYPE_CHECKING # Add TYPE_CHECKING
+from tools.graph.langgraph.info.triple_info import TripleInfo
+if TYPE_CHECKING:
+    from tools.graph.langgraph.info.triple_info import TripleInfo # Add this
 
 @dataclass
 class ConnectedEntity:
@@ -22,7 +25,7 @@ class EntityInfo:
     connections: int = 0
     properties: Dict[str, Any] = field(default_factory=dict)
     connected_entities: List[ConnectedEntity] = field(default_factory=list)
-    triples: List["TripleInfo"] = field(default_factory=list)
+    triples: List[TripleInfo] = field(default_factory=list)
     label: Optional[str] = None
     error: Optional[str] = None
     

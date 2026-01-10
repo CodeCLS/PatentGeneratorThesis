@@ -4,6 +4,7 @@ Single file with everything needed - no Flask, no Jinja2 dependencies!
 """
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 import json
 import threading
@@ -32,6 +33,11 @@ _nextjs_process: Optional[subprocess.Popen] = None
 _nextjs_thread: Optional[threading.Thread] = None
 
 
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """Handle requests in a separate thread."""
+    daemon_threads = True
+
+
 def initialize_validator(
     graph: Optional[nx.MultiDiGraph] = None,
     triples: Optional[List[Triple]] = None,
@@ -39,11 +45,21 @@ def initialize_validator(
 ) -> GraphValidatorLangGraph:
     """Initialize the validator with graph and/or triples."""
     global validator
+    # 1. Create the object instantly
     validator = GraphValidatorLangGraph(
         graph=graph,
         triples=triples,
         id_to_name=id_to_name,
     )
+    
+    # 2. Run heavy analysis in a background thread
+    def background_analysis():
+        print("[Server] Starting background analysis...")
+        validator.run_initial_analysis()
+        print("[Server] Background analysis complete.")
+        
+    threading.Thread(target=background_analysis, daemon=True).start()
+    
     return validator
 
 
@@ -122,8 +138,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
     
     def _get_status(self) -> Dict[str, Any]:
         """Get current validator status."""
-        if not validator:
-            return {"initialized": False, "message": "Validator not initialized"}
+        if not validator or not getattr(validator, 'initial_analysis_complete', False):
+            return {"initialized": False, "message": "Validator initializing..."}
         
         questions = validator._current_state.get("questions", []) if hasattr(validator, '_current_state') and validator._current_state else []
         unanswered = [q for q in questions if not (q.answered if isinstance(q, Question) else q.get("answered", False))]
@@ -434,12 +450,7 @@ def start_validator_chat(
         _api_thread = None
         _nextjs_process = None
         _nextjs_thread = None
-    
-    if validator is None or graph is not None or triples is not None:
-        print(f"[Server] Initializing validator...")
-        initialize_validator(graph, triples, id_to_name)
-    else:
-        print(f"[Server] Validator already exists, skipping initialization")
+   
     _server_running = True
     print(f"[Server] Requested API port: {port}")
     api_port = _find_available_port(port)
@@ -454,7 +465,7 @@ def start_validator_chat(
     
     def run_api_server():
         global _api_server
-        _api_server = HTTPServer(('127.0.0.1', api_port), GraphValidatorHandler)
+        _api_server = ThreadedHTTPServer(('127.0.0.1', api_port), GraphValidatorHandler)
         print(f"✓ API Server running on http://localhost:{api_port}")
         _api_server.serve_forever()
     
@@ -493,6 +504,7 @@ def start_validator_chat(
         )
         with open(next_config_path, 'w') as f:
             f.write(config_content)
+    
     
     def run_nextjs():
         import platform
@@ -534,6 +546,8 @@ def start_validator_chat(
     
     _nextjs_thread = threading.Thread(target=run_nextjs, daemon=True)
     _nextjs_thread.start()
+     
+  
     
     # Wait a bit for Next.js to start, then open browser
     if open_browser:
@@ -546,6 +560,15 @@ def start_validator_chat(
     
     print(f"✓ Graph Validator Chat: http://localhost:{nextjs_port}")
     print(f"✓ API Server: http://localhost:{api_port}")
+    def init_background():
+        if validator is None or graph is not None or triples is not None:
+            print(f"[Server] Initializing validator in background...")
+            initialize_validator(graph, triples, id_to_name)
+        else:
+            print(f"[Server] Validator already exists")
+
+    # Start initialization in a separate thread
+    threading.Thread(target=init_background, daemon=True).start()
 
 
 # Helper functions for getting data from validator

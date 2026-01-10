@@ -9,12 +9,14 @@ from tools.graph.langgraph.message.widgets import Widget, EdgesWidget
 from tools.graph.langgraph.prompts import get_registry
 from tools.graph.constants_graph import (
     AGENT_COMMUNICATOR,
+    AGENT_VISUALIZER,
     STATE_MESSAGES,
     STATE_CURRENT_QUESTION_TEXT,
     STATE_SHOW_WIDGET,
     STATE_WIDGET_TYPE,
     STATE_WIDGET_DATA,
     STATE_NEXT_AGENT,
+    STATE_AGENT_QUEUE,
     STATE_INTERNAL_RETRIEVED_TRIPLES,
     WIDGET_TYPE_EDGES,
     KEY_TRIPLES,
@@ -65,10 +67,16 @@ def visualizer_node(validator: "GraphValidatorLangGraph", state: "GraphValidator
             widget_dict = {"widget_type": widget_type, "data": widget_data_dict}
             widget_obj = Widget.from_dict(widget_dict)
     
+    # Consume current agent from queue if it's at the front
+    agent_queue = state.get(STATE_AGENT_QUEUE, [])
+    if agent_queue and agent_queue[0] == AGENT_VISUALIZER:
+        agent_queue = agent_queue[1:]
+    
     return {
         **state,
         STATE_SHOW_WIDGET: widget_data.get("show_widget", False),
         STATE_WIDGET_TYPE: widget_data.get("widget_type"),
         STATE_WIDGET_DATA: widget_obj.to_dict().get("data", {}) if widget_obj else widget_data.get("widget_data", {}),
         STATE_NEXT_AGENT: AGENT_COMMUNICATOR,
+        STATE_AGENT_QUEUE: agent_queue,
     }
