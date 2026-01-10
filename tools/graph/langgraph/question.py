@@ -15,7 +15,8 @@ class Question:
     priority: int = 5
     answered: bool = False
     num_responses: int = 0,
-    entities_contained: List[str] = field(default_factory=list),
+    entities_referenced: List[str] = field(default_factory=list),
+    triples_referenced: List[str] = field(default_factory=list),
     context: Dict[str, Any] = field(default_factory=dict)
     
     @classmethod
@@ -29,6 +30,8 @@ class Question:
             answered=data.get("answered", False),
             num_responses=data.get("num_responses", 0),
             entities_contained=data.get("entities_contained", []),
+            triples_referenced=data.get("triples_referenced", []),
+
             context=data.get("context", {}),
         )
     
@@ -42,6 +45,7 @@ class Question:
             "answered": self.answered,
             "num_responses": self.num_responses,
             "entities_contained": self.entities_contained,
+            "triples_referenced": self.triples_referenced,
             "context": self.context,
         }
  

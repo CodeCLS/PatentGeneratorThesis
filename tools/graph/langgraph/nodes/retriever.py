@@ -3,9 +3,9 @@ Retriever node - fetches detailed information about entities and triples.
 """
 
 import json
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Union,Dict
 from tools.helper.json_helper import JsonHelper
-from tools.graph.langgraph.state import GraphValidatorState
+from tools.graph.langgraph.state import GraphValidatorState,get_last_message
 from tools.graph.langgraph.message import Message, MessageRole
 from tools.graph.langgraph.prompts import get_registry
 from tools.graph.constants_graph import (
@@ -32,35 +32,32 @@ from tools.graph.constants_graph import (
     KEY_RETRIEVED_INFO_MARKER,
     DEFAULT_REASON,
     DEFAULT_N_A,
-    KEY_ENTITY_ID
+    KEY_ENTITY_ID,
+    STATE_CURRENT_QUESTION_ID,
+    STATE_CHAT_CONTEXT_INFORMATION,
+    STATE_CURRENT_QUESTION
 )
 
 if TYPE_CHECKING:
     from tools.graph.langgraph.validator import GraphValidatorLangGraph
 
+def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState", id_to_name: Dict[str, str]) -> "GraphValidatorState":
 
-def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState") -> "GraphValidatorState":
     """Retrieval agent - fetches detailed information about entities and triples."""
     messages = state.get(STATE_MESSAGES, [])
-    
-    # Get the last user message (most important for understanding the request)
-    user_message = None
-    last_bot_message = None
-    for msg in reversed(messages):
-        # Handle both Message objects and dicts
-        if isinstance(msg, Message):
-            if (msg.role == MessageRole.USER or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_USER)) and user_message is None:
-                user_message = msg.content
-            elif (msg.role == MessageRole.BOT or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_BOT)) and last_bot_message is None:
-                last_bot_message = msg.content
-        if user_message and last_bot_message:
-            break
+    question = state.get(STATE_CURRENT_QUESTION)
+    user_message = get_last_message(messages, MessageRole.USER)
+    last_bot_message = get_last_message(messages, MessageRole.BOT)
     
     registry = get_registry()
     prompt = registry.build_prompt(
         AGENT_RETRIEVER,
         user_message=user_message or "",
-        last_bot_message=last_bot_message or ""
+        last_bot_message=last_bot_message or "",
+        current_question=str(question),
+        id_to_name=id_to_name
+
+
     )
     
     response = validator.api_repo.chat(prompt)
@@ -72,18 +69,16 @@ def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorS
     params = action_data.get(KEY_PARAMETERS, {})
     entity_id = params.get(KEY_ENTITY_ID, "")
     
-    print("Name of entity: ", params.get(KEY_NAME, ""))
-
     if action == ACTION_GET_ENTITY_INFO:
         entity_info = validator.tools.get_entity_info(params.get(KEY_NAME, ""), id = entity_id)
         print("Name of entity: ", params.get(KEY_NAME, ""))
-        info = entity_info.to_dict() if hasattr(entity_info, 'to_dict') else entity_info
+        info = entity_info
     elif action == ACTION_GET_TRIPLE_INFO:
         triple_info = validator.tools.get_triple_info(params.get(KEY_INDEX, -1))
-        info = triple_info.to_dict() if hasattr(triple_info, 'to_dict') else triple_info
+        info = triple_info
     elif action == ACTION_GET_RELATED_TRIPLES:
         related_triples = validator.tools.get_related_triples(params.get(KEY_NAME, ""), id = entity_id)
-        info = {KEY_RELATED_TRIPLES: [t.to_dict() if hasattr(t, 'to_dict') else t for t in related_triples]}
+        info = related_triples
     elif action == ACTION_SEARCH_ENTITIES:
         info = {KEY_SEARCH_RESULTS: validator.tools.search_entities(params.get("query", ""))}
     else:
@@ -96,9 +91,12 @@ def retriever_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorS
     agent_queue = state.get(STATE_AGENT_QUEUE, [])
     if agent_queue and agent_queue[0] == AGENT_RETRIEVER:
         agent_queue = agent_queue[1:]
+
+    context_information = ChatContextInformation(info = info)
     
     return {
+        STATE_CHAT_CONTEXT_INFORMATION: [ChatContextInformation(info = info)],
         **state,
-        STATE_MESSAGES: messages + [Message(role=MessageRole.SYSTEM, content=retrieval_message)],
+        STATE_MESSAGES: messages + [Message(role=MessageRole.SYSTEM, content=retrieval_message, data=context_information )],
         STATE_AGENT_QUEUE: agent_queue,
     }

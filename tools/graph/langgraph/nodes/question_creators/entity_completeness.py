@@ -104,7 +104,7 @@ class EntityCompletenessQuestionCreator(BaseQuestionCreator):
             "- Be conversational\n\n"
             "- And contain all important inforation about this triple \n\n"
             "Return ONLY JSON array:\n"
-            '[{"id": "q1", "text": "Is the invention \'Entity Name\' properly explained? Should it be connected to more descriptive entities?",entities_contained: ["Entity Id A", "Entity Id B"], "category": "completeness", "priority": 7}]\n'
+            '[{"id": "q1", "text": "Is the invention \'Entity Name\' properly explained? Should it be connected to more descriptive entities?",triples_contained: ["Triple Id A", "Triple Id B"], "entities_contained": ["Entity Id A", "Entity Id B"], "category": "completeness", "priority": 7}]\n'
         )
         
         response = self.api_repo.chat(prompt)

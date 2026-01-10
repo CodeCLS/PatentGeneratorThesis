@@ -4,7 +4,7 @@ Orchestrator node - decides which agents to run and in what order.
 
 from typing import TYPE_CHECKING, Union
 from tools.helper.json_helper import JsonHelper
-from tools.graph.langgraph.state import GraphValidatorState
+from tools.graph.langgraph.state import GraphValidatorState, get_last_message
 from tools.graph.langgraph.message import Message, MessageRole
 from tools.graph.langgraph.prompts import get_registry
 from tools.graph.constants_graph import (
@@ -34,34 +34,16 @@ if TYPE_CHECKING:
     from tools.graph.langgraph.validator import GraphValidatorLangGraph
 
 
-def _get_message_content(msg: Union[Message, dict]) -> str:
-    """Extract content from a Message object or dict."""
-    if isinstance(msg, Message):
-        return msg.content
-    elif isinstance(msg, dict):
-        return msg.get(KEY_CONTENT, "")
-    return ""
 
 
 def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState") -> "GraphValidatorState":
     """Orchestrator agent - decides the flow of agents based on user intent."""
     messages = state.get(STATE_MESSAGES, [])
-    
-    # Get the last user message
-    user_message = None
-    for msg in reversed(messages):
-        if isinstance(msg, Message):
-            if msg.role == MessageRole.USER or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_USER):
-                user_message = msg.content
-                break
-    
-    # If no user message, this is initial startup - analyze graph first
+        
+    user_message = get_last_message(messages, MessageRole.USER)
     if not user_message:
-        # Check if we already have questions (analyzer already ran)
         existing_questions = state.get(STATE_QUESTIONS, [])
         validation_complete = state.get(STATE_VALIDATION_COMPLETE, False)
-        
-        # If no questions and validation complete, just go to communicator to handle gracefully
         if not existing_questions and validation_complete:
             return {
                 **state,
@@ -75,14 +57,13 @@ def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         # Otherwise, analyze graph first
         return {
             **state,
-            STATE_AGENT_QUEUE: [AGENT_ANALYZER],
+            STATE_AGENT_QUEUE: [AGENT_ANALYZER, AGENT_COMMUNICATOR],
             STATE_MODE: MODE_INITIAL,
-            STATE_PLAN: "Initial analysis: analyze graph, then communicate with user",
+            STATE_PLAN: "Initial analysis: analyze graph",
             STATE_NEEDS_RETRIEVAL: False,
             STATE_WRITE: False,
         }
     
-    # Analyze user intent to determine flow
     registry = get_registry()
     prompt = registry.build_prompt(
         AGENT_ORCHESTRATOR,
@@ -95,11 +76,11 @@ def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         # Default to Q&A flow
         decision = {
             STATE_MODE: MODE_QA,
-            STATE_NEEDS_RETRIEVAL: True,
+            STATE_NEEDS_RETRIEVAL: False,
             STATE_WRITE: False,
             STATE_RESPONSE_STYLE: "conversational",
             STATE_AGENT_QUEUE: [AGENT_COMMUNICATOR],
-            STATE_PLAN: "Please tell the user that something"
+            STATE_PLAN: "Please tell the user that something went wrong and ask them to try again"
         }
     
     agent_queue = decision.get(STATE_AGENT_QUEUE, [AGENT_COMMUNICATOR])

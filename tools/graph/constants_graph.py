@@ -15,7 +15,8 @@ ACTION_MERGE_ENTITIES = "merge_entities"
 ACTION_RENAME_ENTITY = "rename_entity"
 ACTION_UPDATE_ENTITY_LABEL = "update_entity_label"
 ACTION_MODIFY_TRIPLE = "modify_triple"
-
+STATE_CHAT_CHANGES_INFORMATION ="chat_changes_information"
+STATE_CURRENT_QUESTION ="current_question"
 STATE_MESSAGES = "messages"
 STATE_CURRENT_QUESTION_ID = "current_question_id"
 STATE_CURRENT_QUESTION_TEXT = "current_question_text"
@@ -47,6 +48,10 @@ STATE_NEXT_QUESTION = "next_question"
 MESSAGE_ROLE_USER = "user"
 MESSAGE_ROLE_BOT = "bot"
 MESSAGE_ROLE_SYSTEM = "system"
+
+STATE_CHAT_CONTEXT_INFORMATION = "chat_context_information"
+STATE_CHAT_CHANGES_INFORMATION = "chat_changes_information"
+STATE_CHAT_VISUAL_INFORMATION = "chat_visual_information"
 
 # Dictionary keys for messages and actions
 KEY_ROLE = "role"
@@ -85,7 +90,7 @@ MODE_INITIAL = "INITIAL"
 MODE_QA = "Q&A"
 MODE_WRITE = "WRITE"
 MODE_EXPLORATION = "EXPLORATION"
-MODE_DEBUG = "DEBUG"
+MODE_DEBUG = "DEBUG" 
 
 # Default values
 DEFAULT_UNKNOWN = "UNKNOWN"
@@ -95,7 +100,7 @@ DEFAULT_REASON = "Default"
 
 # Internal state keys
 STATE_INTERNAL_RETRIEVED_TRIPLES = "_retrieved_triples"
-    STATE_INTERNAL_RETRIEVED_INFO_PROCESSED = "_retrieved_info_processed"
-    STATE_INTERNAL_NEEDS_WIDGET = "needs_widget"
+STATE_INTERNAL_RETRIEVED_INFO_PROCESSED = "_retrieved_info_processed"
+STATE_INTERNAL_NEEDS_WIDGET = "needs_widget"
 STATE_INTERNAL_NODE_TYPE = "node_type"
 

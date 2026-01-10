@@ -61,7 +61,6 @@ from tools.graph.langgraph.routing import (
 
 
 class GraphValidatorLangGraph:
-    
     def __init__(
         self,
         graph: Optional[nx.MultiDiGraph] = None,
@@ -73,6 +72,7 @@ class GraphValidatorLangGraph:
         self.graph = graph
         self.triples = triples or []
         self.id_to_name = id_to_name or {}
+        
         self.tools = GraphValidatorTools(
             graph=graph or nx.MultiDiGraph(),
             triples=self.triples,
@@ -114,10 +114,8 @@ class GraphValidatorLangGraph:
         workflow = StateGraph[GraphValidatorState, None, GraphValidatorState, GraphValidatorState](GraphValidatorState)
 
         
-    
-
         workflow.add_node(AGENT_COMMUNICATOR, lambda state: communicator_node(self, state))
-        workflow.add_node(AGENT_RETRIEVER, lambda state: retriever_node(self, state))
+        workflow.add_node(AGENT_RETRIEVER, lambda state: retriever_node(self, state,self.id_to_name))
         workflow.add_node(AGENT_VISUALIZER, lambda state: visualizer_node(self, state))
         workflow.add_node(AGENT_ANALYZER, lambda state: analyzer_node(self, state))
         workflow.add_node(AGENT_MODIFIER, lambda state: modifier_node(self, state))

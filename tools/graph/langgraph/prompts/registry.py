@@ -50,7 +50,6 @@ class PromptRegistry:
             ),
             "developer": (
                 "HOUSE STYLE:\n"
-                "- Use entity names (not IDs) in all responses\n"
                 "- Reference triples by index when discussing them\n"
                 "- Be conversational and natural, not robotic\n"
                 "- Don't write to the graph unless explicitly asked\n"
@@ -94,9 +93,18 @@ class PromptRegistry:
                         '{{"mode": "Q&A|WRITE|EXPLORATION|DEBUG", '
                         '"needs_retrieval": true/false, '
                         '"write": true/false, '
-                        '"response_style": "concise|detailed|conversational", '
                         '"agent_queue": ["agent1", "agent2", ...], '
-                        '"plan": "Brief description of the plan"}}\n'
+                        '"plan": "a list of steps to be taken for each agent in the queue"'
+                        '''"Example: 'plan': [
+                            {
+                                'index': '0',
+                                'steps': ['analyze the graph', 'generate validation questions']
+                            },
+                            {
+                                'index': '1',
+                                'steps': ['communicate with the user', 'ask for clarification']
+                            }
+                        ]"}}\n'''
                     ),
                 ),
             },
@@ -143,9 +151,8 @@ class PromptRegistry:
                     developer=base_developer,
                     task=(
                         "TASK: Determine what information to retrieve based on user request.\n\n"
-                        "If the user says 'this entity' or 'this invention', and a validation question "
-                        "is active about {{current_question}}, assume they mean that entity. \n\n"
                         "Do not ask for permission to retrieve; just provide the action."
+                        "Take the correct id of the entity and add it as entity_id if needed, use the provided dictionary"
                         "Available actions:\n"
                         "- 'get_entity_info': Get detailed information about a specific entity\n"
                         "- 'get_triple_info': Get information about a specific triple by index\n"
@@ -157,7 +164,7 @@ class PromptRegistry:
                         "- Use 'get_triple_info' when user asks about a specific triple by index\n"
                         #"- Use 'search_entities' ONLY when user is searching/looking for entities by name, NOT when asking for triples\n\n"
                         "IMPORTANT: If the user mentions 'triples', 'connections', 'connected to', 'relationships', 'elaborate', "
-                        "or asks about what something is connected to, use 'get_related_triples' with entity_name parameter.\n"
+                        "or asks about what something is connected to, use 'get_related_triples' with entity_id and entity_name parameters.\n"
                         "Extract the entity name from the user's message."
                     ),
                     templates=(
@@ -169,7 +176,6 @@ class PromptRegistry:
                         "CONTEXT:\n"
                         "- User request: {user_message}\n"
                         "- Last bot message: {last_bot_message}\n"
-                        "- Current question: {current_question}\n"
                         ),
                 ),
             },
@@ -253,18 +259,6 @@ class PromptRegistry:
         }
     
     def get(self, agent_name: str, variant: str = "default", domain: str = "mna", **kwargs) -> PromptBundle:
-        """
-        Get a prompt bundle for an agent.
-        
-        Args:
-            agent_name: Name of the agent (e.g., 'communicator', 'retriever')
-            variant: Prompt variant (default: "default")
-            domain: Domain context (default: "mna" - multi-agent network)
-            **kwargs: Template variables to format the prompt
-        
-        Returns:
-            PromptBundle with all prompt components
-        """
         if agent_name not in self._agent_prompts:
             raise ValueError(f"Unknown agent: {agent_name}")
         
@@ -274,22 +268,10 @@ class PromptRegistry:
         return self._agent_prompts[agent_name][variant]
     
     def build_prompt(self, agent_name: str, variant: str = "default", **kwargs) -> str:
-        """
-        Build a complete prompt string for an agent.
-        
-        Args:
-            agent_name: Name of the agent
-            variant: Prompt variant
-            **kwargs: Template variables to format the prompt
-        
-        Returns:
-            Complete formatted prompt string
-        """
         bundle = self.get(agent_name, variant, **kwargs)
         return bundle.build(**kwargs)
 
 
-# Global registry instance
 _registry = None
 
 

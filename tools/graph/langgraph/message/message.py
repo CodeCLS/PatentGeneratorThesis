@@ -3,7 +3,7 @@ Message dataclass for chat messages.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Union
+from typing import Optional, Union, Any
 from enum import Enum
 
 from tools.graph.langgraph.message.widgets import Widget
@@ -21,6 +21,7 @@ class Message:
     """Chat message with optional widget."""
     role: Union[MessageRole, str]
     content: str
+    data: Optional[Any] = None
     widget: Optional[Widget] = None
     
     def __post_init__(self):

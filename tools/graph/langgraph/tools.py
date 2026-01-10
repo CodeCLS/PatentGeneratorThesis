@@ -13,6 +13,7 @@ from tools.graph.constants_graph import (
     DEFAULT_UNKNOWN,
     KEY_ID,
 )
+from tools.sentence.entity import Entity
 
 
 class GraphValidatorTools:
@@ -130,13 +131,13 @@ class GraphValidatorTools:
         
         return info
     
-    def search_entities(self, query: str, limit: int = 10) -> List[Dict[str, str]]:
+    def search_entities(self, query: str, limit: int = 10) -> List[Entity]:
         """Search for entities by name."""
         query_lower = query.lower()
         results = []
         for eid, name in self.id_to_name.items():
             if query_lower in name.lower():
-                results.append({KEY_ID: eid, KEY_NAME: name})
+                results.append()
                 if len(results) >= limit:
                     break
         return results
