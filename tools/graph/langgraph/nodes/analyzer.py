@@ -3,7 +3,7 @@ Analyzer node - analyzes the graph and generates validation questions.
 """
 
 from typing import TYPE_CHECKING, List
-from tools.graph.langgraph.state import GraphValidatorState,consume_agent
+from tools.graph.langgraph.state import GraphValidatorState, consume_agent
 from tools.graph.langgraph.question import Question
 from tools.graph.langgraph.message import Message, MessageRole
 from tools.graph.langgraph.nodes.question_creators import (
@@ -13,15 +13,10 @@ from tools.graph.langgraph.nodes.question_creators import (
     TripleMergingQuestionCreator,
 )
 from tools.graph.constants_graph import (
-    AGENT_COMMUNICATOR,
-    STATE_MESSAGES,
     STATE_QUESTIONS,
-    STATE_CURRENT_QUESTION_TEXT,
-    STATE_CURRENT_QUESTION_ID,
     STATE_VALIDATION_COMPLETE,
-    STATE_NEXT_AGENT,
-    STATE_AGENT_QUEUE,
     AGENT_ANALYZER,
+    STATE_CURRENT_QUESTION
 )
 
 if TYPE_CHECKING:
@@ -35,6 +30,7 @@ def generate_questions(validator: "GraphValidatorLangGraph") -> List[Question]:
     
     all_questions = []
     
+    # Use all question creators
     creators = [
         DuplicateTripleQuestionCreator(validator),
         EntityCompletenessQuestionCreator(validator),
@@ -47,6 +43,7 @@ def generate_questions(validator: "GraphValidatorLangGraph") -> List[Question]:
             questions = creator.generate_questions()
             all_questions.extend(questions)
         except Exception as e:
+            # Continue with other creators if one fails
             print(f"Warning: {creator.__class__.__name__} failed: {e}")
             continue
     
@@ -54,6 +51,7 @@ def generate_questions(validator: "GraphValidatorLangGraph") -> List[Question]:
 
 
 def analyzer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState") -> "GraphValidatorState":
+    """Analysis agent - generates new questions and analyzes the graph."""
     existing_questions = state.get(STATE_QUESTIONS, [])
     if existing_questions:
         questions = []
@@ -63,11 +61,17 @@ def analyzer_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
     else:
         questions = generate_questions(validator)
     
+    # Consume current agent from queue
+    updated_state = consume_agent(state, AGENT_ANALYZER)
     
-    consume_agent(state, AGENT_ANALYZER)
+    # Set current question if none exists and we have questions
+    current_q = state.get(STATE_CURRENT_QUESTION)
+    if not current_q and questions:
+        current_q = questions[0]
     
     return {
-        **state,
-        STATE_QUESTIONS: questions,  
+        **updated_state,
+        STATE_QUESTIONS: questions,
+        STATE_CURRENT_QUESTION: current_q,
         STATE_VALIDATION_COMPLETE: not questions,
     }

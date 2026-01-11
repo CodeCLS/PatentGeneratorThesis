@@ -142,6 +142,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             return {"initialized": False, "message": "Validator initializing..."}
         
         questions = validator._current_state.get("questions", []) if hasattr(validator, '_current_state') and validator._current_state else []
+        print(q.type for q in questions )
         unanswered = [q for q in questions if not (q.answered if isinstance(q, Question) else q.get("answered", False))]
         
         return {
@@ -469,7 +470,7 @@ def start_validator_chat(
         print(f"✓ API Server running on http://localhost:{api_port}")
         _api_server.serve_forever()
     
-    _api_thread = threading.Thread(target=run_api_server, daemon=True)
+    _api_thread = threading.Thread(target=run_api_server, daemon=False)
     _api_thread.start()
     time.sleep(0.5)
     
@@ -569,6 +570,60 @@ def start_validator_chat(
 
     # Start initialization in a separate thread
     threading.Thread(target=init_background, daemon=True).start()
+    
+    # Keep the main thread alive so the cell doesn't finish
+    # This allows debugging and keeps the servers running
+    print("\n" + "="*70)
+    print("[Server] ✓ Servers are running. This cell will stay ACTIVE.")
+    print("[Server] ✓ Debugger will remain attached while this loop runs.")
+    print("[Server] ✓ Press Ctrl+C in this cell to stop servers.")
+    print("="*70)
+    import sys
+    import datetime
+    start_time = datetime.datetime.now()
+    
+    # Ensure we enter the blocking loop
+    if not _server_running:
+        print("[Server] WARNING: _server_running was False, setting to True")
+        _server_running = True
+    
+    try:
+        iteration = 0
+        print(f"[Server] Entering blocking loop (checking every 0.5s)...")
+        print(f"[Server] Current time: {datetime.datetime.now().strftime('%H:%M:%S')}")
+        print("[Server] About to enter loop.")
+        print("[Server] _server_running =", _server_running)
+        print("[Server] api thread alive =", _api_thread.is_alive() if _api_thread else None)
+        print("[Server] nextjs thread alive =", _nextjs_thread.is_alive() if _nextjs_thread else None)
+
+        while _server_running:
+            time.sleep(0.5)  # Shorter sleep for more responsive checking
+            iteration += 1
+            # Print status every 5 seconds to show the cell is still running
+            if iteration % 10 == 0:  # 0.5s * 10 = 5 seconds
+                elapsed = datetime.datetime.now() - start_time
+                elapsed_seconds = elapsed.total_seconds()
+                minutes = int(elapsed_seconds // 60)
+                seconds = int(elapsed_seconds % 60)
+                current_time = datetime.datetime.now().strftime('%H:%M:%S')
+                print(f"[Server] ⏱️  Still running... ({minutes}m {seconds}s elapsed) [Time: {current_time}]")
+            sys.stdout.flush()
+            
+            # Double-check that _server_running hasn't been changed unexpectedly
+            if not _server_running:
+                print("[Server] _server_running became False, exiting loop")
+                break
+    except KeyboardInterrupt:
+        print("\n[Server] ⚠️  KeyboardInterrupt received. Stopping servers...")
+        stop_validator_chat()
+    except Exception as e:
+        import traceback
+        print(f"\n[Server] ❌ Error in main loop: {e}")
+        print(f"[Server] Traceback:\n{traceback.format_exc()}")
+        stop_validator_chat()
+        raise
+    finally:
+        print("[Server] Main loop exited. Servers may still be running in background threads.")
 
 
 # Helper functions for getting data from validator

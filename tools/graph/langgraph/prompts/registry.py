@@ -22,14 +22,18 @@ class PromptBundle:
     task: str  # Agent-specific instructions
     templates: str  # Few-shot examples, output schemas
     
-    def build(self, **kwargs) -> str:
+    def build(self, plan: Optional[str] = None, **kwargs) -> str:
         """Build the full prompt by combining components and applying template variables."""
         # Combine all components
         full_prompt = f"{self.system}\n\n{self.developer}\n\n{self.task}\n\n{self.templates}"
         
-        # Apply template variables if provided
+        # Apply template variables if provided (do this BEFORE prepending plan to avoid format conflicts)
         if kwargs:
             full_prompt = full_prompt.format(**kwargs)
+        
+        # Prepend plan if provided (after formatting to avoid plan content being parsed as format placeholders)
+        if plan:
+            full_prompt = f"CURRENT PLAN (FOLLOW STRICTLY): {plan}\n\n{full_prompt}"
         
         return full_prompt
 
@@ -94,17 +98,8 @@ class PromptRegistry:
                         '"needs_retrieval": true/false, '
                         '"write": true/false, '
                         '"agent_queue": ["agent1", "agent2", ...], '
-                        '"plan": "a list of steps to be taken for each agent in the queue"'
-                        '''"Example: 'plan': [
-                            {
-                                'index': '0',
-                                'steps': ['analyze the graph', 'generate validation questions']
-                            },
-                            {
-                                'index': '1',
-                                'steps': ['communicate with the user', 'ask for clarification']
-                            }
-                        ]"}}\n'''
+                        '"plan": "a descriptive plan listing steps for each agent in the queue"'
+                        '}}\n'
                     ),
                 ),
             },
@@ -115,8 +110,7 @@ class PromptRegistry:
                     task=(
                         "TASK: Engage in natural conversation about the knowledge graph.\n\n"
                                                 # Updated Developer instructions:
-                        "- Never explain the retrieval process or the widgets or mention 'retrieved triples'."
-                        "- If you have the wrong info, route back to retriever silently."
+                        "- Never explain the retrieval process or the widgets."
                         "- Talk about the graph data as if you are looking at it with the user."
                         "Your responsibilities:\n"
                         "- Present validation questions to the user\n"
@@ -132,9 +126,7 @@ class PromptRegistry:
                     ),
                     templates=(
                         "OUTPUT SCHEMA (JSON):\n"
-                        '{{"text": "Your conversational response", '
-                        '"next_agent": "retriever|modifier|visualizer|analyzer|null", '
-                        '"hidden_actions": [...] (if graph modifications needed)}}\n\n'
+                        '{{"text": "Your conversational response", "validation_complete": false, "question_resolved": false}}\n'
                         "CONVERSATION CONTEXT:\n"
                         "- Current question: {current_question}\n"
                         "- Remaining questions: {remaining_count}\n"
@@ -171,11 +163,16 @@ class PromptRegistry:
                         "OUTPUT SCHEMA (JSON):\n"
                         '{{"action": "get_entity_info|get_triple_info|get_related_triples| '+
                         #'search_entities", '
-                        '"parameters": {{"entity_name": "...", entity_id: "...", triple_index": 0, "query": "..."}}, '
+                        '"parameters": {{{{"entity_name": "...", "entity_id": "...", "triple_index": 0, "query": "..."}}}}, '
                         '"reason": "Why this information is needed"}}\n\n'
                         "CONTEXT:\n"
-                        "- User request: {user_message}\n"
-                        "- Last bot message: {last_bot_message}\n"
+                        "- User request: {{user_message}}\n"
+                        "- Last bot message: {{last_bot_message}}\n"
+                        "- Current question: {{current_question}}\n"
+                        "{{question_entities_info}}"
+                        "- Available entities (sample): {{entity_list_sample}}\n"
+                        "- Total entities: {{entity_count}}\n"
+                        "IMPORTANT: If question entities are listed above, prioritize matching those entities. Otherwise, extract the EXACT entity name from the user's message and match it to one of the available entities.\n"
                         ),
                 ),
             },
@@ -267,9 +264,9 @@ class PromptRegistry:
         
         return self._agent_prompts[agent_name][variant]
     
-    def build_prompt(self, agent_name: str, variant: str = "default", **kwargs) -> str:
+    def build_prompt(self, agent_name: str, variant: str = "default", plan: Optional[str] = None, **kwargs) -> str:
         bundle = self.get(agent_name, variant, **kwargs)
-        return bundle.build(**kwargs)
+        return bundle.build(plan=plan, **kwargs)
 
 
 _registry = None

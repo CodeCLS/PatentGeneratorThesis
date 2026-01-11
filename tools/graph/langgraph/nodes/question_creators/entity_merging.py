@@ -69,7 +69,7 @@ class EntityMergingQuestionCreator(BaseQuestionCreator):
             "- Ask if they represent the same concept\n"
             "- Be conversational\n\n"
             "Return ONLY JSON array:\n"
-            '[{"id": "q1", "text": "Do \'Entity A\' and \'Entity B\' represent the same concept? Should they be merged?",triples_contained: ["Triple Id A", "Triple Id B"],entities_contained: ["Entity Id A", "Entity Id B"], "category": "merging", "priority": 6}]\n'
+            '[{"id": "q1", "text": "Do \'Entity A\' and \'Entity B\' represent the same concept? Should they be merged?",triples_referenced: ["Triple Id A", "Triple Id B"],entities_referenced: ["Entity Id A", "Entity Id B"], "category": "merging", "priority": 6}]\n'
         )
         
         response = self.api_repo.chat(prompt)

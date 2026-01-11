@@ -15,30 +15,7 @@ from tools.api.llm_api_repo import LLmApi_Repo
 from tools.graph.Triple import Triple
 from tools.graph.langgraph.state import GraphValidatorState, create_state
 from tools.graph.langgraph.tools import GraphValidatorTools
-from tools.graph.constants_graph import (
-    AGENT_ORCHESTRATOR,
-    AGENT_COMMUNICATOR,
-    AGENT_ANALYZER,
-    AGENT_MODIFIER,
-    AGENT_RETRIEVER,
-    AGENT_VISUALIZER,
-    STATE_MESSAGES,
-    STATE_CONVERSATION_TURN,
-    STATE_CURRENT_QUESTION_TEXT,
-    STATE_VALIDATION_COMPLETE,
-    STATE_HIDDEN_ACTIONS,
-    STATE_SHOW_WIDGET,
-    STATE_WIDGET_TYPE,
-    STATE_WIDGET_DATA,
-    STATE_CHANGES_SUMMARY,
-    STATE_STATS,
-    STATE_TEXT,
-    STATE_NEXT_QUESTION,
-    MESSAGE_ROLE_BOT,
-    KEY_ROLE,
-    KEY_CONTENT,
-    STATE_AGENT_QUEUE
-)
+from tools.graph.constants_graph import *
 
 # Ensure GraphValidatorState is available in module globals for LangGraph evaluation
 globals()['GraphValidatorState'] = GraphValidatorState
@@ -84,7 +61,6 @@ class GraphValidatorLangGraph:
         self._initial_questions = []
         self.config = {"recursion_limit": self.recursion_limit}
 
-        
         self.initial_analysis_complete = False
         
         self._current_state = create_state(
@@ -98,29 +74,24 @@ class GraphValidatorLangGraph:
         """Run the initial analysis stream in the background."""
         initial_state = self._current_state.copy()
         try:
-            for state in self.app.stream(initial_state, config=self.config):
-                final_state = state
-                if state:
-                    last_node = list(state.keys())[-1] if state else None
-                    if last_node:
-                        self._current_state = state[last_node]
+            for state_update in self.app.stream(initial_state, config=self.config):
+                if state_update:
+                    last_node = list(state_update.keys())[-1]
+                    self._current_state = state_update[last_node]
             self.initial_analysis_complete = True
         except Exception as e:
             print(f"Error in background analysis: {e}")
-            # Still mark as complete or handle error to avoid infinite waiting
             self.initial_analysis_complete = True
     
     def _build_graph(self) -> StateGraph:
         workflow = StateGraph[GraphValidatorState, None, GraphValidatorState, GraphValidatorState](GraphValidatorState)
 
-        
         workflow.add_node(AGENT_COMMUNICATOR, lambda state: communicator_node(self, state))
-        workflow.add_node(AGENT_RETRIEVER, lambda state: retriever_node(self, state,self.id_to_name))
+        workflow.add_node(AGENT_RETRIEVER, lambda state: retriever_node(self, state, self.id_to_name))
         workflow.add_node(AGENT_VISUALIZER, lambda state: visualizer_node(self, state))
         workflow.add_node(AGENT_ANALYZER, lambda state: analyzer_node(self, state))
         workflow.add_node(AGENT_MODIFIER, lambda state: modifier_node(self, state))
         workflow.add_node(AGENT_ORCHESTRATOR, lambda state: orchestrator_node(self, state))
-
 
         workflow.set_entry_point(AGENT_ORCHESTRATOR)        
         routing_map = {
@@ -141,80 +112,72 @@ class GraphValidatorLangGraph:
         workflow.add_conditional_edges(AGENT_ANALYZER, route_from_analyzer, routing_map)
         workflow.add_conditional_edges(AGENT_MODIFIER, route_from_modifier, routing_map)
         
-
         return workflow
     
+    def _to_serializable(self, state_values: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert state values to serializable format for API response."""
+        result = {}
+        for key, value in state_values.items():
+            if isinstance(value, list):
+                result[key] = [item.to_dict() if hasattr(item, 'to_dict') else item for item in value]
+            elif hasattr(value, 'to_dict'):
+                result[key] = value.to_dict()
+            else:
+                result[key] = value
+        return result
+
     def chat(self, user_message: str, config: Optional[Dict] = None) -> Dict[str, Any]:
         """Process a user message through the agent graph."""
         initial_state = self._current_state.copy()
-        print(f"Initial state: {initial_state}")
         
-        initial_state[STATE_MESSAGES] = initial_state.get(STATE_MESSAGES, []) + [
-            Message(role=MessageRole.USER, content=user_message)
-        ]
+        # Add new user message
+        new_message = Message(role=MessageRole.USER, content=user_message)
+        initial_state[STATE_MESSAGES] = initial_state.get(STATE_MESSAGES, []) + [new_message]
         initial_state[STATE_CONVERSATION_TURN] = initial_state.get(STATE_CONVERSATION_TURN, 0) + 1
-        print(f"Initial state: {initial_state}")
-
         
-        final_state = None
+        final_state_values = initial_state
         try:
-            for state in self.app.stream(initial_state, config=self.config):
-                for node_name, node_state in state.items():
-                    queue = node_state.get(STATE_AGENT_QUEUE, "N/A")
+            for state_update in self.app.stream(initial_state, config=self.config):
+                for node_name, node_state in state_update.items():
                     print(f"--- Node '{node_name}' finished ---")
+                    queue = node_state.get(STATE_AGENT_QUEUE, [])
                     print(f"Agent Queue: {queue}")
-                final_state = state
-                if state:
-                    last_node = list(state.keys())[-1] if state else None
-                    if last_node:
-                        self._current_state = state[last_node]
+                    final_state_values = node_state
+            
+            self._current_state = final_state_values
+            
         except Exception as e:
+            import traceback
+            error_msg = f"Error in chat: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg)
             return {
+                STATE_MESSAGES: [m.to_dict() if hasattr(m, 'to_dict') else m for m in initial_state.get(STATE_MESSAGES, [])] + 
+                                [Message(role=MessageRole.SYSTEM, content=f"Error: {str(e)}").to_dict()],
                 STATE_TEXT: f"Error: {str(e)}",
-                STATE_NEXT_QUESTION: None,
                 STATE_VALIDATION_COMPLETE: False,
-                STATE_HIDDEN_ACTIONS: [],
-                STATE_SHOW_WIDGET: False,
-                STATE_WIDGET_TYPE: None,
-                STATE_WIDGET_DATA: {},
-                STATE_CHANGES_SUMMARY: [],
-                STATE_STATS: {},
             }
         
-        if not final_state:
-            return {
-                STATE_TEXT: "No response generated.",
-                STATE_NEXT_QUESTION: None,
-                STATE_VALIDATION_COMPLETE: False,
-                STATE_HIDDEN_ACTIONS: [],
-                STATE_SHOW_WIDGET: False,
-                STATE_WIDGET_TYPE: None,
-                STATE_WIDGET_DATA: {},
-                STATE_CHANGES_SUMMARY: [],
-                STATE_STATS: {},
-            }
-        
-        last_node = list(final_state.keys())[-1] if final_state else None
-        state_values = final_state[last_node] if last_node else initial_state
-        
-        messages = state_values.get(STATE_MESSAGES, [])
-        last_bot_msg = None
+        # Find the last bot message for the 'text' response
+        messages = final_state_values.get(STATE_MESSAGES, [])
+        last_bot_msg_content = "Response processed."
         for msg in reversed(messages):
-            # Handle both Message objects and dicts for compatibility
-            if isinstance(msg, Message):
-                if msg.role == MessageRole.BOT or (isinstance(msg.role, str) and msg.role == MESSAGE_ROLE_BOT):
-                    last_bot_msg = msg.content
-                    break
+            role = msg.role if isinstance(msg, Message) else msg.get("role")
+            if role == MessageRole.BOT or role == "bot":
+                last_bot_msg_content = msg.content if isinstance(msg, Message) else msg.get("content", "")
+                break
+       
+        # Convert all complex objects to dicts for JSON serialization
+        serializable_state = self._to_serializable(final_state_values)
         
-        return {
-            STATE_TEXT: last_bot_msg or "Response processed.",
-            STATE_NEXT_QUESTION: state_values.get(STATE_CURRENT_QUESTION_TEXT),
-            STATE_VALIDATION_COMPLETE: state_values.get(STATE_VALIDATION_COMPLETE, False),
-            STATE_HIDDEN_ACTIONS: state_values.get(STATE_HIDDEN_ACTIONS, []),
-            STATE_SHOW_WIDGET: state_values.get(STATE_SHOW_WIDGET, False),
-            STATE_WIDGET_TYPE: state_values.get(STATE_WIDGET_TYPE),
-            STATE_WIDGET_DATA: state_values.get(STATE_WIDGET_DATA, {}),
-            STATE_CHANGES_SUMMARY: state_values.get(STATE_CHANGES_SUMMARY, []),
-            STATE_STATS: state_values.get(STATE_STATS, {}),
+        # Prepare response for API
+        response = {
+            STATE_TEXT: last_bot_msg_content,
+            **serializable_state,
+            "stats": self.tools.calculate_stats().to_dict() if hasattr(self.tools, 'calculate_stats') else {}
         }
-    
+        
+        # Ensure 'next_question' is set if 'current_question' exists (for frontend compatibility)
+        if STATE_CURRENT_QUESTION in serializable_state and serializable_state[STATE_CURRENT_QUESTION]:
+            response[STATE_NEXT_QUESTION] = serializable_state[STATE_CURRENT_QUESTION].get("text")
+            
+        return response

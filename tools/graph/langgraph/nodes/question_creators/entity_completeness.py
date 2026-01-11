@@ -7,7 +7,7 @@ from tools.graph.langgraph.question import Question
 from tools.graph.langgraph.nodes.question_creators.base import BaseQuestionCreator
 from tools.graph.langgraph.helpers import get_triple_head_id, get_triple_tail_id, get_triple_head_name, get_triple_tail_name
 from tools.helper.json_helper import JsonHelper
-
+ 
 
 class EntityCompletenessQuestionCreator(BaseQuestionCreator):
     """Checks if entities labeled as Invention (or other tags) are properly connected."""
@@ -104,7 +104,7 @@ class EntityCompletenessQuestionCreator(BaseQuestionCreator):
             "- Be conversational\n\n"
             "- And contain all important inforation about this triple \n\n"
             "Return ONLY JSON array:\n"
-            '[{"id": "q1", "text": "Is the invention \'Entity Name\' properly explained? Should it be connected to more descriptive entities?",triples_contained: ["Triple Id A", "Triple Id B"], "entities_contained": ["Entity Id A", "Entity Id B"], "category": "completeness", "priority": 7}]\n'
+            '[{"id": "q1", "text": "Is the invention \'Entity Name\' properly explained? Should it be connected to more descriptive entities?",triples_referenced: ["Triple Id A", "Triple Id B"], "entities_referenced": ["Entity Id A", "Entity Id B"], "category": "completeness", "priority": 7}]\n'
         )
         
         response = self.api_repo.chat(prompt)

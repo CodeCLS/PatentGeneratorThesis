@@ -10,13 +10,11 @@ For new code, import directly from `tools.graph.langgraph`:
 
 # Re-export all classes for backward compatibility
 from tools.graph.langgraph import (
-    GraphValidatorState,
     GraphValidatorTools,
     GraphValidatorLangGraph,
 )
 
 __all__ = [
-    "GraphValidatorState",
     "GraphValidatorTools",
     "GraphValidatorLangGraph",
 ]

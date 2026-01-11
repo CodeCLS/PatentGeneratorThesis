@@ -49,7 +49,7 @@ class TripleMergingQuestionCreator(BaseQuestionCreator):
             "- Be conversational\n\n"
             "- And contain all important inforation about this triple \n\n"
             "Return ONLY JSON array:\n"
-            '[{"id": "q1", "text": "Triples 5 and 7 both connect Entity A to Entity B. Should these be merged into one?",triples_contained: ["Triple Id A", "Triple Id B"], "entities_contained": ["Entity Id A", "Entity Id B"], "category": "merging", "priority": 6}]\n'
+            '[{"id": "q1", "text": "Triples 5 and 7 both connect Entity A to Entity B. Should these be merged into one?",triples_referenced: ["Triple Id A", "Triple Id B"], "entities_referenced": ["Entity Id A", "Entity Id B"], "category": "merging", "priority": 6}]\n'
         )
         
         response = self.api_repo.chat(prompt)
