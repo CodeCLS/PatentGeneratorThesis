@@ -27,11 +27,35 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
     messages = state.get(STATE_MESSAGES, [])
     question = state.get(STATE_CURRENT_QUESTION)
     current_plan = state.get(STATE_PLAN)
+    
+    # Get full conversation history (last 5 messages for context)
+    conversation_history = ""
+    for msg in messages[-5:]:
+        role = msg.role if isinstance(msg, Message) else msg.get("role")
+        content = msg.content if isinstance(msg, Message) else msg.get("content", "")
+        if isinstance(role, MessageRole):
+            role = role.value
+        # Show full content - don't truncate for better context
+        conversation_history += f"{role.upper()}: {content}\n"
+    
     user_msg_obj = get_last_message(messages, MessageRole.USER)
     last_bot_msg_obj = get_last_message(messages, MessageRole.BOT)
     
     user_message = user_msg_obj.content if user_msg_obj else ""
     last_bot_message = last_bot_msg_obj.content if last_bot_msg_obj else ""
+
+    # Format id_to_name mapping for the prompt (show first 30 entries)
+    id_to_name_mapping = ""
+    if validator.id_to_name:
+        mapping_items = []
+        for i, (eid, name) in enumerate(validator.id_to_name.items()):
+            if i < 30:
+                mapping_items.append(f"  '{name}' -> {eid}")
+            else:
+                break
+        id_to_name_mapping = "\n".join(mapping_items)
+        if len(validator.id_to_name) > 30:
+            id_to_name_mapping += f"\n  ... (and {len(validator.id_to_name) - 30} more mappings)"
 
     registry = get_registry()
     prompt = registry.build_prompt(
@@ -39,47 +63,51 @@ def modifier_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorSt
         plan=current_plan,
         user_message=user_message,
         last_bot_message=last_bot_message,
-        current_question=question.text if question else "N/A"
+        current_question=question.text if question else "N/A",
+        conversation_history=conversation_history,
+        id_to_name=validator.id_to_name,
+        id_to_name_mapping=id_to_name_mapping
     )
     
     response = validator.api_repo.chat(prompt)
     action_data = JsonHelper.parse_json(str(response))
     
-    new_changes = []
+    # Actually apply changes using ModifierActions
+    from tools.graph.langgraph.helpers.modifier_actions import ModifierActions
+    
+    modifier_actions = ModifierActions()
+    changes_summary = []
+    
     if isinstance(action_data, list):
         for item in action_data:
-            new_changes.append(ChatChangesInformation.from_dict(item))
+            action_type = item.get("type", "")
+            params = item.get("parameters", {})
+            if action_type:
+                modifier_actions.apply(
+                    action_type,
+                    params,
+                    validator.triples,
+                    validator.id_to_name,
+                    changes_summary,
+                    graph=validator.graph
+                )
     elif isinstance(action_data, dict):
-        new_changes.append(ChatChangesInformation.from_dict(action_data))
-
-    changes_summary = []
-    # Note: In a real implementation, you'd call validator.tools methods here
-    # to actually apply the changes described in new_changes.
-    # For now, we'll just record that changes were "processed".
-    
-    if new_changes:
-        for change in new_changes:
-            # Placeholder for actual tool application logic
-            if change.added_triples:
-                changes_summary.append(f"Added {len(change.added_triples)} triples")
-            if change.deleted_triples:
-                changes_summary.append(f"Deleted {len(change.deleted_triples)} triples")
-            if change.merged_entities:
-                changes_summary.append(f"Merged {len(change.merged_entities)} entities")
-            if change.renamed_entities:
-                changes_summary.append(f"Renamed {len(change.renamed_entities)} entities")
-            if change.modified_triples:
-                changes_summary.append(f"Modified {len(change.modified_triples)} triples")
-
-    # Update validator instance data (if tools applied changes)
-    # validator.triples = updated_triples
-    # ...
+        action_type = action_data.get("type", "")
+        params = action_data.get("parameters", {})
+        if action_type:
+            modifier_actions.apply(
+                action_type,
+                params,
+                validator.triples,
+                validator.id_to_name,
+                changes_summary,
+                graph=validator.graph
+            )
     
     # Consume current agent from queue
     updated_state = consume_agent(state, AGENT_MODIFIER)
     
     return {
         **updated_state,
-        STATE_CHAT_CHANGES_INFORMATION: state.get(STATE_CHAT_CHANGES_INFORMATION, []) + new_changes,
         STATE_CHANGES_SUMMARY: state.get(STATE_CHANGES_SUMMARY, []) + changes_summary,
     }

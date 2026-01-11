@@ -166,13 +166,13 @@ class PromptRegistry:
                         '"parameters": {{{{"entity_name": "...", "entity_id": "...", "triple_index": 0, "query": "..."}}}}, '
                         '"reason": "Why this information is needed"}}\n\n'
                         "CONTEXT:\n"
-                        "- User request: {{user_message}}\n"
-                        "- Last bot message: {{last_bot_message}}\n"
-                        "- Current question: {{current_question}}\n"
-                        "{{question_entities_info}}"
-                        "- Available entities (sample): {{entity_list_sample}}\n"
-                        "- Total entities: {{entity_count}}\n"
-                        "IMPORTANT: If question entities are listed above, prioritize matching those entities. Otherwise, extract the EXACT entity name from the user's message and match it to one of the available entities.\n"
+                        "- User request: {user_message}\n"
+                        "- Current question: {current_question}\n"
+                        "{question_entities_info}"
+                        "- Available entities (sample): {entity_list_sample}\n"
+                        "- Total entities: {entity_count}\n"
+                        "- Entity name to ID mapping:\n{id_to_name_mapping}\n"
+                        "IMPORTANT: When you identify an entity name from the user's request, look it up in the mapping above to get its entity_id. Use the exact entity_id from the mapping in your parameters. If question entities are listed above, prioritize matching those entities.\n"
                         ),
                 ),
             },
@@ -202,7 +202,8 @@ class PromptRegistry:
                         '"widget_data": {{"triples": [...], "entities": [...], "question": "...", etc.}}}}\n\n'
                         "CONTEXT:\n"
                         "- Current question: {current_question}\n"
-                        "- Recent conversation: {recent_conversation}\n"
+                        "- Retrieved information: {retrieved_info}\n"
+                        "IMPORTANT: If triples were retrieved, show an edges_widget with those triples. Otherwise, only show widgets if explicitly needed.\n"
                     ),
                 ),
             },
@@ -238,18 +239,26 @@ class PromptRegistry:
                     task=(
                         "TASK: Apply graph modifications based on user requests.\n\n"
                         "Available actions:\n"
+                        "- ADD_TRIPLES: Add new triples to the graph\n"
                         "- DELETE_TRIPLES: Remove triples from the graph\n"
                         "- UPDATE_ENTITY_LABEL: Change an entity's label/type\n"
                         "- MERGE_ENTITIES: Combine two entities into one\n"
                         "- RENAME_ENTITY: Change an entity's name\n"
                         "- MODIFY_TRIPLE: Update a triple's relation or entities\n\n"
-                        "Format actions as structured JSON with type and parameters."
+                        "Format actions as structured JSON with type and parameters.\n"
+                        "For ADD_TRIPLES, use: {{\"type\": \"add_triples\", \"parameters\": {{\"triples\": [{{\"head\": \"entity_name\", \"relation\": \"relation_name\", \"tail\": \"entity_name\"}}]}}}}"
                     ),
                     templates=(
                         "OUTPUT SCHEMA:\n"
                         "Return a list of actions in the format:\n"
-                        '[{{"type": "DELETE_TRIPLES|UPDATE_ENTITY_LABEL|MERGE_ENTITIES|...", '
-                        '"parameters": {{...}}}}, ...]\n'
+                        '[{{"type": "add_triples|DELETE_TRIPLES|UPDATE_ENTITY_LABEL|MERGE_ENTITIES|...", '
+                        '"parameters": {{"triples": [...] or other params}}}}, ...]\n\n'
+                        "CONVERSATION HISTORY:\n"
+                        "{conversation_history}\n\n"
+                        "Use the conversation history to understand what the user wants to modify.\n"
+                        "If the user said 'yes' to adding a triple mentioned earlier, extract that triple from the conversation.\n"
+                        "Entity name to ID mapping (sample):\n"
+                        "{id_to_name_mapping}\n"
                     ),
                 ),
             },

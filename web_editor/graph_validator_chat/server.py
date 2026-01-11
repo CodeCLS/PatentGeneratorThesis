@@ -264,6 +264,20 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             print(f"[API] Chat response keys: {list(response.keys())}")
             if response.get(STATE_TEXT, "").startswith("Error:"):
                 print(f"[API] Warning: Response contains error: {response.get(STATE_TEXT)}")
+            
+            # Ensure response is JSON-serializable
+            try:
+                json.dumps(response)  # Test serialization
+            except (TypeError, ValueError) as e:
+                print(f"[API] ERROR: Response is not JSON-serializable: {e}")
+                print(f"[API] Problematic keys/values:")
+                for key, value in response.items():
+                    try:
+                        json.dumps(value)
+                    except (TypeError, ValueError):
+                        print(f"[API]   - {key}: {type(value)} = {str(value)[:200]}")
+                raise ValueError(f"Response contains non-serializable data: {e}")
+            
             self._send_json(response)
         except json.JSONDecodeError as e:
             print(f"[API] JSON decode error: {e}")

@@ -176,6 +176,30 @@ class GraphValidatorLangGraph:
             "stats": self.tools.calculate_stats().to_dict() if hasattr(self.tools, 'calculate_stats') else {}
         }
         
+        # Extract widgets from display_actions and add to response (for frontend compatibility)
+        display_actions = serializable_state.get(STATE_DISPLAY_ACTIONS, [])
+        if display_actions:
+            # Get the most recent widget
+            last_widget = display_actions[-1]
+            
+            # Convert to dict if it's an object
+            if hasattr(last_widget, "to_dict"):
+                widget_dict = last_widget.to_dict()
+            elif isinstance(last_widget, dict):
+                widget_dict = last_widget
+            else:
+                widget_dict = {}
+            
+            # Extract widget info (ChatVisualInfo.to_dict() returns show_widget, widget_type, widget_data)
+            if widget_dict.get("show_widget"):
+                response["show_widget"] = True
+                response["widget_type"] = widget_dict.get("widget_type")
+                response["widget_data"] = widget_dict.get("widget_data", {})
+            else:
+                response["show_widget"] = False
+        else:
+            response["show_widget"] = False
+        
         # Ensure 'next_question' is set if 'current_question' exists (for frontend compatibility)
         if STATE_CURRENT_QUESTION in serializable_state and serializable_state[STATE_CURRENT_QUESTION]:
             response[STATE_NEXT_QUESTION] = serializable_state[STATE_CURRENT_QUESTION].get("text")

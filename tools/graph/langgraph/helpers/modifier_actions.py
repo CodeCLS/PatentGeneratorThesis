@@ -50,8 +50,10 @@ class ModifierActions:
     # -----------------------
     @staticmethod
     def _find_id_by_name(id_to_name: Dict[str, str], target_name: str) -> Optional[str]:
+        """Find entity ID by name (case-insensitive)."""
+        target_lower = target_name.lower().strip()
         for eid, name in id_to_name.items():
-            if name == target_name:
+            if name.lower().strip() == target_lower:
                 return eid
         return None
 
@@ -88,36 +90,88 @@ class ModifierActions:
         changes_summary: List[str],
         graph: Any,
     ) -> None:
+        import uuid
         new_triples_data = params.get(KEY_TRIPLES, [])
         added_count = 0
+        skipped_count = 0
 
         for triple_data in new_triples_data:
-            head_name = triple_data.get(KEY_HEAD, "")
-            tail_name = triple_data.get(KEY_TAIL, "")
-            relation = triple_data.get(KEY_RELATION, "")
+            head_name = triple_data.get(KEY_HEAD, "").strip()
+            tail_name = triple_data.get(KEY_TAIL, "").strip()
+            relation = triple_data.get(KEY_RELATION, "").strip()
 
             if not head_name or not tail_name or not relation:
                 continue
 
+            # Find or create head entity (case-insensitive)
             head_id = self._find_id_by_name(id_to_name, head_name)
+            if not head_id:
+                # Create new entity
+                head_id = str(uuid.uuid4())
+                id_to_name[head_id] = head_name
+                if graph:
+                    graph.add_node(head_id, name=head_name, label=DEFAULT_UNKNOWN)
+            
+            # Find or create tail entity (case-insensitive)
             tail_id = self._find_id_by_name(id_to_name, tail_name)
+            if not tail_id:
+                # Create new entity
+                tail_id = str(uuid.uuid4())
+                id_to_name[tail_id] = tail_name
+                if graph:
+                    graph.add_node(tail_id, name=tail_name, label=DEFAULT_UNKNOWN)
 
-            if head_id and tail_id:
-                head_entity = Entity(
-                    id=head_id,
-                    name=head_name,
-                    label=self._entity_label(graph, head_id),
-                )
-                tail_entity = Entity(
-                    id=tail_id,
-                    name=tail_name,
-                    label=self._entity_label(graph, tail_id),
-                )
-                triples.append(Triple(head=head_entity, relation=relation, tail=tail_entity))
-                added_count += 1
+            # Check for duplicates
+            is_duplicate = False
+            for existing_triple in triples:
+                existing_head_id = existing_triple.head.ref or existing_triple.head.id or existing_triple.head.ref_short
+                existing_tail_id = existing_triple.tail.ref or existing_triple.tail.id or existing_triple.tail.ref_short
+                if (existing_head_id == head_id and 
+                    existing_tail_id == tail_id and 
+                    existing_triple.relation == relation):
+                    is_duplicate = True
+                    break
+            
+            if is_duplicate:
+                skipped_count += 1
+                continue
+
+            # Get entity names from id_to_name
+            head_name_final = id_to_name.get(head_id, head_name)
+            tail_name_final = id_to_name.get(tail_id, tail_name)
+            
+            # Get labels from graph or use default
+            head_label = self._entity_label(graph, head_id)
+            tail_label = self._entity_label(graph, tail_id)
+            
+            # Create entities with all required fields
+            head_entity = Entity(
+                name=head_name_final,
+                label=head_label,
+                ref_short=head_id[:8] if len(head_id) >= 8 else head_id,  # Use first 8 chars of UUID as ref_short
+                id=head_id,
+                ref=head_id,
+            )
+            tail_entity = Entity(
+                name=tail_name_final,
+                label=tail_label,
+                ref_short=tail_id[:8] if len(tail_id) >= 8 else tail_id,
+                id=tail_id,
+                ref=tail_id,
+            )
+            
+            triples.append(Triple(head=head_entity, relation=relation, tail=tail_entity))
+            
+            # Update graph if provided
+            if graph:
+                graph.add_edge(head_id, tail_id, relation=relation)
+            
+            added_count += 1
 
         if added_count > 0:
             changes_summary.append(f"Added {added_count} triples")
+        if skipped_count > 0:
+            changes_summary.append(f"Skipped {skipped_count} duplicate triples")
 
     def _delete_triples(
         self,
