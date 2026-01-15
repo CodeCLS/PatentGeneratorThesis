@@ -1,77 +1,16 @@
 """
-Example usage of GraphRAG with ClaimDraftingAgent.
+Example usage of GraphRAG.
 
-This demonstrates how to use the GraphRAG system to enhance claim drafting
-with retrieved graph context.
+This demonstrates how to use the GraphRAG system to retrieve relevant context
+from knowledge graphs.
+
+Note: ClaimDraftingAgent, ClaimExtractor, and related classes have been removed.
+You can rebuild these from scratch as needed.
 """
 from tools.graph.graph_rag import GraphRAG
-from tools.graph.claim_drafting_agent import ClaimDraftingAgent
-from tools.graph.claim_extractor import ClaimExtractor
 from tools.graph.visualizer import GraphVisualizer
 from tools.graph.Triple import Triple
 import networkx as nx
-
-
-def example_with_rag(
-    G: nx.MultiDiGraph,
-    triples: list[Triple],
-    id_to_name: dict[str, str],
-):
-    """
-    Example: Use GraphRAG to enhance claim drafting.
-    
-    Args:
-        G: NetworkX graph with assertions and claim concepts
-        triples: Original triples (for building RAG index)
-        id_to_name: Mapping from entity ID to display name
-    """
-    print("🔍 Initializing GraphRAG system...")
-    
-    # Initialize GraphRAG with the graph
-    graph_rag = GraphRAG(
-        G=G,
-        triples=triples,
-        id_to_name=id_to_name,
-    )
-    
-    print("✅ GraphRAG initialized")
-    print(f"   - Graph has {G.number_of_nodes()} nodes and {G.number_of_edges()} edges")
-    print(f"   - Entity mapping has {len(id_to_name)} entries")
-    
-    # Initialize ClaimDraftingAgent with RAG
-    print("\n📝 Initializing ClaimDraftingAgent with RAG...")
-    drafting_agent = ClaimDraftingAgent(
-        graph_rag=graph_rag,
-        use_rag=True,  # Enable RAG
-    )
-    
-    print("✅ ClaimDraftingAgent initialized with RAG support")
-    
-    # Extract claim bundles
-    print("\n📦 Extracting claim bundles...")
-    extractor = ClaimExtractor(id_to_name=id_to_name)
-    claim_bundles = extractor.extract(G)
-    
-    print(f"✅ Extracted {len(claim_bundles)} claim bundles")
-    
-    # Draft claims with RAG-enhanced context
-    print("\n✍️  Drafting claims with RAG-enhanced context...")
-    drafted_claims = drafting_agent.draft(
-        claim_bundles=claim_bundles,
-        use_rag=True,  # Use RAG for enhanced context
-    )
-    
-    print(f"✅ Drafted {len(drafted_claims)} claims")
-    
-    # Display claims
-    print("\n📄 Drafted Claims:")
-    for claim in drafted_claims:
-        print(f"\n{claim.claim_number}. [{claim.type.upper()}]")
-        print(f"   {claim.claim_text}")
-        if claim.parent_claim_number:
-            print(f"   (depends on claim {claim.parent_claim_number})")
-    
-    return drafted_claims
 
 
 def example_rag_retrieval(

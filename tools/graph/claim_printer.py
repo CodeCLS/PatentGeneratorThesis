@@ -1,8 +1,15 @@
 """
 Helper functions for printing drafted patent claims in a readable format.
+
+NOTE: This module depends on DraftedClaim which has been removed along with
+ClaimDraftingAgent. These functions are kept as templates but will not work
+until DraftedClaim is recreated.
 """
-from typing import List
-from tools.graph.claim_drafting_agent import DraftedClaim
+from typing import List, Any
+
+# DraftedClaim has been removed - define a placeholder type hint
+# Recreate DraftedClaim dataclass when rebuilding ClaimDraftingAgent
+DraftedClaim = Any  # Placeholder - recreate as dataclass when needed
 
 
 def print_claims(claims: List[DraftedClaim], show_type: bool = False, show_parent: bool = False) -> None:

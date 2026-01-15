@@ -4,11 +4,26 @@ Retrieves relevant subgraphs, entities, and relationships to enhance claim draft
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Dict, List, Optional, Set, Tuple, Any, Callable
 from dataclasses import dataclass
 import networkx as nx
 from collections import defaultdict, deque
 import json
+import numpy as np
+
+try:
+    import faiss
+    FAISS_AVAILABLE = True
+except ImportError:
+    FAISS_AVAILABLE = False
+    print("⚠️  Warning: faiss not available. Install with: pip install faiss-cpu")
+
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    print("⚠️  Warning: sentence-transformers not available. Install with: pip install sentence-transformers")
 
 from tools.graph.Triple import Triple
 from tools.api.llm_api_repo import LLmApi_Repo
@@ -61,6 +76,7 @@ class GraphRAG:
                 self.id_to_name = GraphVisualizer.build_id_to_name_map_from_triples(triples)
         
         self.G = G or nx.MultiDiGraph()
+        self.triples: List[Triple] = triples or []
         
         # Cache for entity importance scores
         self._importance_cache: Dict[str, float] = {}
@@ -68,6 +84,13 @@ class GraphRAG:
         # Cache for entity types
         self._entity_types: Dict[str, str] = {}
         self._build_entity_cache()
+        
+        # Faiss index for semantic triple search
+        self._faiss_index: Optional[Any] = None
+        self._triple_index_map: Dict[int, int] = {}  # Faiss index -> triple index
+        self._embedding_model: Optional[Any] = None
+        self._embedding_dim: int = 384  # Default for all-MiniLM-L6-v2
+        self._faiss_built: bool = False
     
     def _build_entity_cache(self):
         """Build cache of entity types and names from graph."""
@@ -593,4 +616,338 @@ class GraphRAG:
         parts.append("\n=== END RETRIEVED CONTEXT ===\n")
         
         return "\n".join(parts)
+    
+    def _initialize_embedding_model(self) -> None:
+        """Initialize the sentence transformer model for embeddings."""
+        if self._embedding_model is not None:
+            return
+        
+        if SENTENCE_TRANSFORMERS_AVAILABLE:
+            try:
+                # Use a lightweight, fast model suitable for semantic search
+                self._embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+                self._embedding_dim = self._embedding_model.get_sentence_embedding_dimension()
+                print(f"✓ Initialized embedding model (dim={self._embedding_dim})")
+            except Exception as e:
+                print(f"⚠️  Failed to load sentence transformer: {e}")
+                self._embedding_model = None
+        else:
+            print("⚠️  sentence-transformers not available, using fallback embedding")
+            self._embedding_model = None
+    
+    def _get_embedding(self, text: str) -> np.ndarray:
+        """Get embedding for a text string."""
+        if self._embedding_model is None:
+            self._initialize_embedding_model()
+        
+        if self._embedding_model is not None:
+            # Use sentence transformer
+            embedding = self._embedding_model.encode(text, normalize_embeddings=True)
+            return np.asarray(embedding, dtype=np.float32)
+        else:
+            # Fallback: simple hash-based embedding (not ideal but works)
+            return self._hash_embedding_fallback(text)
+    
+    def _hash_embedding_fallback(self, text: str) -> np.ndarray:
+        """Fallback hash-based embedding when sentence-transformers is not available."""
+        import hashlib
+        # Create a simple hash-based embedding
+        hash_obj = hashlib.sha256(text.encode('utf-8'))
+        hash_bytes = hash_obj.digest()
+        # Convert to float32 array (repeat hash if needed to fill dimension)
+        embedding = np.zeros(self._embedding_dim, dtype=np.float32)
+        for i in range(self._embedding_dim):
+            byte_idx = i % len(hash_bytes)
+            embedding[i] = float(hash_bytes[byte_idx]) / 255.0
+        # Normalize
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            embedding = embedding / norm
+        return embedding.astype(np.float32)
+    
+    def _triple_to_text(self, triple: Triple) -> str:
+        """Convert a triple to a text representation for embedding."""
+        head_name = triple.head.name if hasattr(triple.head, 'name') else str(triple.head)
+        tail_name = triple.tail.name if hasattr(triple.tail, 'name') else str(triple.tail)
+        relation = triple.relation
+        
+        # Create a descriptive text representation
+        text = f"{head_name} {relation} {tail_name}"
+        
+        # Add labels if available
+        if hasattr(triple.head, 'label') and triple.head.label:
+            text += f" ({triple.head.label})"
+        if hasattr(triple.tail, 'label') and triple.tail.label:
+            text += f" ({triple.tail.label})"
+        
+        return text
+    
+    def _build_faiss_index(self, triples: Optional[List[Triple]] = None, force_rebuild: bool = False) -> None:
+        """Build or update the Faiss index for triple embeddings."""
+        if not FAISS_AVAILABLE:
+            raise RuntimeError("faiss is not available. Install with: pip install faiss-cpu")
+        
+        if self._faiss_built and not force_rebuild:
+            return
+        
+        triples_to_index = triples if triples is not None else self.triples
+        
+        if not triples_to_index:
+            print("⚠️  No triples available to index")
+            self._faiss_index = None
+            self._faiss_built = False
+            return
+        
+        self._initialize_embedding_model()
+        
+        # Collect embeddings
+        embeddings_list = []
+        self._triple_index_map = {}
+        
+        for idx, triple in enumerate(triples_to_index):
+            # Check if triple already has an embedding
+            if triple.embedding and len(triple.embedding) > 0:
+                embedding = np.asarray(triple.embedding, dtype=np.float32)
+                # Ensure correct dimension
+                if len(embedding) != self._embedding_dim:
+                    # Regenerate if dimension mismatch
+                    triple_text = self._triple_to_text(triple)
+                    embedding = self._get_embedding(triple_text)
+                    triple.set_embedding(embedding.tolist())
+            else:
+                # Generate embedding
+                triple_text = self._triple_to_text(triple)
+                embedding = self._get_embedding(triple_text)
+                triple.set_embedding(embedding.tolist())
+            
+            embeddings_list.append(embedding)
+            self._triple_index_map[len(embeddings_list) - 1] = idx
+        
+        if not embeddings_list:
+            return
+        
+        # Stack embeddings into a matrix
+        embeddings_matrix = np.vstack(embeddings_list).astype(np.float32)
+        
+        # Normalize for cosine similarity (inner product)
+        faiss.normalize_L2(embeddings_matrix)
+        
+        # Create Faiss index (using inner product for cosine similarity with normalized vectors)
+        self._faiss_index = faiss.IndexFlatIP(self._embedding_dim)
+        self._faiss_index.add(embeddings_matrix)
+        
+        self._faiss_built = True
+        print(f"✓ Built Faiss index with {len(embeddings_list)} triples")
+    
+    def find_similar_triples(
+        self,
+        query_text: str,
+        top_k: int = 10,
+        similarity_threshold: float = 0.0,
+        rebuild_index: bool = False,
+    ) -> List[Tuple[Triple, float]]:
+        """
+        Find triples that are semantically similar to the given sentence(s) using Faiss.
+        
+        Args:
+            query_text: A sentence or multiple sentences (string) to search for
+            top_k: Number of top similar triples to return
+            similarity_threshold: Minimum similarity score (0.0-1.0) to include a triple
+            rebuild_index: Whether to rebuild the Faiss index (useful if triples changed)
+            
+        Returns:
+            List of tuples (triple, similarity_score) sorted by similarity (highest first)
+        """
+        if not FAISS_AVAILABLE:
+            raise RuntimeError("faiss is not available. Install with: pip install faiss-cpu")
+        
+        # Build index if not built or if forced
+        if not self._faiss_built or rebuild_index:
+            self._build_faiss_index(force_rebuild=rebuild_index)
+        
+        if self._faiss_index is None or self._faiss_index.ntotal == 0:
+            print("⚠️  Faiss index is empty or not built")
+            return []
+        
+        # Get embedding for query text
+        self._initialize_embedding_model()
+        query_embedding = self._get_embedding(query_text)
+        
+        # Normalize query embedding
+        query_embedding = query_embedding.reshape(1, -1).astype(np.float32)
+        faiss.normalize_L2(query_embedding)
+        
+        # Search in Faiss index
+        k = min(top_k, self._faiss_index.ntotal)
+        similarities, indices = self._faiss_index.search(query_embedding, k)
+        
+        # Map results back to triples
+        results = []
+        triples_to_search = self.triples
+        
+        for sim_score, faiss_idx in zip(similarities[0], indices[0]):
+            if faiss_idx < 0 or faiss_idx >= len(self._triple_index_map):  # Invalid index
+                continue
+            
+            # Map Faiss index to triple index
+            triple_idx = self._triple_index_map.get(faiss_idx, faiss_idx)
+            
+            if 0 <= triple_idx < len(triples_to_search):
+                triple = triples_to_search[triple_idx]
+                # Clamp similarity to [0, 1] (inner product of normalized vectors = cosine similarity)
+                similarity = float(np.clip(sim_score, 0.0, 1.0))
+                
+                if similarity >= similarity_threshold:
+                    results.append((triple, similarity))
+        
+        # Sort by similarity (already sorted by Faiss, but ensure descending order)
+        results.sort(key=lambda x: x[1], reverse=True)
+        
+        return results
+    
+    def find_similar_triples_simple(
+        self,
+        query_text: str,
+        top_k: int = 10,
+    ) -> List[Triple]:
+        """
+        Simplified version that returns only triples (without similarity scores).
+        
+        Args:
+            query_text: A sentence or multiple sentences (string) to search for
+            top_k: Number of top similar triples to return
+            
+        Returns:
+            List of triples sorted by similarity (most similar first)
+        """
+        results = self.find_similar_triples(query_text, top_k=top_k)
+        return [triple for triple, _ in results]
+    
+    def get_prioritized_entities(
+        self,
+        max_entities: int = 30,
+    ) -> Dict[str, List[Dict[str, str]]]:
+        """
+        Extract prioritized entities from the knowledge graph, grouped by label.
+        Prioritizes entities with labels: INVENTION, COMPONENT, SUBSYSTEM, COMPOSITION, 
+        PROCESS_STEP, METHOD, FUNCTION.
+        
+        Args:
+            max_entities: Maximum number of entities to return (default: 30)
+            
+        Returns:
+            Dictionary mapping label -> list of entities with name and label
+            Example: {
+                "INVENTION": [{"name": "display device", "label": "INVENTION"}, ...],
+                "COMPONENT": [{"name": "water tank", "label": "COMPONENT"}, ...],
+                ...
+            }
+        """
+        # Priority order for labels (higher priority = lower number)
+        label_priority = {
+            "INVENTION": 1,
+            "COMPONENT": 2,
+            "SUBSYSTEM": 3,
+            "COMPOSITION": 4,
+            "PROCESS_STEP": 5,
+            "METHOD": 6,
+            "FUNCTION": 7,
+        }
+        
+        # Collect unique entities from triples
+        entity_map: Dict[str, Dict[str, str]] = {}  # name -> {name, label}
+        
+        for triple in self.triples:
+            # Process head entity
+            head_name = triple.head.name if hasattr(triple.head, 'name') else str(triple.head)
+            head_label = triple.head.label if hasattr(triple.head, 'label') else "UNCLASSIFIED_ENTITY"
+            
+            # Normalize label to uppercase
+            head_label = head_label.upper()
+            
+            # Only include if it's a prioritized label or if we haven't reached max_entities yet
+            if head_name and head_name.strip():
+                if head_name not in entity_map:
+                    entity_map[head_name] = {
+                        "name": head_name.strip(),
+                        "label": head_label,
+                    }
+            
+            # Process tail entity
+            tail_name = triple.tail.name if hasattr(triple.tail, 'name') else str(triple.tail)
+            tail_label = triple.tail.label if hasattr(triple.tail, 'label') else "UNCLASSIFIED_ENTITY"
+            
+            # Normalize label to uppercase
+            tail_label = tail_label.upper()
+            
+            # Only include if it's a prioritized label or if we haven't reached max_entities yet
+            if tail_name and tail_name.strip():
+                if tail_name not in entity_map:
+                    entity_map[tail_name] = {
+                        "name": tail_name.strip(),
+                        "label": tail_label,
+                    }
+        
+        # Convert to list and prioritize
+        entities_list = list(entity_map.values())
+        
+        # Sort by priority: prioritized labels first, then by name
+        def get_priority(entity: Dict[str, str]) -> tuple:
+            label = entity["label"]
+            priority = label_priority.get(label, 999)  # Unprioritized labels get high priority number
+            return (priority, entity["name"].lower())
+        
+        entities_list.sort(key=get_priority)
+        
+        # Take top max_entities
+        entities_list = entities_list[:max_entities]
+        
+        # Group by label
+        grouped: Dict[str, List[Dict[str, str]]] = {}
+        for entity in entities_list:
+            label = entity["label"]
+            if label not in grouped:
+                grouped[label] = []
+            grouped[label].append(entity)
+        
+        # Sort groups by priority
+        sorted_groups = {}
+        for priority_label in sorted(label_priority.keys(), key=lambda x: label_priority[x]):
+            if priority_label in grouped:
+                sorted_groups[priority_label] = grouped[priority_label]
+        
+        # Add any remaining labels (non-prioritized)
+        for label in sorted(grouped.keys()):
+            if label not in sorted_groups:
+                sorted_groups[label] = grouped[label]
+        
+        return sorted_groups
+    
+    def format_entities_for_prompt(self, max_entities: int = 30) -> str:
+        """
+        Format prioritized entities as a string for inclusion in LLM prompts.
+        
+        Args:
+            max_entities: Maximum number of entities to include (default: 30)
+            
+        Returns:
+            Formatted string with entities grouped by label
+        """
+        grouped_entities = self.get_prioritized_entities(max_entities=max_entities)
+        
+        if not grouped_entities:
+            return ""
+        
+        lines = ["Knowledge Graph Entities (for reference):"]
+        
+        for label, entities in grouped_entities.items():
+            lines.append(f"\n{label} entities:")
+            for entity in entities:
+                lines.append(f"- {entity['name']}")
+        
+        lines.append("\nNote: Independent claims should primarily focus on INVENTION entities.")
+        lines.append("Dependent claims should focus on COMPONENT, MATERIAL, FUNCTION, or other")
+        lines.append("entities that relate to their parent independent claim.")
+        
+        return "\n".join(lines)
 

@@ -1,5 +1,7 @@
 .container {
-    max-width: 1200px;
+    position: relative;
+    width: 100vw;
+    max-width: 1400px;
     margin: 0 auto;
     padding: 0;
     display: grid;
@@ -7,6 +9,64 @@
     gap: 0;
     height: 100vh;
     background: #ffffff;
+}
+
+.navButton {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(55, 53, 47, 0.08);
+    color: rgb(55, 53, 47);
+    border: 1px solid rgba(55, 53, 47, 0.16);
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    padding: 0;
+}
+
+.navButton:hover:not(:disabled) {
+    background: rgba(55, 53, 47, 0.12);
+    border-color: rgba(55, 53, 47, 0.24);
+    transform: scale(1.05);
+}
+
+.navButton:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.navButton:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+    background: #ffffff;
+    gap: 16px;
+}
+
+.headerContent {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: rgb(55, 53, 47);
 }
 
 .status {
@@ -72,6 +132,7 @@
     padding: 16px 24px;
     border-top: 1px solid rgba(55, 53, 47, 0.09);
     background: #ffffff;
+    align-items: center;
 }
 
 .input {

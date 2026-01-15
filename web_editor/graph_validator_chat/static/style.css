@@ -31,6 +31,7 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -162,6 +163,37 @@ header h1 {
     background: rgba(55, 53, 47, 0.2);
     cursor: not-allowed;
     color: rgba(255, 255, 255, 0.5);
+}
+
+.back-button {
+    padding: 6px 12px;
+    background: rgba(55, 53, 47, 0.06);
+    color: rgba(55, 53, 47, 0.6);
+    border: 1px solid rgba(55, 53, 47, 0.16);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: 400;
+    font-family: inherit;
+    transition: background 0.2s, opacity 0.2s, transform 0.2s;
+    min-width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.back-button:hover:not(:disabled) {
+    background: rgba(55, 53, 47, 0.1);
+    color: rgba(55, 53, 47, 0.8);
+}
+
+.back-button:disabled {
+    background: rgba(55, 53, 47, 0.03);
+    cursor: not-allowed;
+    color: rgba(55, 53, 47, 0.3);
+    border-color: rgba(55, 53, 47, 0.09);
 }
 
 .sidebar {

@@ -11,8 +11,86 @@ document.addEventListener('DOMContentLoaded', () => {
     updateGraphState();
     loadTriples();
     
+    // Set up back button to navigate to widget showcase
+    const backButton = document.getElementById('backButton');
+    
+    // Explicitly ensure button is enabled and clickable
+    if (backButton) {
+        backButton.disabled = false;
+        backButton.removeAttribute('disabled');
+        backButton.style.pointerEvents = 'auto';
+        backButton.style.cursor = 'pointer';
+        backButton.style.opacity = '1';
+        
+        // Simple click handler - navigate immediately
+        backButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Back button clicked!');
+            window.location.href = '/widget-showcase';
+        });
+        
+        // Also handle mousedown as backup
+        backButton.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+        });
+        
+        // Long press handler (optional - for holding the button)
+        let longPressTimer = null;
+        const LONG_PRESS_DURATION = 1500;
+        
+        backButton.addEventListener('mousedown', (e) => {
+            longPressTimer = setTimeout(() => {
+                backButton.style.opacity = '0.5';
+                backButton.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    window.location.href = '/widget-showcase';
+                }, 100);
+            }, LONG_PRESS_DURATION);
+        });
+        
+        backButton.addEventListener('mouseup', () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+            backButton.style.opacity = '';
+            backButton.style.transform = '';
+        });
+        
+        backButton.addEventListener('mouseleave', () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+            backButton.style.opacity = '';
+            backButton.style.transform = '';
+        });
+        
+        // Touch events for mobile
+        backButton.addEventListener('touchstart', (e) => {
+            longPressTimer = setTimeout(() => {
+                backButton.style.opacity = '0.5';
+                backButton.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    window.location.href = '/widget-showcase';
+                }, 100);
+            }, LONG_PRESS_DURATION);
+        }, { passive: false });
+        
+        backButton.addEventListener('touchend', () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+            backButton.style.opacity = '';
+            backButton.style.transform = '';
+        });
+    }
+    
     // Set up send button
-    document.getElementById('sendButton').addEventListener('click', sendAnswer);
+    const sendButton = document.getElementById('sendButton');
+    sendButton.addEventListener('click', sendAnswer);
     document.getElementById('answerInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             sendAnswer();

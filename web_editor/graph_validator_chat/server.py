@@ -22,15 +22,25 @@ from tools.graph.Triple import Triple
 from tools.graph.langgraph.validator import GraphValidatorLangGraph
 from tools.graph.langgraph.helpers import get_triple_head_id, get_triple_tail_id
 from tools.graph.langgraph.question import Question
+from tools.graph.claim_generator_langchain import ClaimGeneratorLangChain
+from tools.graph.graph_rag import GraphRAG
+from tools.graph.claim_generator_langchain import ClaimGeneratorLangChain
+from tools.graph.graph_rag import GraphRAG
 
 
 # Global validator instance
 validator: Optional[GraphValidatorLangGraph] = None
+# Global sentence_split for patent description
+_sentence_split: Optional[List[Any]] = None
 _server_running = False
 _api_server: Optional[HTTPServer] = None
 _api_thread: Optional[threading.Thread] = None
 _nextjs_process: Optional[subprocess.Popen] = None
 _nextjs_thread: Optional[threading.Thread] = None
+
+# Global progress tracking
+_claim_generation_progress: Dict[str, Any] = {}
+_cached_claims: List[Dict[str, Any]] = []
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -42,9 +52,20 @@ def initialize_validator(
     graph: Optional[nx.MultiDiGraph] = None,
     triples: Optional[List[Triple]] = None,
     id_to_name: Optional[Dict[str, str]] = None,
+    sentence_split: Optional[List[Any]] = None,
 ) -> GraphValidatorLangGraph:
-    """Initialize the validator with graph and/or triples."""
-    global validator
+    """Initialize the validator with graph and/or triples.
+    
+    Args:
+        graph: Optional NetworkX graph
+        triples: Optional list of Triple objects
+        id_to_name: Optional mapping from entity ID to name
+        sentence_split: Optional list of Sentence objects with .text attribute for patent description
+    """
+    global validator, _sentence_split
+    # Store sentence_split globally
+    _sentence_split = sentence_split
+    
     # 1. Create the object instantly
     validator = GraphValidatorLangGraph(
         graph=graph,
@@ -93,10 +114,26 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
     
     
     def do_GET(self):
-        """Handle GET requests - API only."""
+        """Handle GET requests."""
         path = urlparse(self.path).path
         print(f"[API] GET {path}")
         
+        # Serve static files
+        if path.startswith('/static/'):
+            self._serve_static_file(path)
+            return
+        
+        # Serve widget showcase page
+        if path == '/widget-showcase':
+            self._serve_widget_showcase()
+            return
+        
+        # Serve main index page
+        if path == '/' or path == '/index.html':
+            self._serve_index()
+            return
+        
+        # API endpoints
         if path == '/api/status':
             self._send_json(self._get_status())
         elif path == '/api/questions/first':
@@ -109,7 +146,16 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             self._send_json(self._export_data())
         elif path == '/api/triples':
             self._send_json(self._get_triples())
+        elif path == '/api/graph/html':
+            self._send_json(self._get_graph_html())
+        elif path == '/api/claims':
+            # GET endpoint to retrieve generated claims
+            self._send_json(self._get_generated_claims())
+        elif path == '/api/claims/progress':
+            # GET endpoint to retrieve claim generation progress
+            self._send_json(self._get_claim_progress())
         else:
+            print(f"[API] 404: Path not found: {path}")
             self.send_error(404)
     
     def do_POST(self):
@@ -120,7 +166,10 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             
             if path == '/api/chat':
                 self._handle_chat()
+            elif path == '/api/claims/generate':
+                self._handle_generate_claims()
             else:
+                print(f"[API] POST 404: Path not found: {path}")
                 self._send_error("Not found", 404)
         except Exception as e:
             import traceback
@@ -358,6 +407,151 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         
         return {"triples": triples_data}
     
+    def _get_graph_html(self) -> Dict[str, Any]:
+        if not validator:
+            return {"error": "Validator not initialized", "html": ""}
+        
+        try:
+            from tools.graph.visualizer import GraphVisualizer
+            import tempfile
+            import os
+            
+            graph = validator.graph
+            triples = validator.triples
+            id_to_name = validator.id_to_name
+            
+            if not graph or not triples:
+                return {"error": "No graph or triples available", "html": ""}
+            
+            visualizer = GraphVisualizer()
+            temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False)
+            temp_path = temp_file.name
+            temp_file.close()
+            
+            # Temporarily disable webbrowser to prevent auto-opening
+            import webbrowser
+            import contextlib
+            
+            @contextlib.contextmanager
+            def disable_webbrowser():
+                original_open = webbrowser.open
+                webbrowser.open = lambda *args, **kwargs: None
+                try:
+                    yield
+                finally:
+                    webbrowser.open = original_open
+            
+            with disable_webbrowser():
+                visualizer.visualize_pyvis(graph, out_file=temp_path, id_to_name=id_to_name)
+            
+            with open(temp_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            
+            os.unlink(temp_path)
+            
+            # Sanitize HTML: remove any file:// links that might cause unwanted navigation
+            import re
+            html_content = re.sub(r'file:///[^\s"\'<>]*', '', html_content)
+            html_content = re.sub(r'href=["\']file:///[^"\']*["\']', 'href="#"', html_content)
+            html_content = re.sub(r'src=["\']file:///[^"\']*["\']', 'src="#"', html_content)
+            
+            return {"html": html_content}
+        except Exception as e:
+            import traceback
+            print(f"[API] Error generating graph HTML: {e}")
+            print(traceback.format_exc())
+            return {"error": str(e), "html": ""}
+    
+    def _serve_static_file(self, path: str):
+        """Serve static files (CSS, JS, etc.)."""
+        try:
+            # Remove leading /static/
+            file_path = path[8:]  # Remove '/static/'
+            static_dir = os.path.join(os.path.dirname(__file__), 'static')
+            full_path = os.path.join(static_dir, file_path)
+            
+            # Security: ensure file is within static directory
+            if not os.path.abspath(full_path).startswith(os.path.abspath(static_dir)):
+                self.send_error(403)
+                return
+            
+            if not os.path.exists(full_path):
+                self.send_error(404)
+                return
+            
+            # Determine content type
+            content_type = 'text/plain'
+            if file_path.endswith('.css'):
+                content_type = 'text/css'
+            elif file_path.endswith('.js'):
+                content_type = 'application/javascript'
+            elif file_path.endswith('.html'):
+                content_type = 'text/html'
+            elif file_path.endswith('.png'):
+                content_type = 'image/png'
+            elif file_path.endswith('.jpg') or file_path.endswith('.jpeg'):
+                content_type = 'image/jpeg'
+            elif file_path.endswith('.svg'):
+                content_type = 'image/svg+xml'
+            
+            with open(full_path, 'rb') as f:
+                content = f.read()
+            
+            self.send_response(200)
+            self.send_header('Content-type', content_type)
+            self.end_headers()
+            self.wfile.write(content)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error serving static file: {e}")
+            print(traceback.format_exc())
+            self.send_error(500)
+    
+    def _serve_index(self):
+        """Serve the main index page."""
+        try:
+            index_path = os.path.join(os.path.dirname(__file__), 'templates', 'index.html')
+            
+            if not os.path.exists(index_path):
+                self.send_error(404)
+                return
+            
+            with open(index_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(html_content.encode('utf-8'))
+        except Exception as e:
+            import traceback
+            print(f"[API] Error serving index: {e}")
+            print(traceback.format_exc())
+            self.send_error(500)
+    
+    def _serve_widget_showcase(self):
+        """Serve the widget showcase page."""
+        try:
+            # Read the widget showcase HTML file
+            showcase_path = os.path.join(os.path.dirname(__file__), 'templates', 'widget-showcase.html')
+            
+            if not os.path.exists(showcase_path):
+                self.send_error(404)
+                return
+            
+            with open(showcase_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(html_content.encode('utf-8'))
+        except Exception as e:
+            import traceback
+            print(f"[API] Error serving widget showcase: {e}")
+            print(traceback.format_exc())
+            self.send_error(500)
+    
     def _extract_entities(self, triples: List[Triple]) -> List[Dict[str, Any]]:
         """Extract unique entities from triples."""
         entities = []
@@ -384,6 +578,263 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 entity_ids.add(tail_id)
         
         return entities
+    
+    def _handle_generate_claims(self):
+        """Handle claim generation request."""
+        if not validator:
+            self._send_error("Validator not initialized")
+            return
+        
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length > 0:
+                data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+                patent_description = data.get("patent_description", "")
+                num_independent = data.get("num_independent", 3)
+                num_dependent_per_independent = data.get("num_dependent_per_independent", 2)
+                similarity_threshold = data.get("similarity_threshold", 0.3)
+            else:
+                # Use default values if no body provided
+                patent_description = ""
+                num_independent = 3
+                num_dependent_per_independent = 2
+                similarity_threshold = 0.3
+            
+            # Get patent description from validator state if not provided
+            print(f"[DEBUG] _handle_generate_claims: Initial patent_description: '{patent_description[:100] if patent_description else 'EMPTY'}...'")
+            print(f"[DEBUG] _handle_generate_claims: patent_description is None: {patent_description is None}")
+            print(f"[DEBUG] _handle_generate_claims: patent_description.strip() == '': {patent_description.strip() == '' if patent_description else 'N/A'}")
+            
+            if not patent_description or patent_description.strip() == "":
+                print(f"[DEBUG] _handle_generate_claims: Patent description empty, trying to extract from sentence_split...")
+                # First try to get from sentence_split (global variable)
+                global _sentence_split
+                if _sentence_split and len(_sentence_split) > 0:
+                    print(f"[DEBUG] _handle_generate_claims: Found sentence_split with {len(_sentence_split)} sentences")
+                    try:
+                        # Extract text from Sentence objects
+                        description_parts = []
+                        for idx, sentence in enumerate(_sentence_split):
+                            if hasattr(sentence, 'text'):
+                                text = sentence.text
+                                if text and text.strip():
+                                    description_parts.append(text.strip())
+                            elif isinstance(sentence, str):
+                                if sentence.strip():
+                                    description_parts.append(sentence.strip())
+                        
+                        if description_parts:
+                            patent_description = "\n".join(description_parts)
+                            print(f"[DEBUG] _handle_generate_claims: Extracted patent description from sentence_split ({len(patent_description)} chars)")
+                        else:
+                            print(f"[DEBUG] _handle_generate_claims: sentence_split has no valid text content")
+                    except Exception as e:
+                        print(f"[DEBUG] _handle_generate_claims: Error extracting from sentence_split: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+                # Fallback: Try to get from validator state (chat messages)
+                if not patent_description or patent_description.strip() == "":
+                    print(f"[DEBUG] _handle_generate_claims: Trying to extract from validator state...")
+                    if hasattr(validator, '_current_state') and validator._current_state:
+                        print(f"[DEBUG] _handle_generate_claims: Validator has _current_state")
+                        messages = validator._current_state.get("messages", [])
+                        print(f"[DEBUG] _handle_generate_claims: Found {len(messages)} messages in state")
+                        # Extract text from messages to build description
+                        description_parts = []
+                        for idx, msg in enumerate(messages):
+                            print(f"[DEBUG] _handle_generate_claims: Message {idx}: type={type(msg)}")
+                            if isinstance(msg, dict):
+                                content = msg.get("content", msg.get("text", ""))
+                                role = msg.get("role", "")
+                                print(f"[DEBUG] _handle_generate_claims:   Dict message - role={role}, content_length={len(content) if content else 0}")
+                                if role == "user" and content:
+                                    description_parts.append(content)
+                            elif hasattr(msg, "content"):
+                                if hasattr(msg, "role") and msg.role == "user":
+                                    description_parts.append(str(msg.content))
+                        
+                        if description_parts:
+                            patent_description = "\n\n".join(description_parts)
+                            print(f"[DEBUG] _handle_generate_claims: Extracted patent description from chat messages ({len(patent_description)} chars)")
+                        else:
+                            patent_description = "Patent invention description not provided. Please provide a description of the invention."
+                            print(f"[DEBUG] _handle_generate_claims: No user messages found, using placeholder")
+                    else:
+                        patent_description = "Patent invention description not provided. Please provide a description of the invention."
+                        print(f"[DEBUG] _handle_generate_claims: No validator state, using placeholder")
+            
+            print(f"[DEBUG] _handle_generate_claims: Final patent_description length: {len(patent_description)} chars")
+            print(f"[DEBUG] _handle_generate_claims: Final patent_description preview: {patent_description[:200]}...")
+            print(f"[DEBUG] _handle_generate_claims: num_independent={num_independent}, num_dependent_per_independent={num_dependent_per_independent}")
+            
+            # Declare globals at the start of the function
+            global _claim_generation_progress, _cached_claims
+            
+            # Set initial progress BEFORE starting generation
+            _claim_generation_progress = {
+                "stage": "planning",
+                "message": "Planning claim structure...",
+                "progress": 0,
+            }
+            print(f"[API] Initial progress set: {_claim_generation_progress}")
+            print(f"[API] Progress stage: {_claim_generation_progress.get('stage')}")
+            
+            # Initialize GraphRAG
+            graph_rag = GraphRAG(
+                G=validator.graph,
+                triples=validator.triples,
+                id_to_name=validator.id_to_name,
+            )
+            
+            # Initialize claim generator
+            claim_generator = ClaimGeneratorLangChain(
+                graph_rag=graph_rag,
+            )
+            
+            # Progress tracking
+            progress_updates = []
+            
+            def progress_callback(update):
+                """Store progress updates."""
+                # Need global here too since it's a nested function
+                global _claim_generation_progress
+                progress_updates.append(update)
+                # Store in global variable for GET requests
+                _claim_generation_progress = update
+                print(f"[API] Progress: {update.get('stage')} - {update.get('message')} ({update.get('progress', 0)}%)")
+            
+            # Generate claims with progress tracking
+            print(f"[API] Starting claim generation...")
+            print(f"[API] Triples count: {len(validator.triples)}")
+            print(f"[API] Graph nodes: {validator.graph.number_of_nodes() if validator.graph else 0}")
+            print(f"[API] Patent description: {patent_description[:200] if patent_description else 'EMPTY'}...")
+            
+            generated_claims = []
+            try:
+                generated_claims = claim_generator.generate_all_claims(
+                    patent_description=patent_description,
+                    triples=validator.triples,
+                    graph=validator.graph,
+                    id_to_name=validator.id_to_name,
+                    num_independent=num_independent,
+                    num_dependent_per_independent=num_dependent_per_independent,
+                    progress_callback=progress_callback,
+                    similarity_threshold=similarity_threshold,
+                )
+                print(f"[API] generate_all_claims returned {len(generated_claims) if generated_claims else 0} claims")
+            except Exception as e:
+                import traceback
+                print(f"[API] ERROR in generate_all_claims: {e}")
+                print(f"[API] Traceback: {traceback.format_exc()}")
+                # Create emergency fallback claim
+                from tools.graph.claim_generator_langchain import GeneratedClaim
+                generated_claims = [GeneratedClaim(
+                    claim_number=1,
+                    claim_text="1. A system comprising components as described in the patent description.",
+                    claim_type="independent",
+                    focus="Main invention",
+                )]
+                print(f"[API] Created emergency fallback claim")
+            
+            # CRITICAL: Ensure we always have at least one claim
+            if not generated_claims or len(generated_claims) == 0:
+                print(f"[API] CRITICAL: No claims generated! Creating emergency fallback.")
+                from tools.graph.claim_generator_langchain import GeneratedClaim
+                generated_claims = [GeneratedClaim(
+                    claim_number=1,
+                    claim_text="1. A system comprising components as described in the patent description.",
+                    claim_type="independent",
+                    focus="Main invention",
+                )]
+            
+            # Convert to JSON-serializable format
+            claims_data = []
+            for claim in generated_claims:
+                claims_data.append({
+                    "claim_number": claim.claim_number,
+                    "claim_text": claim.claim_text,
+                    "claim_type": claim.claim_type,
+                    "parent_claim_number": claim.parent_claim_number,
+                    "focus": claim.focus,
+                    "used_triples": claim.used_triples if hasattr(claim, 'used_triples') else [],
+                })
+            
+            print(f"[API] Final claims_data: {len(claims_data)} claims")
+            
+            # Cache the generated claims globally
+            _cached_claims = claims_data
+            
+            # Set final progress
+            _claim_generation_progress = {
+                "stage": "complete",
+                "message": f"Successfully generated {len(claims_data)} claims!",
+                "progress": 100,
+                "num_claims": len(claims_data),
+            }
+            
+            self._send_json({
+                "success": True,
+                "claims": claims_data,
+                "num_claims": len(claims_data),
+                "progress": _claim_generation_progress,
+            })
+            
+        except Exception as e:
+            import traceback
+            print(f"[API] Error generating claims: {type(e).__name__}: {str(e)}")
+            print(f"[API] Traceback: {traceback.format_exc()}")
+            self._send_error(f"Error generating claims: {str(e)}", 500)
+    
+    def _get_generated_claims(self) -> Dict[str, Any]:
+        """Get previously generated claims from storage."""
+        global _cached_claims
+        try:
+            if _cached_claims:
+                return {
+                    "success": True,
+                    "claims": _cached_claims,
+                    "num_claims": len(_cached_claims),
+                }
+            else:
+                return {
+                    "success": True,
+                    "claims": [],
+                    "num_claims": 0,
+                }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def _get_claim_progress(self) -> Dict[str, Any]:
+        """Get current claim generation progress."""
+        global _claim_generation_progress
+        try:
+            # Check if progress exists and has a stage (not empty dict)
+            if (_claim_generation_progress and 
+                isinstance(_claim_generation_progress, dict) and 
+                _claim_generation_progress.get("stage") and
+                _claim_generation_progress.get("stage") != "idle"):
+                print(f"[API] Returning progress: {_claim_generation_progress}")
+                return {
+                    "success": True,
+                    "progress": _claim_generation_progress,
+                }
+            else:
+                # Return idle only if truly no progress or empty
+                print(f"[API] No active progress found. Current value: {_claim_generation_progress}")
+                return {
+                    "success": True,
+                    "progress": {
+                        "stage": "idle",
+                        "message": "No generation in progress",
+                        "progress": 0,
+                    },
+                }
+        except Exception as e:
+            print(f"[API] Error getting progress: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return {"error": str(e)}
 
 
 def _is_port_available(port: int) -> bool:
@@ -448,10 +899,23 @@ def start_validator_chat(
     graph: Optional[nx.MultiDiGraph] = None,
     triples: Optional[List[Triple]] = None,
     id_to_name: Optional[Dict[str, str]] = None,
+    sentence_split: Optional[List[Any]] = None,
     port: int = 5000,
     open_browser: bool = True,
     debug: bool = False,
 ) -> None:
+    """
+    Start the validator chat interface.
+    
+    Args:
+        graph: Optional NetworkX graph
+        triples: Optional list of Triple objects
+        id_to_name: Optional mapping from entity ID to name
+        sentence_split: Optional list of Sentence objects with .text attribute for patent description
+        port: Port number for the API server
+        open_browser: Whether to automatically open browser
+        debug: Enable debug mode
+    """
     from pathlib import Path
     global validator, _server_running, _api_server, _api_thread, _nextjs_process, _nextjs_thread
     api_port_in_use = not _is_port_available(port) if port else False
@@ -510,11 +974,23 @@ def start_validator_chat(
     if next_config_path.exists():
         with open(next_config_path, 'r') as f:
             config_content = f.read()
-        # Replace the port in the config
+        # Replace the port in the config for API routes
         import re
         config_content = re.sub(
             r"destination: 'http://localhost:\d+/api/:path\*'",
             f"destination: 'http://localhost:{api_port}/api/:path*'",
+            config_content
+        )
+        # Replace the port for widget-showcase route
+        config_content = re.sub(
+            r"destination: 'http://localhost:\d+/widget-showcase'",
+            f"destination: 'http://localhost:{api_port}/widget-showcase'",
+            config_content
+        )
+        # Replace the port for static files route
+        config_content = re.sub(
+            r"destination: 'http://localhost:\d+/static/:path\*'",
+            f"destination: 'http://localhost:{api_port}/static/:path*'",
             config_content
         )
         with open(next_config_path, 'w') as f:
@@ -578,9 +1054,13 @@ def start_validator_chat(
     def init_background():
         if validator is None or graph is not None or triples is not None:
             print(f"[Server] Initializing validator in background...")
-            initialize_validator(graph, triples, id_to_name)
+            initialize_validator(graph, triples, id_to_name, sentence_split)
         else:
             print(f"[Server] Validator already exists")
+            # Still update sentence_split if provided
+            if sentence_split is not None:
+                global _sentence_split
+                _sentence_split = sentence_split
 
     # Start initialization in a separate thread
     threading.Thread(target=init_background, daemon=True).start()

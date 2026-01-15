@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import styles from './page.module.css';
 import Widget from '../components/Widget';
 
@@ -28,7 +30,15 @@ interface WidgetData {
   suggestions?: any[];
 }
 
+const STORAGE_KEY_MESSAGES = 'chat_messages';
+const STORAGE_KEY_TRIPLES = 'chat_triples';
+const STORAGE_KEY_CHANGES = 'chat_changes';
+const STORAGE_KEY_STATS = 'chat_stats';
+
 export default function ChatPage() {
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  
   const [messages, setMessages] = useState<Message[]>([
     { role: 'bot', content: 'Welcome! I am setting up the environment. You can explore the sidebar while I analyze the graph.' }
   ]);
@@ -43,6 +53,71 @@ export default function ChatPage() {
   const [stats, setStats] = useState<any>({});
   const chatStartedRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    
+    // Load stored state after mount to avoid hydration errors
+    try {
+      const storedMessages = localStorage.getItem(STORAGE_KEY_MESSAGES);
+      if (storedMessages) {
+        const parsed = JSON.parse(storedMessages);
+        if (parsed && parsed.length > 0) {
+          setMessages(parsed);
+        }
+      }
+      
+      const storedTriples = localStorage.getItem(STORAGE_KEY_TRIPLES);
+      if (storedTriples) {
+        const parsed = JSON.parse(storedTriples);
+        if (parsed && parsed.length > 0) {
+          setAllTriples(parsed);
+        }
+      }
+      
+      const storedChanges = localStorage.getItem(STORAGE_KEY_CHANGES);
+      if (storedChanges) {
+        const parsed = JSON.parse(storedChanges);
+        if (parsed && parsed.length > 0) {
+          setChanges(parsed);
+        }
+      }
+      
+      const storedStats = localStorage.getItem(STORAGE_KEY_STATS);
+      if (storedStats) {
+        const parsed = JSON.parse(storedStats);
+        if (parsed && Object.keys(parsed).length > 0) {
+          setStats(parsed);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load stored state:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && allTriples.length > 0) {
+      localStorage.setItem(STORAGE_KEY_TRIPLES, JSON.stringify(allTriples));
+    }
+  }, [allTriples]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_CHANGES, JSON.stringify(changes));
+    }
+  }, [changes]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && Object.keys(stats).length > 0) {
+      localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(stats));
+    }
+  }, [stats]);
 
   useEffect(() => {
     // Run initial checks immediately
@@ -77,8 +152,9 @@ export default function ChatPage() {
         const unanswered = data.num_unanswered !== undefined ? data.num_unanswered : data.num_questions;
         setStatus(`Ready | ${unanswered} question${unanswered !== 1 ? 's' : ''} remaining | ${data.num_triples} triples`);
         
-        // If we haven't started the chat yet, start it
-        if (!chatStartedRef.current) {
+        // Don't auto-start chat if we have stored messages (user was navigating)
+        const hasStoredMessages = messages.length > 1 || (messages.length === 1 && messages[0].content !== 'Welcome! I am setting up the environment. You can explore the sidebar while I analyze the graph.');
+        if (!chatStartedRef.current && !hasStoredMessages) {
           chatStartedRef.current = true;
           startChat();
         }
@@ -241,9 +317,25 @@ export default function ChatPage() {
 
   return (
     <div className={styles.container}>
-      <header>
-        <h1>Graph Validator Chat</h1>
-        <div className={styles.status}>{status}</div>
+      <header className={styles.header}>
+        <button
+          className={styles.navButton}
+          onClick={() => router.push('/widget-showcase')}
+          title="Go to Widget Showcase"
+        >
+          ←
+        </button>
+        <div className={styles.headerContent}>
+          <h1>Graph Validator Chat</h1>
+          <div className={styles.status}>{status}</div>
+        </div>
+        <button
+          className={styles.navButton}
+          onClick={() => router.push('/graph')}
+          title="Go to Graph"
+        >
+          →
+        </button>
       </header>
       <div className={styles.chatContainer}>
         <div className={styles.messages}>
