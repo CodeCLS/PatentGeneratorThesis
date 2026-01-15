@@ -27,6 +27,7 @@ export default function EditorPage() {
   const [progress, setProgress] = useState<ProgressUpdate | null>(null);
   const [selectedClaimNumber, setSelectedClaimNumber] = useState<number | null>(null);
   const [showTriplesPanel, setShowTriplesPanel] = useState<boolean>(true);
+  const [expandedPromptClaim, setExpandedPromptClaim] = useState<number | null>(null);
   const [similarityThreshold, setSimilarityThreshold] = useState<number>(0.3);
   const progressCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRegeneratingRef = useRef<boolean>(false);
@@ -38,9 +39,18 @@ export default function EditorPage() {
     const storedThreshold = localStorage.getItem(STORAGE_KEY_SIMILARITY_THRESHOLD);
     if (storedThreshold) {
       const threshold = parseFloat(storedThreshold);
-      if (!isNaN(threshold) && threshold >= 0 && threshold <= 1) {
+      // Only use stored value if it's valid and greater than 0 (0 means not set)
+      if (!isNaN(threshold) && threshold > 0 && threshold <= 1) {
         setSimilarityThreshold(threshold);
+      } else {
+        // Invalid or 0 value - set default and save it
+        setSimilarityThreshold(0.3);
+        localStorage.setItem(STORAGE_KEY_SIMILARITY_THRESHOLD, '0.3');
       }
+    } else {
+      // No stored value - set default and save it
+      setSimilarityThreshold(0.3);
+      localStorage.setItem(STORAGE_KEY_SIMILARITY_THRESHOLD, '0.3');
     }
     
     // Check for progress updates
@@ -508,19 +518,33 @@ export default function EditorPage() {
         }
       } else {
         isRegeneratingRef.current = false;
-        console.error('[Editor] Failed to regenerate claims');
+        // Try to get error message from response
+        let errorMessage = 'Failed to regenerate claims';
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorMessage = `Failed to regenerate claims: ${errorData.error}`;
+          } else if (errorData.message) {
+            errorMessage = `Failed to regenerate claims: ${errorData.message}`;
+          }
+        } catch (e) {
+          // If response is not JSON, use status text
+          errorMessage = `Failed to regenerate claims: ${response.status} ${response.statusText}`;
+        }
+        console.error('[Editor] Failed to regenerate claims:', errorMessage);
         setProgress({
           stage: 'error',
-          message: 'Failed to regenerate claims',
+          message: errorMessage,
           progress: 0,
         });
       }
     } catch (error) {
       isRegeneratingRef.current = false;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       console.error('[Editor] Error regenerating claims:', error);
       setProgress({
         stage: 'error',
-        message: 'Error regenerating claims',
+        message: `Error regenerating claims: ${errorMessage}`,
         progress: 0,
       });
     }
@@ -529,8 +553,7 @@ export default function EditorPage() {
   const handleSimilarityThresholdChange = (value: number) => {
     setSimilarityThreshold(value);
     localStorage.setItem(STORAGE_KEY_SIMILARITY_THRESHOLD, value.toString());
-    // Regenerate claims with new threshold
-    regenerateClaimsWithThreshold(value);
+    // Don't regenerate automatically - user must click "Regenerate" button
   };
 
   return (
@@ -666,6 +689,13 @@ export default function EditorPage() {
             className={styles.similaritySlider}
             title={`Cosine similarity threshold: ${(similarityThreshold * 100).toFixed(0)}%`}
           />
+          <button
+            className={styles.toolbarButton}
+            onClick={() => regenerateClaimsWithThreshold(similarityThreshold)}
+            title="Regenerate claims with new similarity threshold"
+          >
+            Regenerate
+          </button>
         </div>
       </div>
 
@@ -704,8 +734,34 @@ export default function EditorPage() {
                       <div>
                         <div className={styles.claimInfo}>
                           <strong>Claim {selectedClaimNumber}</strong>
-                          <span className={styles.claimType}>{selectedClaim.claim_type}</span>
+                          <span className={styles.claimType}>{selectedClaim.claim_type.toUpperCase()}</span>
                         </div>
+                        {selectedClaim.focus && (
+                          <div className={styles.claimFocus}>
+                            <div className={styles.claimFocusLabel}>Planned Focus:</div>
+                            <div className={styles.claimFocusText}>{selectedClaim.focus}</div>
+                          </div>
+                        )}
+                        {selectedClaim.prompt && (
+                          <div className={styles.promptDropdown}>
+                            <button
+                              className={styles.promptDropdownButton}
+                              onClick={() => setExpandedPromptClaim(
+                                expandedPromptClaim === selectedClaimNumber ? null : selectedClaimNumber
+                              )}
+                            >
+                              <span>Prompt</span>
+                              <span className={styles.promptDropdownIcon}>
+                                {expandedPromptClaim === selectedClaimNumber ? '▼' : '▶'}
+                              </span>
+                            </button>
+                            {expandedPromptClaim === selectedClaimNumber && (
+                              <div className={styles.promptContent}>
+                                <pre className={styles.promptText}>{selectedClaim.prompt}</pre>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <div className={styles.triplesList}>
                           {selectedClaim.used_triples.map((triple: any, idx: number) => (
                             <div key={idx} className={styles.tripleItem}>
@@ -775,6 +831,7 @@ export default function EditorPage() {
               {progress.stage === 'planning' && '📋 '}
               {progress.stage === 'planning_complete' && '✅ '}
               {progress.stage === 'generating' && '✍️ '}
+              {progress.stage === 'refining' && '🔍 '}
               {progress.stage === 'complete' && '✅ '}
               {progress.stage === 'error' && '❌ '}
               {progress.message || 'Processing...'}
@@ -793,13 +850,6 @@ export default function EditorPage() {
               </div>
             )}
           </div>
-        </div>
-      )}
-      
-      {/* Debug info - remove in production */}
-      {process.env.NODE_ENV === 'development' && (
-        <div style={{ position: 'fixed', top: '10px', right: '10px', background: 'rgba(0,0,0,0.8)', color: 'white', padding: '10px', fontSize: '12px', zIndex: 9999, borderRadius: '4px' }}>
-          <div>Progress: {progress ? JSON.stringify(progress) : 'null'}</div>
         </div>
       )}
     </div>

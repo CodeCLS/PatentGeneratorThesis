@@ -758,6 +758,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     "parent_claim_number": claim.parent_claim_number,
                     "focus": claim.focus,
                     "used_triples": claim.used_triples if hasattr(claim, 'used_triples') else [],
+                    "prompt": claim.prompt if hasattr(claim, 'prompt') else "",
+                    "refinement_iterations": claim.refinement_iterations if hasattr(claim, 'refinement_iterations') else 0,
+                    "final_score": claim.final_score if hasattr(claim, 'final_score') else 0.0,
                 })
             
             print(f"[API] Final claims_data: {len(claims_data)} claims")
