@@ -39,34 +39,26 @@ def visualizer_node(validator: "GraphValidatorLangGraph", state: "GraphValidator
     retrieved_triples_data = []  # Actual triple data for widget
     
     if context_info_list:
-        last_context = context_info_list[-1]
-        if isinstance(last_context, dict):
-            retrieved_info = (
-                f"Retrieved information:\n"
-                f"- Intent: {last_context.get('intent', 'N/A')}\n"
-                f"- Entities in focus: {', '.join(last_context.get('entities_in_focus', []))}\n"
-                f"- Relevant triples: {', '.join(map(str, last_context.get('relevant_triples', [])))}\n"
-            )
-        else:
-            # Handle ChatContextInformation object
-            retrieved_info = (
-                f"Retrieved information:\n"
-                f"- Intent: {getattr(last_context, 'intent', 'N/A')}\n"
-                f"- Entities in focus: {', '.join(getattr(last_context, 'entities_in_focus', []))}\n"
-                f"- Relevant triples: {', '.join(map(str, getattr(last_context, 'relevant_triples', [])))}\n"
-            )
+        ctx = context_info_list[-1]
+        retrieved_info = (
+            f"Retrieved information:\n"
+            f"- Intent: {getattr(ctx, 'intent', 'N/A')}\n"
+            f"- Entities in focus: {', '.join(getattr(ctx, 'entities_in_focus', []))}\n"
+            f"- Relevant triples: {', '.join(map(str, getattr(ctx, 'relevant_triples', [])))}\n"
+        )
     
     # Get last SYSTEM message (retrieval results) and extract triple data
-    system_messages = [msg for msg in messages if (msg.role if isinstance(msg, Message) else msg.get("role")) == MessageRole.SYSTEM]
+    system_messages = [msg for msg in messages if msg.role == MessageRole.SYSTEM]
     if system_messages:
         last_system = system_messages[-1]
-        system_content = last_system.content if isinstance(last_system, Message) else last_system.get("content", "")
+        system_content = last_system.content
         
         # Extract triple data from JSON in SYSTEM message
         if KEY_RETRIEVED_INFO_MARKER in system_content:
             try:
                 # Parse JSON from SYSTEM message
-                json_start = system_content.find(KEY_RETRIEVED_INFO_MARKER) + len(KEY_RETRIEVED_INFO_MARKER)
+                marker_idx = system_content.find(KEY_RETRIEVED_INFO_MARKER)
+                json_start = marker_idx + len(KEY_RETRIEVED_INFO_MARKER)
                 json_end = system_content.find("\n\nReason:", json_start)
                 if json_end == -1:
                     json_end = len(system_content)
@@ -75,22 +67,17 @@ def visualizer_node(validator: "GraphValidatorLangGraph", state: "GraphValidator
                 retrieved_data = json.loads(json_str)
                 
                 # Extract triples from retrieved data
-                # Could be a list (get_related_triples) or dict with 'triples' key (get_entity_info)
                 if isinstance(retrieved_data, list):
                     retrieved_triples_data = retrieved_data
                 elif isinstance(retrieved_data, dict):
-                    if KEY_RELATED_TRIPLES in retrieved_data:
-                        retrieved_triples_data = retrieved_data[KEY_RELATED_TRIPLES]
-                    elif "triples" in retrieved_data:
-                        retrieved_triples_data = retrieved_data["triples"]
-                    elif retrieved_data.get("index") is not None:
-                        # Single triple info
+                    retrieved_triples_data = retrieved_data.get(KEY_RELATED_TRIPLES, retrieved_data.get("triples", []))
+                    if not retrieved_triples_data and retrieved_data.get("index") is not None:
                         retrieved_triples_data = [retrieved_data]
                 
-                retrieved_info += f"\nRetrieved data:\n{system_content[:1000]}\n"  # Show first 1000 chars
-            except (json.JSONDecodeError, KeyError) as e:
-                print(f"[Visualizer] Warning: Could not parse triple data from SYSTEM message: {e}")
                 retrieved_info += f"\nRetrieved data:\n{system_content[:1000]}\n"
+            except Exception as e:
+                print(f"[Visualizer] Warning: Could not parse triple data: {e}")
+                retrieved_info += f"\nRetrieved data (raw):\n{system_content[:1000]}\n"
         else:
             retrieved_info += f"\nRetrieved data:\n{system_content[:1000]}\n"
     
@@ -118,56 +105,19 @@ def visualizer_node(validator: "GraphValidatorLangGraph", state: "GraphValidator
     print(f"[Visualizer] Raw LLM Response (first 500 chars): {response_str[:500]}")
     print(f"[Visualizer] Retrieved triples count: {len(retrieved_triples_data)}")
     
-    widget_data = JsonHelper.parse_json(response_str) if response_str else None
-    
-    if widget_data is None:
-        print(f"[Visualizer] ERROR: Failed to parse JSON from LLM response")
-        print(f"[Visualizer] Full response: {response_str}")
-        # Create a default widget if we have triples but parsing failed
-        if retrieved_triples_data:
-            print(f"[Visualizer] Creating default widget with {len(retrieved_triples_data)} triples")
-            # Ensure triples are in the correct format (list of dicts with index, head, relation, tail)
-            formatted_triples = []
-            for i, triple in enumerate(retrieved_triples_data):
-                if isinstance(triple, dict):
-                    # Already a dict, use it
-                    formatted_triples.append(triple)
-                else:
-                    # Try to convert to dict
-                    if hasattr(triple, 'to_dict'):
-                        formatted_triples.append(triple.to_dict())
-                    else:
-                        print(f"[Visualizer] Warning: Could not format triple {i}: {type(triple)}")
-            
-            if formatted_triples:
-                widget_data = {
-                    "show_widget": True,
-                    "widget_type": "edges_widget",
-                    "widget_data": {"triples": formatted_triples}
-                }
-            else:
-                widget_data = {"show_widget": False}
-        else:
-            widget_data = {"show_widget": False}
-    
+    widget_data = JsonHelper.parse_json(response_str) if response_str else {"show_widget": False}
+     
     print(f"[Visualizer] Parsed widget_data: {widget_data}")
-    
+     
     visual_info = ChatVisualInfo.from_dict(widget_data or {})
-    
+     
     # Update display actions list
-    # ChatVisualInfo contains a widget if show_widget was True in the LLM response
-    # The widget is created via Widget.from_dict() which determines the widget type
     new_display_actions = state.get(STATE_DISPLAY_ACTIONS, [])
-    if visual_info.widget:  # Check if widget exists (means show_widget was True)
+    if visual_info.widget:
         new_display_actions = new_display_actions + [visual_info]
-        print(f"[Visualizer] Widget created: {visual_info.widget.widget_type if visual_info.widget else 'None'}")
-    else:
-        print(f"[Visualizer] No widget created (show_widget was False or widget_type missing)")
+        print(f"[Visualizer] Widget created: {visual_info.widget.widget_type}")
     
-    # Use consume_agent helper which returns updated state
     updated_state = consume_agent(state, AGENT_VISUALIZER)
-    
-    print(f"[Visualizer] ===========================================\n")
     
     return {
         **updated_state,
