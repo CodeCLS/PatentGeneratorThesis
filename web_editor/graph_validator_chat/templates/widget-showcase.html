@@ -106,8 +106,9 @@
         <!-- Widgets will be inserted here by JavaScript -->
     </div>
     
+    <script src="/static/app.js"></script>
     <script>
-        // Sample data for each widget type
+        // Sample data for the edges_widget (will be rendered by displayWidget from app.js)
         const widgetSamples = {
             'edges_widget': {
                 widget_type: 'edges_widget',
@@ -121,191 +122,25 @@
                         { index: 5, head: 'Entity F', relation: 'requires', tail: 'Entity G' },
                     ]
                 }
-            },
-            'graph_widget': {
-                widget_type: 'graph_widget',
-                widget_data: {}
-            },
-            'graph_subsection_widget': {
-                widget_type: 'graph_subsection_widget',
-                widget_data: {}
-            },
-            'question_widget_general': {
-                widget_type: 'question_widget_general',
-                widget_data: {
-                    question: 'Is this triple accurate? Please confirm or provide corrections.'
-                }
-            },
-            'question_widget_triple': {
-                widget_type: 'question_widget_triple',
-                widget_data: {
-                    triple: {
-                        head: 'Water Pump',
-                        relation: 'pumps',
-                        tail: 'Water'
-                    }
-                }
-            },
-            'question_widget_entity': {
-                widget_type: 'question_widget_entity',
-                widget_data: {
-                    entity_name: 'Aquarium System'
-                }
-            },
-            'question_widget_cluster_triple': {
-                widget_type: 'question_widget_cluster_triple',
-                widget_data: {
-                    triple: {
-                        head: 'Filter',
-                        relation: 'cleans',
-                        tail: 'Water'
-                    }
-                }
-            },
-            'validation_summary_widget': {
-                widget_type: 'validation_summary_widget',
-                widget_data: {
-                    stats: {
-                        success_rate: 85,
-                        total: 100,
-                        passed: 85,
-                        failed: 15
-                    }
-                }
-            },
-            'patent_analysis_widget': {
-                widget_type: 'patent_analysis_widget',
-                widget_data: {
-                    patent: {
-                        status: 'Valid',
-                        risk: 'Low',
-                        metadata: 'Patent covers aquarium filtration system with automated maintenance features'
-                    }
-                }
-            },
-            'connection_check_widget': {
-                widget_type: 'connection_check_widget',
-                widget_data: {
-                    issues: [
-                        { severity: 'error', message: 'Entity "Pump" has no outgoing connections' },
-                        { severity: 'warning', message: 'Entity "Filter" has only one connection' },
-                        { severity: 'info', message: 'All critical entities are connected' }
-                    ]
-                }
-            },
-            'suggestion_widget': {
-                widget_type: 'suggestion_widget',
-                widget_data: {
-                    suggestions: [
-                        { id: 'sug1', text: 'Consider adding a connection between Pump and Filter' },
-                        { id: 'sug2', text: 'Entity "Water" might need more specific labeling' },
-                        { id: 'sug3', text: 'Add a triple: Filter --[maintains]--> Water Quality' }
-                    ]
-                }
             }
         };
         
-        // Load the displayWidget function from app.js logic
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        function displayWidget(widgetType, widgetData) {
-            const widgetDiv = document.createElement('div');
-            widgetDiv.className = 'widget-container';
-            
-            let widgetContent = '';
-            
-            switch(widgetType) {
-                case 'edges_widget':
-                    const edges = widgetData.triples || [];
-                    const showCount = 5;
-                    const hasMore = edges.length > showCount;
-                    const listId = 'edges-list-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-                    widgetContent = '<div class="widget edges-widget"><h4>Triples</h4><ul id="' + listId + '">';
-                    edges.slice(0, showCount).forEach((edge, idx) => {
-                        const index = edge.index !== undefined ? edge.index : idx;
-                        widgetContent += `<li>${index}. ${escapeHtml(edge.head || '')} --[${escapeHtml(edge.relation || '')}]--> ${escapeHtml(edge.tail || '')}</li>`;
-                    });
-                    widgetContent += '</ul>';
-                    if (hasMore) {
-                        widgetContent += `<p style="color: #666; font-style: italic;">... and ${edges.length - showCount} more</p>`;
-                    }
-                    widgetContent += '</div>';
-                    break;
-                    
-                case 'graph_widget':
-                case 'graph_subsection_widget':
-                    widgetContent = `<div class="widget graph-widget"><h4>Graph Visualization</h4><div class="graph-placeholder" style="padding: 40px; background: #f0f0f0; border-radius: 4px; text-align: center; color: #666;">Graph visualization would appear here</div></div>`;
-                    break;
-                    
-                case 'question_widget_general':
-                    widgetContent = `<div class="widget question-widget"><h4>${escapeHtml(widgetData.question || 'Question')}</h4><textarea class="widget-input" placeholder="Your answer..." style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea><button class="widget-button" style="margin-top: 10px; padding: 8px 16px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">Submit</button></div>`;
-                    break;
-                    
-                case 'question_widget_triple':
-                    const triple = widgetData.triple || {};
-                    widgetContent = `<div class="widget question-widget"><h4>Confirm or correct this triple:</h4><p style="background: #f5f5f5; padding: 10px; border-radius: 4px;">${escapeHtml(triple.head || '')} --[${escapeHtml(triple.relation || '')}]--> ${escapeHtml(triple.tail || '')}</p><textarea class="widget-input" placeholder="Corrections or confirm..." style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea><button class="widget-button" style="margin-top: 10px; padding: 8px 16px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">Submit</button></div>`;
-                    break;
-                    
-                case 'question_widget_entity':
-                    widgetContent = `<div class="widget question-widget"><h4>Validate or explain: ${escapeHtml(widgetData.entity_name || 'Entity')}</h4><textarea class="widget-input" placeholder="Your explanation..." style="width: 100%; min-height: 60px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit;"></textarea><button class="widget-button" style="margin-top: 10px; padding: 8px 16px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">Submit</button></div>`;
-                    break;
-                    
-                case 'question_widget_cluster_triple':
-                    widgetContent = `<div class="widget question-widget"><h4>Rate importance in cluster</h4><p style="background: #f5f5f5; padding: 10px; border-radius: 4px;">${escapeHtml(widgetData.triple?.head || '')} --[${escapeHtml(widgetData.triple?.relation || '')}]--> ${escapeHtml(widgetData.triple?.tail || '')}</p><input type="range" min="1" max="5" value="3" class="widget-slider" style="width: 100%; margin: 10px 0;"><button class="widget-button" style="padding: 8px 16px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">Submit</button></div>`;
-                    break;
-                    
-                case 'validation_summary_widget':
-                    const stats = widgetData.stats || {};
-                    widgetContent = `<div class="widget summary-widget"><h4>Validation Summary</h4><p><strong>Success Rate:</strong> ${stats.success_rate || 'N/A'}%</p><p><strong>Total Validated:</strong> ${stats.total || 0}</p><p><strong>Passed:</strong> ${stats.passed || 0}</p><p><strong>Failed:</strong> ${stats.failed || 0}</p></div>`;
-                    break;
-                    
-                case 'patent_analysis_widget':
-                    const patent = widgetData.patent || {};
-                    widgetContent = `<div class="widget patent-widget"><h4>Patent Analysis</h4><p><strong>Status:</strong> ${escapeHtml(patent.status || 'N/A')}</p><p><strong>Risk:</strong> ${escapeHtml(patent.risk || 'N/A')}</p><p><strong>Key Metadata:</strong> ${escapeHtml(patent.metadata || 'N/A')}</p></div>`;
-                    break;
-                    
-                case 'connection_check_widget':
-                    const issues = widgetData.issues || [];
-                    widgetContent = '<div class="widget connection-widget"><h4>Connection Check</h4><ul style="list-style: none; padding: 0;">';
-                    issues.forEach(issue => {
-                        const severityColor = issue.severity === 'error' ? '#c62828' : issue.severity === 'warning' ? '#f57c00' : '#1976d2';
-                        widgetContent += `<li style="padding: 8px; margin: 4px 0; background: ${severityColor}20; border-left: 3px solid ${severityColor}; border-radius: 2px;">${escapeHtml(issue.message || '')}</li>`;
-                    });
-                    widgetContent += '</ul></div>';
-                    break;
-                    
-                case 'suggestion_widget':
-                    const suggestions = widgetData.suggestions || [];
-                    widgetContent = '<div class="widget suggestion-widget"><h4>Suggestions</h4><ul style="list-style: none; padding: 0;">';
-                    suggestions.forEach(suggestion => {
-                        widgetContent += `<li style="padding: 10px; margin: 4px 0; background: #f5f5f5; border-radius: 4px;">${escapeHtml(suggestion.text || '')} <button style="margin-left: 8px; padding: 4px 8px; background: #4caf50; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.85em;">Accept</button> <button style="margin-left: 4px; padding: 4px 8px; background: #f44336; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.85em;">Dismiss</button></li>`;
-                    });
-                    widgetContent += '</ul></div>';
-                    break;
-                    
-                default:
-                    widgetContent = `<div class="widget"><p>Widget: ${escapeHtml(widgetType)}</p></div>`;
+        document.addEventListener('DOMContentLoaded', () => {
+            const container = document.getElementById('widgetsContainer');
+            if (container && window.displayWidget) {
+                Object.entries(widgetSamples).forEach(([widgetType, sample]) => {
+                    const section = document.createElement('div');
+                    section.className = 'widget-section';
+                    section.innerHTML = `<h2><code>${widgetType}</code></h2>`;
+                    // Assuming displayWidget is now globally available from the consolidated app.js
+                    section.appendChild(window.displayWidget(sample.widget_type, sample.widget_data));
+                    container.appendChild(section);
+                });
+            } else if (!window.displayWidget) {
+                console.error('displayWidget is not available. Ensure app.js is loaded.');
+                if (container) container.innerHTML += '<p style="color: red;">Error: Widget display function not loaded.</p>';
             }
-            
-            widgetDiv.innerHTML = widgetContent;
-            return widgetDiv;
-        }
-        
-        // Render all widgets
-        const container = document.getElementById('widgetsContainer');
-        
-        Object.entries(widgetSamples).forEach(([widgetType, sample]) => {
-            const section = document.createElement('div');
-            section.className = 'widget-section';
-            section.innerHTML = `<h2><code>${widgetType}</code></h2>`;
-            section.appendChild(displayWidget(sample.widget_type, sample.widget_data));
-            container.appendChild(section);
         });
     </script>
 </body>
 </html>
-

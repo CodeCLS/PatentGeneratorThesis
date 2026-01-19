@@ -178,30 +178,43 @@ class PromptRegistry:
             },
             AGENT_VISUALIZER: {
                 "default": PromptBundle(
-                    system=base_system + " You are a visualization agent that decides which widgets to show to the user based on retrieved data.",
+                    system=base_system + " You are a visualization agent that decides whether to show an edges widget to the user based on retrieved data.",
                     developer=base_developer,
                     task=(
-                        "TASK: Decide what visualization widgets to display to best represent the retrieved data.\n\n"
-                        "TRIPLE VISUALIZATION RULE (CRITICAL):\n"
-                        "- If 'Retrieved information' contains triple data, you MUST return an 'edges_widget'.\n"
-                        "- Use the EXACT triples provided in the context to populate the 'triples' list in 'widget_data'.\n"
-                        "- Do not summarize or omit triples unless they are clearly irrelevant to the user's current focus.\n\n"
-                        "WIDGET SELECTION GUIDELINES:\n"
-                        "- Use 'edges_widget' to show relationship data (head --relation--> tail).\n"
-                        "- Use 'graph_subsection_widget' for a more visual look at connections.\n"
-                        "- Use 'question_widget_general' only if you need user clarification before proceeding.\n\n"
-                        "Available widget types: edges_widget, graph_widget, graph_subsection_widget, question_widget_general, question_widget_triple"
+                        "TASK: Decide whether to display an 'edges_widget' to present retrieved triples."
+
+
+                        "TRIPLE VISUALIZATION RULE (CRITICAL):"
+                        "- If 'Retrieved information' contains triple data, you MUST return an 'edges_widget'."
+                        "- Use the EXACT triples provided in the context to populate the 'triples' list in 'widget_data'."
+                        "- Do not summarize or omit triples unless they are clearly irrelevant to the user's current focus."
+                        "Available widget types: edges_widget (shows triples as a list)"
                     ),
                     templates=(
-                        "OUTPUT SCHEMA (JSON):\n"
-                        '{{\n'
-                        '  "show_widget": true,\n'
-                        '  "widget_type": "edges_widget",\n'
-                        '  "widget_data": {{"triples": [ {{"index": 0, "head": "A", "relation": "rel", "tail": "B"}} ]}}\n'
-                        '}}\n\n'
-                        "CONTEXT:\n"
-                        "- Current question: {current_question}\n"
-                        "- Retrieved information: {retrieved_info}\n"
+                        "OUTPUT SCHEMA (JSON):"
+
+                        '{{'
+
+                        '  "show_widget": true,'
+
+                        '  "widget_type": "edges_widget",'
+
+                        '  "widget_data": {{"triples": [ {{"index": 0, "head": "A", "relation": "rel", "tail": "B"}} ]}}'
+
+                        '}}'
+
+
+                        "OR return a JSON object with 'show_widget': false if no triples to show or no widget is deemed necessary:"
+
+                        '{{"show_widget": false}}'
+
+
+                        "CONTEXT:"
+
+                        "- Current question: {current_question}"
+
+                        "- Retrieved information: {retrieved_info}"
+
                     ),
                 ),
             },

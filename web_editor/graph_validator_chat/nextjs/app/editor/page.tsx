@@ -782,14 +782,14 @@ export default function EditorPage() {
                     return (
                       <div className={styles.noTriples}>
                         <p>No triples recorded for Claim {selectedClaimNumber}</p>
-                        <p className={styles.hint}>Click on a claim to see its triples</p>
+                        <p className={styles.hint}>Click on a claim to see its facts</p>
                       </div>
                     );
                   }
                 })()
               ) : (
                 <div className={styles.noSelection}>
-                  <p>Click on a claim to see which triples were used</p>
+                  <p>Click on a claim to see which facts were used</p>
                   <div className={styles.claimsList}>
                     {claims.map((claim: any) => (
                       <div
@@ -800,7 +800,7 @@ export default function EditorPage() {
                         <span className={styles.claimNumber}>Claim {claim.claim_number}</span>
                         <span className={styles.claimTypeBadge}>{claim.claim_type}</span>
                         {claim.used_triples && claim.used_triples.length > 0 && (
-                          <span className={styles.tripleCount}>{claim.used_triples.length} triples</span>
+                          <span className={styles.tripleCount}>{claim.used_triples.length} facts</span>
                         )}
                       </div>
                     ))}

@@ -8,7 +8,7 @@ from tools.graph.langgraph.state import GraphValidatorState, get_last_message, g
 from tools.graph.langgraph.message import Message, MessageRole
 from tools.graph.langgraph.prompts import get_registry
 from tools.graph.constants_graph import *
-
+from langfuse_client import langfuse
 if TYPE_CHECKING:
     from tools.graph.langgraph.validator import GraphValidatorLangGraph
 
@@ -16,7 +16,11 @@ if TYPE_CHECKING:
 def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidatorState") -> "GraphValidatorState":
     """Orchestrator agent - decides the flow of agents based on user intent."""
     messages = state.get(STATE_MESSAGES, [])
-    
+    trace = langfuse.trace(
+    name="orchestrator-action",
+    input={"messages": messages , "state": state},)
+
+
     # Reset transient turn-based state
     state = {
         **state,
@@ -28,13 +32,16 @@ def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
         
     user_msg_obj = get_last_message(messages, MessageRole.USER)
     user_message = get_message_content(user_msg_obj)
+    trace.event(name="user-message_retrieved", input={"user_message": user_message})
     
     # If no user message, this is initial startup - analyze graph first
     if not user_message:
+        trace.event(name="no_user_message")
         existing_questions = state.get(STATE_QUESTIONS, [])
         validation_complete = state.get(STATE_VALIDATION_COMPLETE, False)
         
         if not existing_questions and validation_complete:
+            trace.event(name="not existing_questions and validation_complete")
             return_state = {
                 **state,
                 STATE_AGENT_QUEUE: [AGENT_COMMUNICATOR],
