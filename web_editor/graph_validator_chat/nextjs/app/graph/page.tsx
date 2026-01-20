@@ -4,10 +4,25 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import styles from './page.module.css';
+import EditPanel from '@/components/EditPanel';
+import { injectGraphClickHandler } from '@/lib/graph-interactions';
 
 const STORAGE_KEY_GRAPH_HTML = 'graph_html';
 const STORAGE_KEY_GRAPH_TIMESTAMP = 'graph_timestamp';
 const GRAPH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+interface Entity {
+  id: string;
+  name: string;
+  label: string;
+}
+
+interface Triple {
+  index: number;
+  head: Entity;
+  relation: string;
+  tail: Entity;
+}
 
 export default function GraphPage() {
   const router = useRouter();
@@ -15,7 +30,40 @@ export default function GraphPage() {
   const [graphHtml, setGraphHtml] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
+  const [selectedTriple, setSelectedTriple] = useState<Triple | null>(null);
+  const [allEntities, setAllEntities] = useState<Entity[]>([]);
+  const [editPanelOpen, setEditPanelOpen] = useState(false);
   const hasLoadedRef = useRef(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const loadTriples = useCallback(async () => {
+    try {
+      const response = await fetch('/api/triples');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.triples) {
+          // Extract unique entities
+          const entities: Entity[] = [];
+          const entityIds = new Set<string>();
+          
+          for (const triple of data.triples) {
+            if (triple.head && triple.head.id && !entityIds.has(triple.head.id)) {
+              entities.push(triple.head);
+              entityIds.add(triple.head.id);
+            }
+            if (triple.tail && triple.tail.id && !entityIds.has(triple.tail.id)) {
+              entities.push(triple.tail);
+              entityIds.add(triple.tail.id);
+            }
+          }
+          setAllEntities(entities);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load triples:', err);
+    }
+  }, []);
 
   const loadGraph = useCallback(async (force = false) => {
     // Check cache first unless forcing a reload
@@ -30,6 +78,7 @@ export default function GraphPage() {
             console.log('Using cached graph');
             setGraphHtml(storedHtml);
             setLoading(false);
+            await loadTriples();
             return; // Use cached version - don't fetch
           } else {
             console.log('Cache expired, clearing');
@@ -63,6 +112,7 @@ export default function GraphPage() {
             localStorage.setItem(STORAGE_KEY_GRAPH_TIMESTAMP, Date.now().toString());
             console.log('Graph cached');
           }
+          await loadTriples();
         }
       }
     } catch (err) {
@@ -70,7 +120,57 @@ export default function GraphPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadTriples]);
+
+  const handleEntityUpdate = async (data: any) => {
+    try {
+      const response = await fetch('/api/entities/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update entity');
+      }
+
+      // Refresh the graph after update
+      await loadGraph(true);
+      return await response.json();
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  const handleMergeEntities = async (sourceId: string, targetId: string) => {
+    try {
+      const response = await fetch('/api/entities/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_id: sourceId, target_id: targetId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to merge entities');
+      }
+
+      // Refresh the graph after merge
+      await loadGraph(true);
+      return await response.json();
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  const handleUpdate = async (data: any) => {
+    if (data.type === 'entity') {
+      return handleEntityUpdate(data);
+    } else if (data.type === 'triple') {
+      return handleEntityUpdate(data);
+    }
+  };
 
   useEffect(() => {
     if (hasLoadedRef.current) return; // Prevent multiple loads
@@ -192,25 +292,80 @@ export default function GraphPage() {
         )}
         
         {!loading && !error && graphHtml && (
-          <iframe
-            srcDoc={graphHtml}
-            className={styles.graphIframe}
-            title="Knowledge Graph"
-            sandbox="allow-scripts allow-same-origin"
-            onLoad={(e) => {
-              // Prevent iframe from navigating parent window
-              try {
-                const iframe = e.target as HTMLIFrameElement;
-                if (iframe.contentWindow) {
-                  iframe.contentWindow.addEventListener('beforeunload', (event) => {
-                    event.preventDefault();
-                  });
+          <>
+            <iframe
+              ref={iframeRef}
+              srcDoc={graphHtml}
+              className={styles.graphIframe}
+              title="Knowledge Graph"
+              sandbox="allow-scripts allow-same-origin"
+              onLoad={(e) => {
+                // Prevent iframe from navigating parent window
+                try {
+                  const iframe = e.target as HTMLIFrameElement;
+                  if (iframe.contentWindow) {
+                    iframe.contentWindow.addEventListener('beforeunload', (event) => {
+                      event.preventDefault();
+                    });
+
+                    // Inject click handler
+                    setTimeout(() => {
+                      if (iframe.contentWindow) {
+                        injectGraphClickHandler(iframe.contentWindow);
+                      }
+                    }, 500);
+
+                    // Listen for entity/triple selection from iframe
+                    const messageHandler = (event: MessageEvent) => {
+                      try {
+                        const data = event.data;
+                        if (data.type === 'selectEntity') {
+                          setSelectedEntity({
+                            id: data.id,
+                            name: data.name,
+                            label: data.label,
+                          });
+                          setSelectedTriple(null);
+                          setEditPanelOpen(true);
+                        } else if (data.type === 'selectTriple') {
+                          setSelectedTriple({
+                            index: data.index,
+                            head: data.head,
+                            relation: data.relation,
+                            tail: data.tail,
+                          });
+                          setSelectedEntity(null);
+                          setEditPanelOpen(true);
+                        }
+                      } catch (err) {
+                        console.error('Failed to process message from iframe:', err);
+                      }
+                    };
+
+                    window.addEventListener('message', messageHandler);
+                    return () => window.removeEventListener('message', messageHandler);
+                  }
+                } catch (err) {
+                  // Cross-origin restrictions may prevent this
+                  console.error('Error setting up iframe:', err);
                 }
-              } catch (err) {
-                // Cross-origin restrictions may prevent this
-              }
-            }}
-          />
+              }}
+            />
+            {editPanelOpen && (
+              <EditPanel
+                entity={selectedEntity || undefined}
+                triple={selectedTriple || undefined}
+                allEntities={allEntities}
+                onClose={() => {
+                  setEditPanelOpen(false);
+                  setSelectedEntity(null);
+                  setSelectedTriple(null);
+                }}
+                onUpdate={handleUpdate}
+                onMerge={handleMergeEntities}
+              />
+            )}
+          </>
         )}
         
         {!loading && !error && !graphHtml && (

@@ -176,27 +176,31 @@ class GraphValidatorLangGraph:
             "stats": self.tools.calculate_stats().to_dict() if hasattr(self.tools, 'calculate_stats') else {}
         }
         
-        # Extract widgets from display_actions and add to response (for frontend compatibility)
+        # Extract widgets from display_actions and add to response
         display_actions = serializable_state.get(STATE_DISPLAY_ACTIONS, [])
-        if display_actions:
-            # Get the most recent widget
-            last_widget = display_actions[-1]
-            
+        response["widgets"] = []
+        
+        for widget in display_actions:
             # Convert to dict if it's an object
-            if hasattr(last_widget, "to_dict"):
-                widget_dict = last_widget.to_dict()
-            elif isinstance(last_widget, dict):
-                widget_dict = last_widget
+            if hasattr(widget, "to_dict"):
+                widget_dict = widget.to_dict()
+            elif isinstance(widget, dict):
+                widget_dict = widget
             else:
-                widget_dict = {}
+                continue
             
-            # Extract widget info (ChatVisualInfo.to_dict() returns show_widget, widget_type, widget_data)
             if widget_dict.get("show_widget"):
-                response["show_widget"] = True
-                response["widget_type"] = widget_dict.get("widget_type")
-                response["widget_data"] = widget_dict.get("widget_data", {})
-            else:
-                response["show_widget"] = False
+                response["widgets"].append({
+                    "widget_type": widget_dict.get("widget_type"),
+                    "widget_data": widget_dict.get("widget_data", {})
+                })
+        
+        # Keep old fields for backward compatibility with frontend
+        if response["widgets"]:
+            last_w = response["widgets"][-1]
+            response["show_widget"] = True
+            response["widget_type"] = last_w["widget_type"]
+            response["widget_data"] = last_w["widget_data"]
         else:
             response["show_widget"] = False
         

@@ -160,11 +160,12 @@ class ModifierActions:
                 ref=tail_id,
             )
             
-            triples.append(Triple(head=head_entity, relation=relation, tail=tail_entity))
+            triple_obj = Triple(head=head_entity, relation=relation, tail=tail_entity)
+            triples.append(triple_obj)
             
             # Update graph if provided
             if graph:
-                graph.add_edge(head_id, tail_id, relation=relation)
+                graph.add_edge(head_id, tail_id, key=triple_obj.id, relation=relation)
             
             added_count += 1
 
@@ -186,8 +187,25 @@ class ModifierActions:
 
         for idx in indices:
             if 0 <= idx < len(triples):
-                triples.pop(idx)
+                triple = triples.pop(idx)
                 deleted_count += 1
+                
+                # Update graph if provided
+                if graph:
+                    head_id = self._triple_head_id(triple)
+                    tail_id = self._triple_tail_id(triple)
+                    relation = triple.relation
+                    
+                    # Try to find and remove the specific edge
+                    if graph.has_edge(head_id, tail_id):
+                        # MultiDiGraph can have multiple edges between same nodes
+                        # We try to find the one with the same relation
+                        edges = graph.get_edge_data(head_id, tail_id)
+                        if isinstance(edges, dict):
+                            for key, data in list(edges.items()):
+                                if data.get("relation") == relation:
+                                    graph.remove_edge(head_id, tail_id, key=key)
+                                    break
 
         if deleted_count > 0:
             changes_summary.append(f"Deleted {deleted_count} triples")
@@ -229,6 +247,27 @@ class ModifierActions:
                 t.tail.id = target_id
                 t.tail.name = target_name
 
+        # Update graph if provided
+        if graph:
+            for source_id in source_ids:
+                if not graph.has_node(source_id):
+                    continue
+                    
+                # Move outgoing edges
+                for _, tail, data in list(graph.out_edges(source_id, data=True)):
+                    if tail == source_id: # Self-loop
+                        graph.add_edge(target_id, target_id, **data)
+                    else:
+                        graph.add_edge(target_id, tail, **data)
+                
+                # Move incoming edges
+                for head, _, data in list(graph.in_edges(source_id, data=True)):
+                    if head != source_id: # Already handled self-loops
+                        graph.add_edge(head, target_id, **data)
+                
+                # Remove source node
+                graph.remove_node(source_id)
+
         # Remove merged ids from mapping
         for sid in source_ids:
             id_to_name.pop(sid, None)
@@ -253,6 +292,10 @@ class ModifierActions:
             return
 
         id_to_name[entity_id] = new_name
+
+        # Update graph node if provided
+        if graph and graph.has_node(entity_id):
+            graph.nodes[entity_id]["name"] = new_name
 
         # Update any triples that contain this entity id
         for t in triples:
@@ -280,8 +323,16 @@ class ModifierActions:
         if not entity_id:
             return
 
+        # Update graph if provided
+        if graph and graph.has_node(entity_id):
+            graph.nodes[entity_id][STATE_INTERNAL_NODE_TYPE] = new_label
+
         updated_count = 0
         old_label: Optional[str] = None
+
+        # Update graph node label if provided
+        if graph and graph.has_node(entity_id):
+            graph.nodes[entity_id][STATE_INTERNAL_NODE_TYPE] = new_label
 
         for t in triples:
             if self._triple_head_id(t) == entity_id:
@@ -317,5 +368,14 @@ class ModifierActions:
         if not new_relation:
             return
 
-        triples[triple_index].relation = new_relation
+        t = triples[triple_index]
+        t.relation = new_relation
+        
+        # Update graph if provided
+        if graph:
+            head_id = self._triple_head_id(t)
+            tail_id = self._triple_tail_id(t)
+            if graph.has_edge(head_id, tail_id, key=t.id):
+                graph.edges[head_id, tail_id, t.id]["relation"] = new_relation
+
         changes_summary.append(f"Modified triple {triple_index}")

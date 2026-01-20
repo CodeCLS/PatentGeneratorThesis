@@ -56,28 +56,66 @@ def visualizer_node(validator: "GraphValidatorLangGraph", state: "GraphValidator
         # Extract triple data from JSON in SYSTEM message
         if KEY_RETRIEVED_INFO_MARKER in system_content:
             try:
-                # Parse JSON from SYSTEM message
-                marker_idx = system_content.find(KEY_RETRIEVED_INFO_MARKER)
-                json_start = marker_idx + len(KEY_RETRIEVED_INFO_MARKER)
-                json_end = system_content.find("\n\nReason:", json_start)
-                if json_end == -1:
-                    json_end = len(system_content)
+                # Find all JSON blocks in the system content
+                import re
+                # Look for JSON-like structures between curly braces
+                json_matches = re.findall(r'\{[^{}]*\}', system_content)
                 
-                json_str = system_content[json_start:json_end].strip()
-                retrieved_data = json.loads(json_str)
+                # If that's too simple, try finding things that look like Triple JSON
+                # Triple objects often have "head", "relation", "tail"
+                triple_json_pattern = r'\{[^{}]*"head"[^{}]*"relation"[^{}]*"tail"[^{}]*\}'
+                triple_matches = re.findall(triple_json_pattern, system_content)
                 
-                # Extract triples from retrieved data
-                if isinstance(retrieved_data, list):
-                    retrieved_triples_data = retrieved_data
-                elif isinstance(retrieved_data, dict):
-                    retrieved_triples_data = retrieved_data.get(KEY_RELATED_TRIPLES, retrieved_data.get("triples", []))
-                    if not retrieved_triples_data and retrieved_data.get("index") is not None:
-                        retrieved_triples_data = [retrieved_data]
+                if triple_matches:
+                    for match in triple_matches:
+                        try:
+                            data = json.loads(match)
+                            retrieved_triples_data.append(data)
+                        except:
+                            continue
+                elif json_matches:
+                    # Fallback to parsing any JSON and checking for triples
+                    for match in json_matches:
+                        try:
+                            data = json.loads(match)
+                            if isinstance(data, list):
+                                retrieved_triples_data.extend(data)
+                            elif isinstance(data, dict):
+                                if "head" in data and "relation" in data:
+                                    retrieved_triples_data.append(data)
+                                elif "triples" in data:
+                                    retrieved_triples_data.extend(data["triples"])
+                                elif KEY_RELATED_TRIPLES in data:
+                                    retrieved_triples_data.extend(data[KEY_RELATED_TRIPLES])
+                        except:
+                            continue
+
+                # If we still have nothing, try the original marker-based parsing
+                if not retrieved_triples_data:
+                    marker_idx = system_content.find(KEY_RETRIEVED_INFO_MARKER)
+                    json_start = marker_idx + len(KEY_RETRIEVED_INFO_MARKER)
+                    # Find first { after marker
+                    json_start = system_content.find("{", json_start)
+                    if json_start != -1:
+                        # Find matching } or end of section
+                        json_end = system_content.find("\n\nReason:", json_start)
+                        if json_end == -1:
+                            json_end = system_content.rfind("}") + 1
+                        
+                        json_str = system_content[json_start:json_end].strip()
+                        retrieved_data = json.loads(json_str)
+                        
+                        if isinstance(retrieved_data, list):
+                            retrieved_triples_data = retrieved_data
+                        elif isinstance(retrieved_data, dict):
+                            retrieved_triples_data = retrieved_data.get(KEY_RELATED_TRIPLES, retrieved_data.get("triples", []))
+                            if not retrieved_triples_data and retrieved_data.get("index") is not None:
+                                retrieved_triples_data = [retrieved_data]
                 
-                retrieved_info += f"\nRetrieved data:\n{system_content[:1000]}\n"
+                retrieved_info += f"\nRetrieved data analysis: found {len(retrieved_triples_data)} triples.\n"
             except Exception as e:
                 print(f"[Visualizer] Warning: Could not parse triple data: {e}")
-                retrieved_info += f"\nRetrieved data (raw):\n{system_content[:1000]}\n"
+                retrieved_info += f"\nRetrieved data parsing error: {str(e)}\n"
         else:
             retrieved_info += f"\nRetrieved data:\n{system_content[:1000]}\n"
     

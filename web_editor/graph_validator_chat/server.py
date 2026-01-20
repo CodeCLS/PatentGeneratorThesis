@@ -168,6 +168,10 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 self._handle_chat()
             elif path == '/api/claims/generate':
                 self._handle_generate_claims()
+            elif path == '/api/entities/update':
+                self._handle_entity_update()
+            elif path == '/api/entities/merge':
+                self._handle_entity_merge()
             else:
                 print(f"[API] POST 404: Path not found: {path}")
                 self._send_error("Not found", 404)
@@ -838,6 +842,219 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             import traceback
             print(traceback.format_exc())
             return {"error": str(e)}
+    
+    def _handle_entity_update(self):
+        """Handle entity update request."""
+        if not validator:
+            self._send_error("Validator not initialized")
+            return
+        
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+            
+            update_type = data.get("type")
+            
+            if update_type == "entity":
+                entity_id = data.get("id")
+                new_name = data.get("name", "").strip()
+                new_label = data.get("label", "").strip()
+                
+                if not entity_id or not new_name:
+                    self._send_error("Entity ID and name are required", 400)
+                    return
+                
+                # 1. Update triples data
+                triples_updated = 0
+                for triple in validator.triples:
+                    if get_triple_head_id(triple) == entity_id:
+                        triple.head.name = new_name
+                        if new_label:
+                            triple.head.label = new_label
+                        triples_updated += 1
+                    if get_triple_tail_id(triple) == entity_id:
+                        triple.tail.name = new_name
+                        if new_label:
+                            triple.tail.label = new_label
+                        triples_updated += 1
+                
+                # 2. Update mapping
+                if entity_id in validator.id_to_name:
+                    validator.id_to_name[entity_id] = new_name
+                
+                # 3. SYNC GRAPH: Update networkx node attributes
+                if validator.graph:
+                    if not validator.graph.has_node(entity_id):
+                        # Add node if it somehow doesn't exist but is in triples
+                        validator.graph.add_node(entity_id, name=new_name, node_type=new_label or "UNKNOWN")
+                    else:
+                        validator.graph.nodes[entity_id]['name'] = new_name
+                        if new_label:
+                            validator.graph.nodes[entity_id]['node_type'] = new_label
+                
+                print(f"[API] Updated entity {entity_id}: name={new_name}, label={new_label}, triples_updated={triples_updated}")
+                self._send_json({
+                    "success": True,
+                    "message": f"Entity updated successfully",
+                    "triples_updated": triples_updated,
+                })
+                
+            elif update_type == "triple":
+                triple_index = data.get("index")
+                new_relation = data.get("relation", "").strip()
+                
+                if triple_index is None or not isinstance(triple_index, int):
+                    self._send_error("Triple index is required", 400)
+                    return
+                
+                if triple_index < 0 or triple_index >= len(validator.triples):
+                    self._send_error("Invalid triple index", 400)
+                    return
+                
+                if not new_relation:
+                    self._send_error("Relation is required", 400)
+                    return
+                
+                # 1. Update triple
+                triple = validator.triples[triple_index]
+                old_relation = triple.relation
+                triple.relation = new_relation
+                
+                # 2. SYNC GRAPH: Update edge in networkx
+                if validator.graph:
+                    head_id = get_triple_head_id(triple)
+                    tail_id = get_triple_tail_id(triple)
+                    if validator.graph.has_edge(head_id, tail_id):
+                        # MultiDiGraph might have multiple edges between nodes
+                        edges = validator.graph.get_edge_data(head_id, tail_id)
+                        for key, edge_data in edges.items():
+                            if edge_data.get('label') == old_relation:
+                                validator.graph[head_id][tail_id][key]['label'] = new_relation
+                                break
+                
+                print(f"[API] Updated triple {triple_index}: relation={new_relation}")
+                self._send_json({
+                    "success": True,
+                    "message": "Triple updated successfully",
+                })
+            else:
+                self._send_error("Unknown update type", 400)
+                
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_entity_update: {e}")
+            print(traceback.format_exc())
+            self._send_error(f"Error: {str(e)}", 500)
+    
+    def _handle_entity_merge(self):
+        """Handle entity merge request.
+        
+        Merges source_id into target_id: all relations pointing to source_id
+        will be updated to point to target_id, and source_id triples are removed.
+        """
+        if not validator:
+            self._send_error("Validator not initialized")
+            return
+        
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+            
+            source_id = data.get("source_id")
+            target_id = data.get("target_id")
+            
+            if not source_id or not target_id:
+                self._send_error("source_id and target_id are required", 400)
+                return
+            
+            if source_id == target_id:
+                self._send_error("Cannot merge an entity with itself", 400)
+                return
+            
+            # Find source and target entities
+            source_entity = None
+            target_entity = None
+            
+            for triple in validator.triples:
+                if get_triple_head_id(triple) == source_id and source_entity is None:
+                    source_entity = triple.head
+                if get_triple_head_id(triple) == target_id and target_entity is None:
+                    target_entity = triple.head
+                if get_triple_tail_id(triple) == source_id and source_entity is None:
+                    source_entity = triple.tail
+                if get_triple_tail_id(triple) == target_id and target_entity is None:
+                    target_entity = triple.tail
+            
+            if source_entity is None:
+                self._send_error(f"Source entity {source_id} not found", 404)
+                return
+            
+            if target_entity is None:
+                self._send_error(f"Target entity {target_id} not found", 404)
+                return
+            
+            # 1. Update triples list
+            relations_transferred = 0
+            triples_to_remove = []
+            
+            for i, triple in enumerate(validator.triples):
+                head_is_source = get_triple_head_id(triple) == source_id
+                tail_is_source = get_triple_tail_id(triple) == source_id
+                
+                if head_is_source and tail_is_source:
+                    triples_to_remove.append(i)
+                elif head_is_source:
+                    triple.head = target_entity
+                    relations_transferred += 1
+                elif tail_is_source:
+                    triple.tail = target_entity
+                    relations_transferred += 1
+            
+            for i in sorted(triples_to_remove, reverse=True):
+                del validator.triples[i]
+            
+            # 2. Update mapping
+            if source_id in validator.id_to_name:
+                del validator.id_to_name[source_id]
+            
+            # 3. SYNC GRAPH: Update networkx graph structure
+            if validator.graph:
+                if validator.graph.has_node(source_id) and validator.graph.has_node(target_id):
+                    # Redirect outgoing edges
+                    for successor in list(validator.graph.successors(source_id)):
+                        edge_data_dict = validator.graph.get_edge_data(source_id, successor)
+                        for key, data in edge_data_dict.items():
+                            validator.graph.add_edge(target_id, successor, **data)
+                    
+                    # Redirect incoming edges
+                    for predecessor in list(validator.graph.predecessors(source_id)):
+                        edge_data_dict = validator.graph.get_edge_data(predecessor, source_id)
+                        for key, data in edge_data_dict.items():
+                            validator.graph.add_edge(predecessor, target_id, **data)
+                    
+                    # Remove the old node
+                    validator.graph.remove_node(source_id)
+            
+            print(f"[API] Merged entity {source_id} into {target_id}: "
+                  f"relations_transferred={relations_transferred}, "
+                  f"self_references_removed={len(triples_to_remove)}")
+            
+            self._send_json({
+                "success": True,
+                "message": f"Entities merged successfully",
+                "relations_transferred": relations_transferred,
+                "self_references_removed": len(triples_to_remove),
+            })
+                
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_entity_merge: {e}")
+            print(traceback.format_exc())
+            self._send_error(f"Error: {str(e)}", 500)
 
 
 def _is_port_available(port: int) -> bool:

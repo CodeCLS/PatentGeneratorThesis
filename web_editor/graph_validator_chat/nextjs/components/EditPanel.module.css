@@ -1,0 +1,252 @@
+.panel {
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 400px;
+  height: 100vh;
+  background: #ffffff;
+  border-left: 1px solid rgba(55, 53, 47, 0.16);
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: rgb(55, 53, 47);
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(55, 53, 47, 0.6);
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+.closeButton:hover:not(:disabled) {
+  background: rgba(55, 53, 47, 0.06);
+  color: rgb(55, 53, 47);
+}
+
+.closeButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.message {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.message.error {
+  background: #fee;
+  color: #c33;
+  border: 1px solid #fcc;
+}
+
+.message.success {
+  background: #efe;
+  color: #3c3;
+  border: 1px solid #cfc;
+}
+
+.message.warning {
+  background: #ffeaa7;
+  color: #d63031;
+  border: 1px solid #ffcc80;
+}
+
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+.tab {
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(55, 53, 47, 0.6);
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+  position: relative;
+  bottom: -1px;
+}
+
+.tab:hover:not(:disabled) {
+  color: rgb(55, 53, 47);
+}
+
+.tab.active {
+  color: rgb(55, 53, 47);
+  border-bottom-color: #2563eb;
+}
+
+.tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(55, 53, 47, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.input,
+.select {
+  padding: 10px 12px;
+  border: 1px solid rgba(55, 53, 47, 0.16);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  color: rgb(55, 53, 47);
+  transition: all 0.2s ease;
+}
+
+.input::placeholder {
+  color: rgba(55, 53, 47, 0.4);
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.input:disabled {
+  background: rgba(55, 53, 47, 0.04);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.input.disabled {
+  background: rgba(55, 53, 47, 0.04);
+  cursor: not-allowed;
+}
+
+.select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23373531' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+}
+
+.select:disabled {
+  background-color: rgba(55, 53, 47, 0.04);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.entityDisplay {
+  padding: 12px;
+  background: rgba(55, 53, 47, 0.04);
+  border-radius: 6px;
+  border: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+.entityName {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgb(55, 53, 47);
+  margin-bottom: 4px;
+}
+
+.entityLabel {
+  font-size: 12px;
+  color: rgba(55, 53, 47, 0.6);
+}
+
+.primaryButton {
+  padding: 12px 16px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 8px;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: #1d4ed8;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.primaryButton:disabled {
+  background: rgba(55, 53, 47, 0.2);
+  color: rgba(55, 53, 47, 0.4);
+  cursor: not-allowed;
+}
+
+.description {
+  font-size: 14px;
+  color: rgba(55, 53, 47, 0.7);
+  line-height: 1.5;
+  margin: 0 0 16px 0;
+}
+

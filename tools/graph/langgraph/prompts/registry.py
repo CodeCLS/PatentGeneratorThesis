@@ -93,6 +93,9 @@ class PromptRegistry:
                         "- DEBUG: ['analyzer', 'communicator']\n"
                     ),
                     templates=(
+                        "CONVERSATION HISTORY:\n"
+                        "{conversation_history}\n\n"
+                        "USER MESSAGE: {user_message}\n\n"
                         "OUTPUT SCHEMA (JSON):\n"
                         '{{"mode": "Q&A|WRITE|EXPLORATION|DEBUG", '
                         '"needs_retrieval": true/false, '

@@ -17,6 +17,7 @@ from tools.graph.langgraph.helpers import (
     get_triple_tail_name,
     process_retrieved_info_for_widget,
     extract_retrieved_info,
+    format_conversation_history,
 )
 from tools.graph.langgraph.state import GraphValidatorState, consume_agent, get_last_message, get_message_content
 from tools.graph.langgraph.question import Question
@@ -101,11 +102,7 @@ def build_communicator_prompt(validator: "GraphValidatorLangGraph", state: "Grap
         )
     
     # Build conversation history
-    conv_text = ""
-    for msg in messages[-15:]:
-        role = msg.role if isinstance(msg, Message) else msg.get("role")
-        content = msg.content if isinstance(msg, Message) else msg.get("content", "")
-        conv_text += f"{str(role).upper()}: {str(content)[:150]}\n"
+    conv_text = format_conversation_history(messages, limit=15, include_system=True)
     
     # Add changes that were actually made
     changes_summary = state.get(STATE_CHANGES_SUMMARY, [])
