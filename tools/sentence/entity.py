@@ -7,7 +7,7 @@ import uuid
 from typing import Dict
 
 if TYPE_CHECKING:
-    from tools.graph.Triple import Triple
+    from tools.graph.data.Triple import Triple
 
 
 class InMemoryEntityRepository:

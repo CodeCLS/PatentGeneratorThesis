@@ -2,7 +2,7 @@
 Helper functions for printing triples in a readable format.
 """
 from typing import List
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 
 
 def print_triples_vertical(triples: List[Triple], max_triples: int = None):

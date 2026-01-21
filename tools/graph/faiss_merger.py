@@ -9,7 +9,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import faiss
 
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.graph.visualizer import GraphVisualizer
 
 

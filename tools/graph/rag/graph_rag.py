@@ -25,7 +25,7 @@ except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
     print("⚠️  Warning: sentence-transformers not available. Install with: pip install sentence-transformers")
 
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.api.llm_api_repo import LLmApi_Repo
 from tools.graph.visualizer import GraphVisualizer
 

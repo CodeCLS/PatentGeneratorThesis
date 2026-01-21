@@ -4,7 +4,7 @@ Tools for LangGraph-based Graph Validator agents.
 
 from typing import Dict, List, Any, Optional
 import networkx as nx
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.graph.langgraph.helpers import get_triple_head_id, get_triple_tail_id, get_triple_head_name, get_triple_tail_name
 from tools.graph.langgraph.info import EntityInfo, TripleInfo, GraphInfo, ConnectedEntity
 from tools.graph.constants_graph import (

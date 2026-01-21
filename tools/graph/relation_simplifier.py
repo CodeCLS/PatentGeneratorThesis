@@ -15,7 +15,7 @@ import json
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional, Tuple
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.sentence.entity import Entity, InMemoryEntityRepository
 from tools.api.llm_api_repo import LLmApi_Repo
 from tools.helper.json_helper import JsonHelper

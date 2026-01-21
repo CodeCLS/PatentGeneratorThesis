@@ -24,7 +24,7 @@ if not hasattr(jinja2, 'escape'):
 from typing import List, Dict, Set, Tuple
 import uuid
 
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.sentence.entity import Entity
 
 

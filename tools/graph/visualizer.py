@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Any
 import networkx as nx
 from pyvis.network import Network
 
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.sentence.entity import Entity
 
 
