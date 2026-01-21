@@ -2,7 +2,7 @@
 import json
 from typing import List, Dict, Any
 
-from kg.generating_kg.generating.NodeGeneratorAgent import NodeGeneratorAgent
+from kg.NodeGeneratorAgent import NodeGeneratorAgent
 from tools.sentence.entity import Entity, InMemoryEntityRepository
 from tools.graph.Triple import Triple
 import json

@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional
 from tools.graph.Triple import Triple
 from tools.sentence.entity import InMemoryEntityRepository
-from kg.generating_kg.generating.NodeGenerator import NodeGenerator
+from kg.NodeGenerator import NodeGenerator
 
 
 class RateLimiter:
@@ -424,4 +424,3 @@ class ParallelTripleGenerator:
             print("=" * 80)
         
         return self.triples
-

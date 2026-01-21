@@ -24,8 +24,6 @@ from tools.graph.langgraph.helpers import get_triple_head_id, get_triple_tail_id
 from tools.graph.langgraph.question import Question
 from tools.graph.claim_generator_langchain import ClaimGeneratorLangChain
 from tools.graph.graph_rag import GraphRAG
-from tools.graph.claim_generator_langchain import ClaimGeneratorLangChain
-from tools.graph.graph_rag import GraphRAG
 
 
 # Global validator instance

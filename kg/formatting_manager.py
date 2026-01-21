@@ -1,8 +1,8 @@
 from typing import List, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tools.sentence.sentence import Sentence
-from kg.formatting.splitting.sentence.sentence_splitter import SentenceSplitter
-from kg.formatting.splitting.sentence.invention_sentence_extractor import InventionSentenceExtractor
+from kg.sentence.sentence_splitter import SentenceSplitter
+from kg.sentence.invention_sentence_extractor import InventionSentenceExtractor
 
 
 class FormattingManager():

@@ -1,5 +1,5 @@
 # kg/formatting/splitting/sentence_splitter.py
-from kg.formatting.splitting.sentence.sentence_splitter_agent import SentenceSplitterAgent
+from kg.sentence.sentence_splitter_agent import SentenceSplitterAgent
 
 
 class SentenceSplitter:
