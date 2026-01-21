@@ -77,7 +77,6 @@ class EnhancedEntityTripleRepository(InMemoryEntityRepository):
         super().__init__(entities)
         
         # Import Triple here to avoid circular imports
-        from tools.graph.Triple import Triple
         
         # Store triples by ID
         self._triples: Dict[str, Triple] = {
