@@ -18,12 +18,12 @@ import subprocess
 from typing import Optional, Dict, Any, List
 import networkx as nx
 
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.graph.langgraph.validator import GraphValidatorLangGraph
 from tools.graph.langgraph.helpers import get_triple_head_id, get_triple_tail_id
 from tools.graph.langgraph.question import Question
-from tools.graph.claim_generator_langchain import ClaimGeneratorLangChain
-from tools.graph.graph_rag import GraphRAG
+from tools.graph.claim_generation.claim_generator_langchain import ClaimGeneratorLangChain
+from tools.graph.rag.graph_rag import GraphRAG
 
 
 # Global validator instance
@@ -730,7 +730,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 print(f"[API] ERROR in generate_all_claims: {e}")
                 print(f"[API] Traceback: {traceback.format_exc()}")
                 # Create emergency fallback claim
-                from tools.graph.claim_generator_langchain import GeneratedClaim
+                from tools.graph.claim_generation.claim_generator_langchain import GeneratedClaim
                 generated_claims = [GeneratedClaim(
                     claim_number=1,
                     claim_text="1. A system comprising components as described in the patent description.",
@@ -742,7 +742,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             # CRITICAL: Ensure we always have at least one claim
             if not generated_claims or len(generated_claims) == 0:
                 print(f"[API] CRITICAL: No claims generated! Creating emergency fallback.")
-                from tools.graph.claim_generator_langchain import GeneratedClaim
+                from tools.graph.claim_generation.claim_generator_langchain import GeneratedClaim
                 generated_claims = [GeneratedClaim(
                     claim_number=1,
                     claim_text="1. A system comprising components as described in the patent description.",
