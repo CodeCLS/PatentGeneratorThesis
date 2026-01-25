@@ -42,6 +42,9 @@ export default function GraphPage() {
   const [chatStatus, setChatStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [cypherOutput, setCypherOutput] = useState<string>('');
   const [cypherSummary, setCypherSummary] = useState<Record<string, unknown> | null>(null);
+  const [neo4jStats, setNeo4jStats] = useState<{ nodes: number; edges: number; database?: string } | null>(null);
+  const [neo4jStatsError, setNeo4jStatsError] = useState<string>('');
+  const [neo4jStatsLoading, setNeo4jStatsLoading] = useState(false);
   const hasLoadedRef = useRef(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -145,6 +148,28 @@ export default function GraphPage() {
       setLoading(false);
     }
   }, [loadTriples]);
+
+  const loadNeo4jStats = useCallback(async () => {
+    try {
+      setNeo4jStatsLoading(true);
+      setNeo4jStatsError('');
+      const response = await fetch('/api/neo4j/stats', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to load Neo4j stats');
+      }
+      setNeo4jStats({
+        nodes: typeof data.nodes === 'number' ? data.nodes : 0,
+        edges: typeof data.edges === 'number' ? data.edges : 0,
+        database: data.database || '',
+      });
+    } catch (err) {
+      setNeo4jStats(null);
+      setNeo4jStatsError(err instanceof Error ? err.message : 'Failed to load Neo4j stats');
+    } finally {
+      setNeo4jStatsLoading(false);
+    }
+  }, []);
 
   const performUpdate = async (data: any) => {
     try {
@@ -317,7 +342,8 @@ export default function GraphPage() {
     
     // Try to load from cache first - loadGraph will check cache
     loadGraph(false);
-  }, [loadGraph]);
+    loadNeo4jStats();
+  }, [loadGraph, loadNeo4jStats]);
 
   return (
     <div className={styles.container}>
@@ -331,7 +357,35 @@ export default function GraphPage() {
         </button>
         <div className={styles.headerContent}>
           <h1>Knowledge Graph Visualization</h1>
-          <button className={styles.refreshButton} onClick={() => loadGraph(true)} disabled={loading}>
+          <div
+            className={`${styles.neo4jStatus} ${
+              neo4jStatsError
+                ? styles.neo4jStatusError
+                : neo4jStatsLoading
+                ? styles.neo4jStatusLoading
+                : styles.neo4jStatusOk
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            {neo4jStatsLoading && 'Neo4j: checking connection...'}
+            {!neo4jStatsLoading && neo4jStatsError && `Neo4j: ${neo4jStatsError}`}
+            {!neo4jStatsLoading && !neo4jStatsError && neo4jStats && (
+              <>
+                Neo4j: {neo4jStats.nodes} nodes, {neo4jStats.edges} edges
+                {neo4jStats.database ? ` (${neo4jStats.database})` : ''}
+              </>
+            )}
+            {!neo4jStatsLoading && !neo4jStatsError && !neo4jStats && 'Neo4j: no data'}
+          </div>
+          <button
+            className={styles.refreshButton}
+            onClick={() => {
+              loadGraph(true);
+              loadNeo4jStats();
+            }}
+            disabled={loading}
+          >
             {loading ? 'Loading...' : 'Refresh'}
           </button>
         </div>

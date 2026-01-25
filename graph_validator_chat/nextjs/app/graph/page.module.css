@@ -24,6 +24,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .header h1 {
@@ -51,6 +52,33 @@
 .refreshButton:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.neo4jStatus {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.neo4jStatusOk {
+  color: #14532d;
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+.neo4jStatusLoading {
+  color: #1e3a8a;
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.neo4jStatusError {
+  color: #7f1d1d;
+  background: #fee2e2;
+  border-color: #fecaca;
 }
 
 .graphContainer {

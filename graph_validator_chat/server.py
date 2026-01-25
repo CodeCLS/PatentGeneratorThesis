@@ -200,6 +200,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             return
         elif path == '/api/triples':
             self._send_json(self._get_triples())
+        elif path == '/api/neo4j/stats':
+            self._send_json(self._get_neo4j_stats())
         elif path == '/api/graph/html':
             self._send_json(self._get_graph_html())
         elif path == '/api/graph/neo4j':
@@ -744,7 +746,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
 
         env_cypher = (os.getenv("NEO4J_GRAPH_CYPHER") or "").strip()
         if not env_cypher:
-            env_cypher = "MATCH (n:Entity) RETURN n LIMIT 50;"
+            env_cypher = (
+                "MATCH (n:Entity) "
+                "OPTIONAL MATCH (n)-[r:LINKS_TO]->(m:Entity) "
+                "RETURN n, r, m LIMIT 200;"
+            )
         initial_cypher = env_cypher
         database = manager.database or ""
 
@@ -786,8 +792,30 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
     <div id="viz"></div>
     <script>
       {config_js}
+      
+      console.log('Neovis.js config:', config); // Log the configuration
+      
       const viz = new NeoVis.default(config);
-      viz.render();
+      
+      viz.on("completed", function (event) {{
+          console.log("Neovis.js rendering completed.", event);
+          console.log("Nodes rendered:", viz.nodes.length);
+          console.log("Edges rendered:", viz.edges.length);
+          if (viz.nodes.length === 0 && viz.edges.length === 0) {{
+              console.warn("Neovis.js rendered an empty graph. Check your Cypher query and Neo4j data.");
+          }}
+      }});
+      
+      viz.on("error", function (error) {{
+          console.error("Neovis.js error:", error); // Log any errors from Neovis.js
+      }});
+      
+      try {{
+          viz.render();
+          console.log('Neovis.js render initiated.');
+      }} catch (e) {{
+          console.error('Error initiating Neovis.js render:', e);
+      }}
       window.network = viz._network || viz.network;
     </script>
   </body>
@@ -795,6 +823,30 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
 """.strip()
 
         return {"html": html}
+
+    def _get_neo4j_stats(self) -> Dict[str, Any]:
+        """Return node/edge counts directly from Neo4j."""
+        manager = _get_neo4j_manager()
+        if not manager:
+            return {"error": "Neo4j is not configured (NEO4J_URI/USERNAME/PASSWORD)."}
+
+        try:
+            node_result = manager.run_cypher("MATCH (n) RETURN count(n) AS nodes")
+            edge_result = manager.run_cypher("MATCH ()-[r]->() RETURN count(r) AS edges")
+            nodes = 0
+            edges = 0
+            if node_result.get("records"):
+                nodes = node_result["records"][0].get("nodes", 0) or 0
+            if edge_result.get("records"):
+                edges = edge_result["records"][0].get("edges", 0) or 0
+
+            return {
+                "nodes": nodes,
+                "edges": edges,
+                "database": manager.database or "",
+            }
+        except Exception as e:
+            return {"error": f"Neo4j stats error: {str(e)}"}
     
     def _serve_static_file(self, path: str):
         """Serve static files (CSS, JS, etc.)."""
