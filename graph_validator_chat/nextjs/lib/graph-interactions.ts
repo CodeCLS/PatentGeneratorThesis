@@ -14,7 +14,7 @@ export function injectGraphClickHandler(iframeWindow: Window) {
         let attempts = 0;
         
         function setupNetwork() {
-          if (typeof vis === 'undefined' || !window.network) {
+          if (!window.network) {
             attempts++;
             if (attempts < maxAttempts) {
               setTimeout(setupNetwork, 100);

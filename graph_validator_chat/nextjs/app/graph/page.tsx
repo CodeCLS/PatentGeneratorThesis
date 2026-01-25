@@ -11,6 +11,7 @@ const STORAGE_KEY_GRAPH_HTML = 'graph_html';
 const STORAGE_KEY_GRAPH_TIMESTAMP = 'graph_timestamp';
 const STORAGE_KEY_GRAPH_TRIPLES_COUNT = 'graph_triples_count';
 const GRAPH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const GRAPH_HTML_ENDPOINT = process.env.NEXT_PUBLIC_GRAPH_ENDPOINT || '/api/graph/neo4j';
 
 interface Entity {
   id: string;
@@ -39,6 +40,8 @@ export default function GraphPage() {
   const [chatValue, setChatValue] = useState('');
   const [chatDisabled, setChatDisabled] = useState(false);
   const [chatStatus, setChatStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+  const [cypherOutput, setCypherOutput] = useState<string>('');
+  const [cypherSummary, setCypherSummary] = useState<Record<string, unknown> | null>(null);
   const hasLoadedRef = useRef(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -113,7 +116,7 @@ export default function GraphPage() {
     try {
       setLoading(true);
       setError('');
-      const response = await fetch('/api/graph/html', { cache: 'no-store' });
+      const response = await fetch(GRAPH_HTML_ENDPOINT, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error('Failed to load graph');
       }
@@ -237,6 +240,8 @@ export default function GraphPage() {
 
     setChatDisabled(true);
     setChatStatus(null);
+    setCypherOutput('');
+    setCypherSummary(null);
     try {
       const response = await fetch('/api/cypher/query', {
         method: 'POST',
@@ -251,6 +256,13 @@ export default function GraphPage() {
 
       if (data.query) {
         setChatValue(data.query);
+      }
+
+      if (data.results) {
+        setCypherOutput(JSON.stringify(data.results, null, 2));
+      }
+      if (data.summary) {
+        setCypherSummary(data.summary);
       }
 
       setChatStatus({
@@ -501,6 +513,14 @@ export default function GraphPage() {
                 >
                   {chatStatus.message}
                 </div>
+              )}
+              {cypherSummary && (
+                <div className={styles.cypherSummary}>
+                  {JSON.stringify(cypherSummary)}
+                </div>
+              )}
+              {cypherOutput && (
+                <pre className={styles.cypherOutput}>{cypherOutput}</pre>
               )}
             </div>
           </>

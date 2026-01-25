@@ -231,6 +231,28 @@
   border-color: #fecaca;
 }
 
+.cypherSummary {
+  font-size: 12px;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.cypherOutput {
+  max-height: 220px;
+  overflow: auto;
+  background: #0b1220;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  border: 1px solid rgba(15, 23, 42, 0.4);
+}
+
 .nextButton:hover {
   background: rgba(55, 53, 47, 0.85);
   transform: translateY(-1px);

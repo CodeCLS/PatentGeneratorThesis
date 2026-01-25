@@ -19,7 +19,13 @@ import re
 from typing import Optional, Dict, Any, List
 import networkx as nx
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover
+    load_dotenv = None
+
 from tools.graph.data.Triple import Triple
+from tools.graph.neo4j_manager import Neo4jManager
 from tools.graph.langgraph.validator import GraphValidatorLangGraph
 from tools.graph.langgraph.helpers import get_triple_head_id, get_triple_tail_id
 from tools.graph.langgraph.question import Question
@@ -37,10 +43,14 @@ _api_server: Optional[HTTPServer] = None
 _api_thread: Optional[threading.Thread] = None
 _nextjs_process: Optional[subprocess.Popen] = None
 _nextjs_thread: Optional[threading.Thread] = None
+_neo4j_manager: Optional[Neo4jManager] = None
 
 # Global progress tracking
 _claim_generation_progress: Dict[str, Any] = {}
 _cached_claims: List[Dict[str, Any]] = []
+
+if load_dotenv:
+    load_dotenv()
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -82,6 +92,36 @@ def initialize_validator(
     threading.Thread(target=background_analysis, daemon=True).start()
     
     return validator
+
+
+def _get_neo4j_manager() -> Optional[Neo4jManager]:
+    """Lazy-load a Neo4j manager from environment variables."""
+    global _neo4j_manager
+    uri = (os.getenv("NEO4J_URI") or "").strip()
+    user = (os.getenv("NEO4J_USERNAME") or os.getenv("NEO4J_USER") or "").strip()
+    password = (os.getenv("NEO4J_PASSWORD") or "").strip()
+    database = (os.getenv("NEO4J_DATABASE") or "").strip() or None
+
+    if not uri:
+        aura_instance_id = (os.getenv("AURA_INSTANCEID") or "").strip()
+        aura_instance_name = (os.getenv("AURA_INSTANCENAME") or "").strip()
+        aura_host = aura_instance_id or aura_instance_name
+        if aura_host:
+            uri = f"neo4j+s://{aura_host}.databases.neo4j.io"
+
+    if not uri or not user or not password:
+        return None
+
+    if (
+        _neo4j_manager is None
+        or _neo4j_manager.uri != uri
+        or _neo4j_manager.user != user
+        or _neo4j_manager.password != password
+        or _neo4j_manager.database != database
+    ):
+        _neo4j_manager = Neo4jManager(uri=uri, user=user, password=password, database=database)
+
+    return _neo4j_manager
 
 
 def get_validator() -> Optional[GraphValidatorLangGraph]:
@@ -162,6 +202,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             self._send_json(self._get_triples())
         elif path == '/api/graph/html':
             self._send_json(self._get_graph_html())
+        elif path == '/api/graph/neo4j':
+            self._send_json(self._get_graph_neo4j_html())
         elif path == '/api/claims':
             # GET endpoint to retrieve generated claims
             self._send_json(self._get_generated_claims())
@@ -184,6 +226,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             elif path == '/api/cypher/query':
                 print("[API] Routing to _handle_cypher_query")
                 self._handle_cypher_query()
+            elif path == '/api/neo4j/upload':
+                print("[API] Routing to _handle_neo4j_upload")
+                self._handle_neo4j_upload()
             elif path == '/api/claims/generate':
                 print("[API ] Routing to _handle_generate_claims")
                 self._handle_generate_claims()
@@ -457,10 +502,27 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 return
 
             if self._is_cypher_query(user_query):
+                manager = _get_neo4j_manager()
+                if not manager:
+                    self._send_json({
+                        "query": user_query,
+                        "ran": False,
+                        "message": "Neo4j not configured",
+                        "results": [],
+                    })
+                    return
+
+                limit = data.get("limit")
+                if not isinstance(limit, int) or limit <= 0:
+                    limit = None
+
+                result = manager.run_cypher(user_query, limit=limit)
                 self._send_json({
                     "query": user_query,
                     "ran": True,
                     "message": "Cypher query run",
+                    "results": result.get("records", []),
+                    "summary": result.get("summary", {}),
                 })
                 return
 
@@ -487,6 +549,59 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         except Exception as e:
             import traceback
             print(f"[API] Error in _handle_cypher_query: {e}")
+            print(traceback.format_exc())
+            self._send_error(f"Error: {str(e)}", 500)
+
+    def _handle_neo4j_upload(self):
+        """Upload the current validator graph to Neo4j."""
+        if not validator:
+            self._send_error("Validator not initialized")
+            return
+
+        manager = _get_neo4j_manager()
+        if not manager:
+            self._send_error("Neo4j not configured")
+            return
+
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            payload = {}
+            if content_length > 0:
+                payload = json.loads(self.rfile.read(content_length).decode('utf-8'))
+
+            node_label = payload.get("node_label", "Entity")
+            rel_type = payload.get("rel_type", "LINKS_TO")
+            dedupe_edges = payload.get("dedupe_edges", True)
+            database = payload.get("database")
+
+            graph = validator.graph
+            if graph is None:
+                visualizer = GraphVisualizer()
+                graph = visualizer.build_graph(validator.triples)
+                validator.graph = graph
+
+            id_to_name = validator.id_to_name or GraphVisualizer.build_id_to_name_map_from_triples(validator.triples)
+
+            manager.push_multidigraph_to_aura(
+                graph,
+                node_label=node_label,
+                rel_type=rel_type,
+                id_to_name=id_to_name,
+                dedupe_edges=dedupe_edges,
+                database=database,
+            )
+
+            self._send_json({
+                "success": True,
+                "message": "Graph uploaded to Neo4j",
+                "num_nodes": graph.number_of_nodes(),
+                "num_edges": graph.number_of_edges(),
+            })
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_neo4j_upload: {e}")
             print(traceback.format_exc())
             self._send_error(f"Error: {str(e)}", 500)
     
@@ -620,6 +735,66 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             print(f"[API] Error generating graph HTML: {e}")
             print(traceback.format_exc())
             return {"error": str(e), "html": ""}
+
+    def _get_graph_neo4j_html(self) -> Dict[str, Any]:
+        """Return an HTML page that renders the Neo4j graph with Neovis."""
+        manager = _get_neo4j_manager()
+        if not manager:
+            return {"error": "Neo4j is not configured (NEO4J_URI/USERNAME/PASSWORD).", "html": ""}
+
+        env_cypher = (os.getenv("NEO4J_GRAPH_CYPHER") or "").strip()
+        if not env_cypher:
+            env_cypher = "MATCH (n:Entity) RETURN n LIMIT 50;"
+        initial_cypher = env_cypher
+        database = manager.database or ""
+
+        config_lines = [
+            'const config = {',
+            '  container_id: "viz",',
+            f'  server_url: {json.dumps(manager.uri)},',
+            f'  server_user: {json.dumps(manager.user)},',
+            f'  server_password: {json.dumps(manager.password)},',
+            '  labels: { Entity: { caption: "name" } },',
+            '  relationships: { LINKS_TO: { caption: "relation" } },',
+            f'  initial_cypher: {json.dumps(initial_cypher)},',
+        ]
+        if database:
+            config_lines.append(f'  database: {json.dumps(database)},')
+        config_lines.append("};")
+        config_js = "\n".join(config_lines)
+
+        html = f"""
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Neo4j Graph</title>
+    <style>
+      html, body, #viz {{
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #ffffff;
+      }}
+    </style>
+    <script src="https://unpkg.com/neo4j-driver/lib/browser/neo4j-web.min.js"></script>
+    <script src="https://unpkg.com/neovis.js/dist/neovis.js"></script>
+  </head>
+  <body>
+    <div id="viz"></div>
+    <script>
+      {config_js}
+      const viz = new NeoVis.default(config);
+      viz.render();
+      window.network = viz._network || viz.network;
+    </script>
+  </body>
+</html>
+""".strip()
+
+        return {"html": html}
     
     def _serve_static_file(self, path: str):
         """Serve static files (CSS, JS, etc.)."""
@@ -1359,6 +1534,7 @@ def start_validator_chat(
     triples: Optional[List[Triple]] = None,
     id_to_name: Optional[Dict[str, str]] = None,
     sentence_split: Optional[List[Any]] = None,
+    use_neo4j: bool = True,
     port: int = 5000,
     open_browser: bool = True,
     debug: bool = False,
@@ -1371,6 +1547,7 @@ def start_validator_chat(
         triples: Optional list of Triple objects
         id_to_name: Optional mapping from entity ID to name
         sentence_split: Optional list of Sentence objects with .text attribute for patent description
+        use_neo4j: Whether the graph page should use the Neo4j visualization
         port: Port number for the API server
         open_browser: Whether to automatically open browser
         debug: Enable debug mode
@@ -1460,6 +1637,7 @@ def start_validator_chat(
         import platform
         is_windows = platform.system() == "Windows"
         shell_flag = is_windows
+        graph_endpoint = "/api/graph/neo4j" if use_neo4j else "/api/graph/html"
         
         # Check if node_modules exists, if not, install dependencies
         node_modules = nextjs_dir / "node_modules"
@@ -1482,12 +1660,15 @@ def start_validator_chat(
         print(f"🚀 Starting Next.js dev server on port {nextjs_port}...")
         try:
             global _nextjs_process
+            env = os.environ.copy()
+            env["NEXT_PUBLIC_GRAPH_ENDPOINT"] = graph_endpoint
             _nextjs_process = subprocess.Popen(
                 ["npm", "run", "dev", "--", "-p", str(nextjs_port)],
                 cwd=str(nextjs_dir),
                 shell=shell_flag,
                 stdout=None,
-                stderr=None
+                stderr=None,
+                env=env,
             )
             # Wait for process to complete (or be terminated)
             _nextjs_process.wait()

@@ -4,7 +4,7 @@ Neo4j database manager for uploading knowledge graphs.
 from __future__ import annotations
 
 import re
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 import networkx as nx
 from neo4j import GraphDatabase
 
@@ -16,9 +16,10 @@ class Neo4jManager:
 
     def __init__(
         self,
-        uri: str,
-        user: str,
-        password: str,
+        uri: Optional[str] = None,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        database: Optional[str] = None,
     ):
         """
         Initialize the Neo4j manager.
@@ -27,10 +28,33 @@ class Neo4jManager:
             uri: Neo4j database URI
             user: Database username
             password: Database password
+            database: Optional database name
         """
         self.uri = uri
         self.user = user
         self.password = password
+        self.database = database
+        self._driver = None
+
+    def connect(self) -> None:
+        """Initialize the driver if not already connected."""
+        if self._driver is None:
+            if not self.uri or not self.user or not self.password:
+                raise ValueError("Neo4j connection details are missing.")
+            self._driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+
+    def close(self) -> None:
+        """Close the driver if open."""
+        if self._driver is not None:
+            self._driver.close()
+            self._driver = None
+
+    def __enter__(self) -> "Neo4jManager":
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
     @staticmethod
     def sanitize_label(s: str) -> str:
@@ -68,6 +92,7 @@ class Neo4jManager:
         batch_nodes: int = 2000,
         batch_edges: int = 5000,
         dedupe_edges: bool = True,
+        database: Optional[str] = None,
     ) -> None:
         """
         Upload a MultiDiGraph to Neo4j Aura.
@@ -83,30 +108,30 @@ class Neo4jManager:
             batch_nodes: Batch size for node uploads
             batch_edges: Batch size for edge uploads
             dedupe_edges: Whether to deduplicate edges by key
+            database: Optional database name
         """
         node_label = self.sanitize_label(node_label)
         rel_type = self.sanitize_rel_type(rel_type)
         id_to_name = id_to_name or {}
 
-        driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+        self.connect()
+        driver = self._driver
+        db_name = database or self.database
 
         def chunked(lst, n):
             for i in range(0, len(lst), n):
-                yield lst[i:i+n]
+                yield lst[i:i + n]
 
-        # Build node rows
         node_rows = []
         for n, attrs in G.nodes(data=True):
             nid = str(n)
             props = {}
             for k, v in (attrs or {}).items():
                 props[k] = self.json_safe(v)
-            # Friendly name (optional)
             props.setdefault("name", id_to_name.get(nid, nid))
             props.setdefault("id", nid)
             node_rows.append({"id": nid, "props": props})
 
-        # Build edge rows (NO collapsing)
         edge_rows = []
         for u, v, k, attrs in G.edges(keys=True, data=True):
             source = str(u)
@@ -115,11 +140,9 @@ class Neo4jManager:
             if attrs:
                 relation = attrs.get("label", "") or attrs.get("relation", "") or ""
 
-            # Make a stable edge key if you want dedupe / traceability
             edge_key = f"{source}||{target}||{k}||{relation}"
 
             props = {"relation": str(relation), "key": edge_key}
-            # Keep any other edge attrs too (optional)
             for kk, vv in (attrs or {}).items():
                 if kk == "label":
                     continue
@@ -139,7 +162,6 @@ class Neo4jManager:
 
         def tx_edges(tx, rows):
             if dedupe_edges:
-                # Distinct edges by key+relation to avoid duplicates across runs
                 tx.run(
                     f"""
                     UNWIND $rows AS row
@@ -151,7 +173,6 @@ class Neo4jManager:
                     rows=rows,
                 )
             else:
-                # Create every edge (can blow up if you rerun)
                 tx.run(
                     f"""
                     UNWIND $rows AS row
@@ -163,19 +184,68 @@ class Neo4jManager:
                     rows=rows,
                 )
 
-        with driver.session() as session:
+        with driver.session(database=db_name) as session:
             for rows in chunked(node_rows, batch_nodes):
                 session.execute_write(tx_nodes, rows)
 
             for rows in chunked(edge_rows, batch_edges):
                 session.execute_write(tx_edges, rows)
 
-        driver.close()
         print(
-            f"✅ Uploaded to Aura: nodes={len(node_rows)} edges={len(edge_rows)} "
+            "Uploaded to Neo4j: "
+            f"nodes={len(node_rows)} edges={len(edge_rows)} "
             f"rel=:{rel_type} label=:{node_label} dedupe_edges={dedupe_edges}"
         )
 
+    def run_cypher(
+        self,
+        query: str,
+        parameters: Optional[Dict[str, Any]] = None,
+        database: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run a Cypher query and return JSON-serializable results.
 
+        Args:
+            query: Cypher query string
+            parameters: Query parameters
+            database: Optional database name
+            limit: Optional cap on returned records
 
+        Returns:
+            Dict with keys: records, keys, summary
+        """
+        if not query or not query.strip():
+            raise ValueError("Cypher query is required.")
 
+        self.connect()
+        db_name = database or self.database
+        params = parameters or {}
+
+        records: List[Dict[str, Any]] = []
+        with self._driver.session(database=db_name) as session:
+            result = session.run(query, params)
+            keys = list(result.keys())
+            for idx, record in enumerate(result):
+                if limit is not None and idx >= limit:
+                    break
+                records.append({k: self.json_safe(v) for k, v in record.data().items()})
+            summary = result.consume()
+
+        counters = summary.counters
+        summary_data = {
+            "nodes_created": counters.nodes_created,
+            "nodes_deleted": counters.nodes_deleted,
+            "relationships_created": counters.relationships_created,
+            "relationships_deleted": counters.relationships_deleted,
+            "properties_set": counters.properties_set,
+            "labels_added": counters.labels_added,
+            "labels_removed": counters.labels_removed,
+        }
+
+        return {
+            "records": records,
+            "keys": keys,
+            "summary": summary_data,
+        }
