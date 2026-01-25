@@ -22,6 +22,21 @@ export function injectGraphClickHandler(iframeWindow: Window) {
             return;
           }
           
+          function extractEntityType(title) {
+            if (!title) {
+              return '';
+            }
+            const match = String(title).match(/type:\\s*([^<]+)/i);
+            return match ? match[1].trim().toUpperCase() : '';
+          }
+
+          function extractEntityName(node) {
+            if (!node || !node.options) {
+              return '';
+            }
+            return node.options.label || '';
+          }
+
           // Add click event to the network
           window.network.on('click', function(params) {
             try {
@@ -34,8 +49,8 @@ export function injectGraphClickHandler(iframeWindow: Window) {
                   window.parent.postMessage({
                     type: 'selectEntity',
                     id: nodeId,
-                    name: node.options.title || nodeId,
-                    label: node.options.label ? node.options.label.split('\\n')[0] : 'Unknown',
+                    name: extractEntityName(node) || nodeId,
+                    label: extractEntityType(node.options.title) || 'Unknown',
                   }, '*');
                 }
               } else if (params.edges && params.edges.length > 0) {
@@ -56,13 +71,13 @@ export function injectGraphClickHandler(iframeWindow: Window) {
                     relation: edge.options.label || '',
                     head: {
                       id: edge.fromId,
-                      name: headNode ? headNode.options.title || edge.fromId : edge.fromId,
-                      label: headNode && headNode.options.label ? headNode.options.label.split('\\n')[0] : 'Unknown',
+                      name: headNode ? extractEntityName(headNode) || edge.fromId : edge.fromId,
+                      label: headNode ? extractEntityType(headNode.options && headNode.options.title) || 'Unknown' : 'Unknown',
                     },
                     tail: {
                       id: edge.toId,
-                      name: tailNode ? tailNode.options.title || edge.toId : edge.toId,
-                      label: tailNode && tailNode.options.label ? tailNode.options.label.split('\\n')[0] : 'Unknown',
+                      name: tailNode ? extractEntityName(tailNode) || edge.toId : edge.toId,
+                      label: tailNode ? extractEntityType(tailNode.options && tailNode.options.title) || 'Unknown' : 'Unknown',
                     },
                   }, '*');
                 }

@@ -38,6 +38,7 @@ export default function GraphPage() {
   const [graphKey, setGraphKey] = useState(0);
   const [chatValue, setChatValue] = useState('');
   const [chatDisabled, setChatDisabled] = useState(false);
+  const [chatStatus, setChatStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const hasLoadedRef = useRef(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -227,6 +228,43 @@ export default function GraphPage() {
 
   const handleUpdate = async (data: any) => {
     return performUpdate(data);
+  };
+
+  const handleCypherSubmit = async () => {
+    if (!chatValue.trim() || chatDisabled) {
+      return;
+    }
+
+    setChatDisabled(true);
+    setChatStatus(null);
+    try {
+      const response = await fetch('/api/cypher/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: chatValue }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to process Cypher request');
+      }
+
+      if (data.query) {
+        setChatValue(data.query);
+      }
+
+      setChatStatus({
+        type: data.ran ? 'success' : 'info',
+        message: data.message || (data.ran ? 'Cypher query run' : 'Cypher query ready'),
+      });
+    } catch (err) {
+      setChatStatus({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to process Cypher request',
+      });
+    } finally {
+      setChatDisabled(false);
+    }
   };
 
   useEffect(() => {
@@ -427,20 +465,43 @@ export default function GraphPage() {
             )}
             
             <div className={styles.chatBarContainer}>
-              <input
-                type="text"
-                className={styles.chatInput}
-                placeholder="Ask a question about the graph or suggest a change..."
-                value={chatValue}
-                onChange={(e) => setChatValue(e.target.value)}
-                disabled={chatDisabled}
-              />
-              <button
-                className={styles.chatSendButton}
-                disabled={chatDisabled || !chatValue.trim()}
-              >
-                Enter
-              </button>
+              <div className={styles.chatBarRow}>
+                <input
+                  type="text"
+                  className={styles.chatInput}
+                  placeholder="Ask a question about the graph or suggest a change..."
+                  value={chatValue}
+                  onChange={(e) => setChatValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      void handleCypherSubmit();
+                    }
+                  }}
+                  disabled={chatDisabled}
+                />
+                <button
+                  className={styles.chatSendButton}
+                  disabled={chatDisabled || !chatValue.trim()}
+                  onClick={() => {
+                    void handleCypherSubmit();
+                  }}
+                >
+                  Enter
+                </button>
+              </div>
+              {chatStatus && (
+                <div
+                  className={`${styles.chatStatus} ${
+                    chatStatus.type === 'success'
+                      ? styles.chatStatusSuccess
+                      : chatStatus.type === 'error'
+                      ? styles.chatStatusError
+                      : styles.chatStatusInfo
+                  }`}
+                >
+                  {chatStatus.message}
+                </div>
+              )}
             </div>
           </>
         )}

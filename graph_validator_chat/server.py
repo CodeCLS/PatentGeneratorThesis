@@ -15,6 +15,7 @@ import pickle
 import base64
 import os
 import subprocess
+import re
 from typing import Optional, Dict, Any, List
 import networkx as nx
 
@@ -174,6 +175,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             if path == '/api/chat':
                 print("[API] Routing to _handle_chat")
                 self._handle_chat()
+            elif path == '/api/cypher/query':
+                print("[API] Routing to _handle_cypher_query")
+                self._handle_cypher_query()
             elif path == '/api/claims/generate':
                 print("[API ] Routing to _handle_generate_claims")
                 self._handle_generate_claims()
@@ -369,6 +373,116 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             print(f"[API] Error in _handle_chat: {type(e).__name__}: {str(e)}")
             print(f"[API] Traceback: {traceback.format_exc()}")
             self._send_error(f"Error: {str(e)}")
+
+    @staticmethod
+    def _is_cypher_query(text: str) -> bool:
+        if not text:
+            return False
+        text_upper = text.strip().upper()
+        cypher_keywords = ("MATCH", "RETURN", "WITH", "WHERE", "CREATE", "MERGE", "CALL", "UNWIND")
+        return any(keyword in text_upper for keyword in cypher_keywords)
+
+    @staticmethod
+    def _extract_cypher_query(text: str) -> str:
+        if not text:
+            return ""
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            stripped = re.sub(r"^```[a-zA-Z]*\s*", "", stripped)
+            stripped = re.sub(r"\s*```$", "", stripped)
+        match = re.search(r"(MATCH|CREATE|MERGE|CALL|WITH|UNWIND)\b[\s\S]*", stripped, re.IGNORECASE)
+        if match:
+            return match.group(0).strip()
+        return stripped
+
+    @staticmethod
+    def _collect_schema_context() -> Dict[str, List[str]]:
+        relations = set()
+        entity_types = set()
+        if not validator:
+            return {"relations": [], "entity_types": []}
+
+        for triple in validator.triples:
+            relation = getattr(triple, "relation", "") or ""
+            if relation.strip():
+                relations.add(relation.strip())
+
+            head_entity = getattr(triple, "head", None)
+            tail_entity = getattr(triple, "tail", None)
+            head_label = getattr(head_entity, "label", "") or getattr(head_entity, "entity_type", "") or ""
+            tail_label = getattr(tail_entity, "label", "") or getattr(tail_entity, "entity_type", "") or ""
+            if head_label.strip():
+                entity_types.add(head_label.strip().upper())
+            if tail_label.strip():
+                entity_types.add(tail_label.strip().upper())
+
+        return {
+            "relations": sorted(relations),
+            "entity_types": sorted(entity_types),
+        }
+
+    def _build_cypher_prompt(self, user_request: str, relations: List[str], entity_types: List[str]) -> str:
+        relations_text = ", ".join(relations) if relations else "None"
+        entity_types_text = ", ".join(entity_types) if entity_types else "None"
+        return (
+            "You are a Cypher assistant for a Neo4j graph.\n"
+            "Schema:\n"
+            "- Nodes are labeled :Entity and have properties: id, name, node_type (entity type).\n"
+            "- Relationships are :LINKS_TO with property relation.\n"
+            f"Available relation values: {relations_text}\n"
+            f"Available entity types: {entity_types_text}\n"
+            "Return only a Cypher query with no explanation.\n"
+            f"User request: {user_request}\n"
+        )
+
+    def _handle_cypher_query(self):
+        """Handle Cypher generation or execution request."""
+        if not validator:
+            self._send_error("Validator not initialized")
+            return
+
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+            user_query = (data.get("query") or "").strip()
+
+            if not user_query:
+                self._send_error("Query text is required")
+                return
+
+            if self._is_cypher_query(user_query):
+                self._send_json({
+                    "query": user_query,
+                    "ran": True,
+                    "message": "Cypher query run",
+                })
+                return
+
+            schema_context = self._collect_schema_context()
+            prompt = self._build_cypher_prompt(
+                user_query,
+                schema_context["relations"],
+                schema_context["entity_types"],
+            )
+            from tools.api.llm_api_repo import LLmApi_Repo
+            llm = LLmApi_Repo()
+            llm_response = llm.chat(prompt)
+            suggested_query = self._extract_cypher_query(str(llm_response))
+            if not suggested_query:
+                suggested_query = user_query
+
+            self._send_json({
+                "query": suggested_query,
+                "ran": False,
+                "message": "Cypher query ready",
+            })
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_cypher_query: {e}")
+            print(traceback.format_exc())
+            self._send_error(f"Error: {str(e)}", 500)
     
     def _export_data(self) -> Dict[str, Any]:
         """Export full graph, triples, and entities."""
