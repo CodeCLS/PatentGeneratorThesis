@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Dict, List, Tuple, Set
 import networkx as nx
 
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.graph.visualizer import GraphVisualizer
 
 

@@ -147,6 +147,58 @@
   cursor: not-allowed;
 }
 
+.chatBarContainer {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  background: white;
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(55, 53, 47, 0.16);
+  z-index: 90;
+  width: 100%;
+  max-width: 600px;
+}
+
+.chatInput {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid rgba(55, 53, 47, 0.16);
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.chatInput:focus {
+  border-color: #2563eb;
+}
+
+.chatSendButton {
+  padding: 8px 20px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.chatSendButton:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.chatSendButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .nextButton:hover {
   background: rgba(55, 53, 47, 0.85);
   transform: translateY(-1px);

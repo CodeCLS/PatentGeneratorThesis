@@ -101,8 +101,8 @@ def build_communicator_prompt(validator: "GraphValidatorLangGraph", state: "Grap
             f"- Additional context: {last_context.additional_context}\n"
         )
     
-    # Build conversation history
-    conv_text = format_conversation_history(messages, limit=15, include_system=True)
+    # Build conversation history (exclude system to prevent ID leakage)
+    conv_text = format_conversation_history(messages, limit=15, include_system=False)
     
     # Add changes that were actually made
     changes_summary = state.get(STATE_CHANGES_SUMMARY, [])
@@ -130,7 +130,22 @@ def build_communicator_prompt(validator: "GraphValidatorLangGraph", state: "Grap
             "The user is responding to this question. Engage naturally.\n\n"
         )
     if system_message:
-        context_additions += f"SYSTEM MESSAGE/System Retrieved Information: {system_message}\n\n"
+        retrieved_info = extract_retrieved_info(system_message)
+        if retrieved_info:
+            summary_lines = []
+            triples = retrieved_info.get(KEY_RELATED_TRIPLES) or retrieved_info.get(KEY_TRIPLES) or []
+            if isinstance(triples, list):
+                for t in triples[:8]:
+                    if isinstance(t, dict):
+                        head = t.get(KEY_HEAD) or t.get("head")
+                        relation = t.get(KEY_RELATION) or t.get("relation")
+                        tail = t.get(KEY_TAIL) or t.get("tail")
+                        idx = t.get(KEY_INDEX)
+                        if head and relation and tail:
+                            idx_text = f" (index {idx})" if isinstance(idx, int) else ""
+                            summary_lines.append(f"- {head} --{relation}--> {tail}{idx_text}")
+            if summary_lines:
+                context_additions += "RETRIEVED GRAPH CONTEXT (names only):\n" + "\n".join(summary_lines) + "\n\n"
     
     if user_message:
         context_additions += f"USER JUST SAID: {user_message}\n\n"
@@ -148,7 +163,14 @@ def build_communicator_prompt(validator: "GraphValidatorLangGraph", state: "Grap
     )
     
     # Add dynamic context
+    question_memory = "QUESTION MEMORY: None\n\n"
+    if current_question:
+        question_memory = (
+            f"QUESTION MEMORY: {current_question.text}\n"
+            "You must either answer this question or ask a clarifying follow-up.\n\n"
+        )
     full_prompt = (
+        f"{question_memory}"
         f"CURRENT PLAN, FOLLOW this Plan strictly: {current_plan}\n"
         f"GRAPH: {len(triples)} triples, {len(id_to_name)} entities\n"
         f"HISTORY:\n{conv_text}\n\n"
@@ -191,9 +213,31 @@ def communicator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
     updated_questions = questions
     new_current_question = current_question
     
+    def _is_confirmation(text: str) -> bool:
+        if not text:
+            return False
+        lowered = text.strip().lower()
+        confirmations = ("yes", "yep", "yeah", "correct", "exactly", "that's right", "looks good", "ok", "okay", "confirmed")
+        return any(token in lowered for token in confirmations)
+
+    def _needs_confirmation(user_text: str) -> bool:
+        if not user_text:
+            return True
+        lowered = user_text.strip().lower()
+        if "?" in lowered:
+            return True
+        if any(token in lowered for token in ("maybe", "not sure", "i think", "unsure")):
+            return True
+        return len(lowered) < 12
+
     if question_resolved and current_question:
-        updated_questions = [q for q in questions if q.id != current_question.id]
-        new_current_question = updated_questions[0] if updated_questions else None
+        user_text = user_message or ""
+        if _is_confirmation(user_text) or not _needs_confirmation(user_text):
+            updated_questions = [q for q in questions if q.id != current_question.id]
+            new_current_question = updated_questions[0] if updated_questions else None
+        else:
+            question_resolved = False
+            bot_message = f"{bot_message}\n\nBefore I move on, does that answer the question? (yes/no)"
     
     if not updated_questions:
         validation_complete = True

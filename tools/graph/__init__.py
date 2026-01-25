@@ -20,14 +20,14 @@ if not hasattr(jinja2, 'escape'):
                     .replace("'", '&#x27;'))
         jinja2.escape = escape
 
-from tools.graph.llm_relation_filter import LLMRelationFilter
-from tools.graph.small_cluster_filter import SmallClusterFilter
-from tools.graph.patent_claim_generator import PatentClaimGenerator
-from tools.graph.triple_printer import print_triples_vertical, print_triples_compact
-from tools.graph.claim_printer import print_claims, print_claims_compact, print_claims_grouped
-from tools.graph.graph_rag import GraphRAG, RetrievedContext
+from tools.graph.graph_edits.llm_relation_filter import LLMRelationFilter
+from tools.graph.graph_edits.small_cluster_filter import SmallClusterFilter
+from tools.graph.claim_generation.patent_claim_generator import PatentClaimGenerator
+from tools.helper.triple_printer import print_triples_vertical, print_triples_compact
+from tools.helper.claim_printer import print_claims, print_claims_compact, print_claims_grouped
+from tools.graph.rag.graph_rag import GraphRAG, RetrievedContext
 from tools.graph.kg_gen_converter import kg_gen_graph_to_triples, build_id_to_name_map
-from tools.graph.claim_generator_langchain import ClaimGeneratorLangChain, PlannedClaim, GeneratedClaim
+from tools.graph.claim_generation.claim_generator_langchain import ClaimGeneratorLangChain, PlannedClaim, GeneratedClaim
 __all__ = [
     "LLMRelationFilter",
     "SmallClusterFilter",

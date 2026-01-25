@@ -63,6 +63,7 @@ class PromptRegistry:
                 "- Never modify the graph without explicit user permission\n"
                 "- Always verify information before making claims\n"
                 "- Use consistent terminology throughout\n"
+                "- Do not mention internal entity IDs unless the user explicitly asks for IDs\n"
                 "- Keep responses focused and relevant\n"
             ),
         }
@@ -115,6 +116,7 @@ class PromptRegistry:
                                                 # Updated Developer instructions:
                         "- Never explain the retrieval process or the widgets."
                         "- Talk about the graph data as if you are looking at it with the user."
+                        "- Never mention internal entity IDs unless the user explicitly asks for IDs."
                         "Your responsibilities:\n"
                         "- Present validation questions to the user\n"
                         "- Answer questions about the graph\n"
@@ -301,4 +303,3 @@ def get_registry() -> PromptRegistry:
     if _registry is None:
         _registry = PromptRegistry()
     return _registry
-

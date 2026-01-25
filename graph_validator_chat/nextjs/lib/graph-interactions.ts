@@ -38,6 +38,34 @@ export function injectGraphClickHandler(iframeWindow: Window) {
                     label: node.options.label ? node.options.label.split('\\n')[0] : 'Unknown',
                   }, '*');
                 }
+              } else if (params.edges && params.edges.length > 0) {
+                const edgeId = params.edges[0];
+                const edge = window.network.body.edges[edgeId];
+                
+                if (edge && edge.options) {
+                  // Find triple index by searching through all edges
+                  // In pyvis, edges are stored in network.body.data.edges
+                  const edgeData = window.network.body.data.edges.get(edgeId);
+                  const headNode = window.network.body.nodes[edge.fromId];
+                  const tailNode = window.network.body.nodes[edge.toId];
+                  
+                  // Send message to parent window
+                  window.parent.postMessage({
+                    type: 'selectTriple',
+                    index: edgeData.index !== undefined ? edgeData.index : -1,
+                    relation: edge.options.label || '',
+                    head: {
+                      id: edge.fromId,
+                      name: headNode ? headNode.options.title || edge.fromId : edge.fromId,
+                      label: headNode && headNode.options.label ? headNode.options.label.split('\\n')[0] : 'Unknown',
+                    },
+                    tail: {
+                      id: edge.toId,
+                      name: tailNode ? tailNode.options.title || edge.toId : edge.toId,
+                      label: tailNode && tailNode.options.label ? tailNode.options.label.split('\\n')[0] : 'Unknown',
+                    },
+                  }, '*');
+                }
               }
             } catch (err) {
               console.error('Error handling node click:', err);

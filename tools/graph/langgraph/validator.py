@@ -12,7 +12,7 @@ except ImportError:
     raise ImportError("LangGraph is required. Install it with: pip install langgraph")
 
 from tools.api.llm_api_repo import LLmApi_Repo
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.graph.langgraph.state import GraphValidatorState, create_state
 from tools.graph.langgraph.tools import GraphValidatorTools
 from tools.graph.constants_graph import *

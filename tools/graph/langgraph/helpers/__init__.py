@@ -4,7 +4,7 @@ Helper modules for LangGraph validator.
 
 from typing import List, Union, Dict, Any, Optional, Tuple
 from tools.sentence.entity import Entity
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.graph.langgraph.helpers.modifier_actions import ModifierActions
 
 def extract_text_from_response(response) -> str:

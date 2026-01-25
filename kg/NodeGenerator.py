@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 
 from kg.NodeGeneratorAgent import NodeGeneratorAgent
 from tools.sentence.entity import Entity, InMemoryEntityRepository
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 import json
 import re
 from typing import Any, Dict, List

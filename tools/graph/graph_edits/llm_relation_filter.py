@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Dict, List, Tuple, Set
 import re
 
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.api.llm_api_repo import LLmApi_Repo
 from tools.graph.visualizer import GraphVisualizer
 

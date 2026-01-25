@@ -5,7 +5,7 @@ from tools.api.base.base_recursive_prompter import RecursivePromptingAgent
 from tools.api.llm_api_repo import LLmApi_Repo
 from tools.helper.json_helper import JsonHelper
 
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.sentence.entity import Entity,InMemoryEntityRepository
 
 

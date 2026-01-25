@@ -24,6 +24,7 @@ from tools.graph.langgraph.helpers import get_triple_head_id, get_triple_tail_id
 from tools.graph.langgraph.question import Question
 from tools.graph.claim_generation.claim_generator_langchain import ClaimGeneratorLangChain
 from tools.graph.rag.graph_rag import GraphRAG
+from tools.graph.visualizer import GraphVisualizer
 
 
 # Global validator instance
@@ -111,6 +112,14 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         self._send_json({"error": message}, status)
     
     
+    def do_OPTIONS(self):
+        """Handle CORS preflight requests."""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+
     def do_GET(self):
         """Handle GET requests."""
         path = urlparse(self.path).path
@@ -163,28 +172,50 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             print(f"[API] POST {path}")
             
             if path == '/api/chat':
+                print("[API] Routing to _handle_chat")
                 self._handle_chat()
             elif path == '/api/claims/generate':
+                print("[API ] Routing to _handle_generate_claims")
                 self._handle_generate_claims()
             elif path == '/api/entities/update':
+                print("[API] Routing to _handle_entity_update")
                 self._handle_entity_update()
             elif path == '/api/entities/merge':
+                print("[API] Routing to _handle_entity_merge")
                 self._handle_entity_merge()
+            elif path == '/api/entities/delete':
+                print("[API] Routing to _handle_entity_delete")
+                self._handle_entity_delete()
+            elif path == '/api/triples/delete':
+                print("[API] Routing to _handle_triple_delete")
+                self._handle_triple_delete()
             else:
                 print(f"[API] POST 404: Path not found: {path}")
                 self._send_error("Not found", 404)
         except Exception as e:
             import traceback
-            print(f"[API] Error in do_POST: {type(e).__name__}: {str(e)}")
-            print(f"[API] Traceback: {traceback.format_exc()}")
+            error_details = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()}"
+            print(f"[API] Error in do_POST: {error_details}")
+            
+            # Log to a file specifically for background thread errors
+            try:
+                with open("server_error.log", "a", encoding="utf-8") as f:
+                    import datetime
+                    f.write(f"\n[{datetime.datetime.now()}] ERROR in do_POST {path}:\n{error_details}\n")
+            except:
+                pass
+                
             try:
                 self._send_error(f"Internal error: {str(e)}", 500)
             except:
                 # If even sending error fails, send basic response
-                self.send_response(500)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(b'{"error":"Internal server error"}')
+                try:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"Internal server error"}')
+                except:
+                    pass
     
     
     def _get_status(self) -> Dict[str, Any]:
@@ -410,6 +441,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         return {"triples": triples_data}
     
     def _get_graph_html(self) -> Dict[str, Any]:
+        print("[API] Starting _get_graph_html")
         if not validator:
             return {"error": "Validator not initialized", "html": ""}
         
@@ -418,14 +450,18 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             import tempfile
             import os
             
-            graph = validator.graph
             triples = validator.triples
             id_to_name = validator.id_to_name
             
-            if not graph or not triples:
+            if not triples:
+                print("[API] Warning: No triples available in _get_graph_html")
                 return {"error": "No graph or triples available", "html": ""}
             
             visualizer = GraphVisualizer()
+            graph = visualizer.build_graph(triples)
+            validator.graph = graph
+            
+            print(f"[API] Generating graph HTML (nodes: {graph.number_of_nodes()}, edges: {graph.number_of_edges()})...")
             temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False)
             temp_path = temp_file.name
             temp_file.close()
@@ -450,6 +486,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 html_content = f.read()
             
             os.unlink(temp_path)
+            print(f"[API] Graph HTML generated successfully ({len(html_content)} chars)")
             
             # Sanitize HTML: remove any file:// links that might cause unwanted navigation
             import re
@@ -880,15 +917,10 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 if entity_id in validator.id_to_name:
                     validator.id_to_name[entity_id] = new_name
                 
-                # 3. SYNC GRAPH: Update networkx node attributes
-                if validator.graph:
-                    if not validator.graph.has_node(entity_id):
-                        # Add node if it somehow doesn't exist but is in triples
-                        validator.graph.add_node(entity_id, name=new_name, node_type=new_label or "UNKNOWN")
-                    else:
-                        validator.graph.nodes[entity_id]['name'] = new_name
-                        if new_label:
-                            validator.graph.nodes[entity_id]['node_type'] = new_label
+                # 3. SYNC GRAPH: Rebuild graph from updated triples
+                if validator.graph is not None:
+                    visualizer = GraphVisualizer()
+                    validator.graph = visualizer.build_graph(validator.triples)
                 
                 print(f"[API] Updated entity {entity_id}: name={new_name}, label={new_label}, triples_updated={triples_updated}")
                 self._send_json({
@@ -918,17 +950,10 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 old_relation = triple.relation
                 triple.relation = new_relation
                 
-                # 2. SYNC GRAPH: Update edge in networkx
-                if validator.graph:
-                    head_id = get_triple_head_id(triple)
-                    tail_id = get_triple_tail_id(triple)
-                    if validator.graph.has_edge(head_id, tail_id):
-                        # MultiDiGraph might have multiple edges between nodes
-                        edges = validator.graph.get_edge_data(head_id, tail_id)
-                        for key, edge_data in edges.items():
-                            if edge_data.get('label') == old_relation:
-                                validator.graph[head_id][tail_id][key]['label'] = new_relation
-                                break
+                # 2. SYNC GRAPH: Rebuild graph from updated triples
+                if validator.graph is not None:
+                    visualizer = GraphVisualizer()
+                    validator.graph = visualizer.build_graph(validator.triples)
                 
                 print(f"[API] Updated triple {triple_index}: relation={new_relation}")
                 self._send_json({
@@ -1017,23 +1042,10 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             if source_id in validator.id_to_name:
                 del validator.id_to_name[source_id]
             
-            # 3. SYNC GRAPH: Update networkx graph structure
-            if validator.graph:
-                if validator.graph.has_node(source_id) and validator.graph.has_node(target_id):
-                    # Redirect outgoing edges
-                    for successor in list(validator.graph.successors(source_id)):
-                        edge_data_dict = validator.graph.get_edge_data(source_id, successor)
-                        for key, data in edge_data_dict.items():
-                            validator.graph.add_edge(target_id, successor, **data)
-                    
-                    # Redirect incoming edges
-                    for predecessor in list(validator.graph.predecessors(source_id)):
-                        edge_data_dict = validator.graph.get_edge_data(predecessor, source_id)
-                        for key, data in edge_data_dict.items():
-                            validator.graph.add_edge(predecessor, target_id, **data)
-                    
-                    # Remove the old node
-                    validator.graph.remove_node(source_id)
+            # 3. SYNC GRAPH: Rebuild graph from updated triples
+            if validator.graph is not None:
+                visualizer = GraphVisualizer()
+                validator.graph = visualizer.build_graph(validator.triples)
             
             print(f"[API] Merged entity {source_id} into {target_id}: "
                   f"relations_transferred={relations_transferred}, "
@@ -1051,6 +1063,115 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         except Exception as e:
             import traceback
             print(f"[API] Error in _handle_entity_merge: {e}")
+            print(traceback.format_exc())
+            self._send_error(f"Error: {str(e)}", 500)
+
+    def _handle_entity_delete(self):
+        """Handle entity delete request.
+        
+        Deletes the entity and all connected triples.
+        """
+        print("[API] Starting _handle_entity_delete")
+        if not validator:
+            self._send_error("Validator not initialized")
+            return
+        
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+            
+            entity_id = data.get("id")
+            print(f"[API] Deleting entity: {entity_id}")
+            
+            if not entity_id:
+                self._send_error("Entity ID is required", 400)
+                return
+            
+            # 1. Update triples list
+            triples_removed = 0
+            for i in range(len(validator.triples) - 1, -1, -1):
+                triple = validator.triples[i]
+                if get_triple_head_id(triple) == entity_id or get_triple_tail_id(triple) == entity_id:
+                    del validator.triples[i]
+                    triples_removed += 1
+            
+            # 2. Update mapping
+            if entity_id in validator.id_to_name:
+                del validator.id_to_name[entity_id]
+            
+            # 3. SYNC GRAPH: Rebuild graph from updated triples
+            if validator.graph is not None:
+                print(f"[API] Rebuilding graph after entity delete (triples: {len(validator.triples)})...")
+                visualizer = GraphVisualizer()
+                validator.graph = visualizer.build_graph(validator.triples)
+                print("[API] Graph rebuild complete")
+            
+            print(f"[API] Deleted entity {entity_id} and {triples_removed} connected triples")
+            
+            self._send_json({
+                "success": True,
+                "message": f"Entity and {triples_removed} relations deleted successfully",
+                "triples_removed": triples_removed,
+            })
+                
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_entity_delete: {e}")
+            print(traceback.format_exc())
+            self._send_error(f"Error: {str(e)}", 500)
+
+    def _handle_triple_delete(self):
+        """Handle triple delete request."""
+        print("[API] Starting _handle_triple_delete")
+        if not validator:
+            self._send_error("Validator not initialized")
+            return
+        
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+            
+            triple_index = data.get("index")
+            print(f"[API] Deleting triple at index: {triple_index}")
+            
+            if triple_index is None or not isinstance(triple_index, int):
+                self._send_error("Triple index is required", 400)
+                return
+            
+            if triple_index < 0 or triple_index >= len(validator.triples):
+                self._send_error("Invalid triple index", 400)
+                return
+            
+            # 1. Get triple info for graph sync
+            triple = validator.triples[triple_index]
+            head_id = get_triple_head_id(triple)
+            tail_id = get_triple_tail_id(triple)
+            relation = triple.relation
+            
+            # 2. Delete from triples list
+            del validator.triples[triple_index]
+            
+            # 3. SYNC GRAPH: Rebuild graph from updated triples
+            if validator.graph is not None:
+                print(f"[API] Rebuilding graph after triple delete (triples: {len(validator.triples)})...")
+                visualizer = GraphVisualizer()
+                validator.graph = visualizer.build_graph(validator.triples)
+                print("[API] Graph rebuild complete")
+            
+            print(f"[API] Deleted triple {triple_index}: {head_id} --{relation}--> {tail_id}")
+            
+            self._send_json({
+                "success": True,
+                "message": "Triple deleted successfully",
+            })
+                
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_triple_delete: {e}")
             print(traceback.format_exc())
             self._send_error(f"Error: {str(e)}", 500)
 

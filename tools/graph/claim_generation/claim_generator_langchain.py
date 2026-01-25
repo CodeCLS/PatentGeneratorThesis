@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 import json
 import re
 
-from tools.graph.graph_rag import GraphRAG
-from tools.graph.Triple import Triple
+from tools.graph.rag.graph_rag import GraphRAG
+from tools.graph.data.Triple import Triple
 from tools.api.llm_api_repo import LLmApi_Repo
 
 try:

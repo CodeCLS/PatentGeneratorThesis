@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styles from './EditPanel.module.css';
-import { X, Check, AlertCircle } from 'lucide-react';
+import { X, Check, AlertCircle, Trash2 } from 'lucide-react';
 
 interface Entity {
   id: string;
@@ -24,6 +24,7 @@ interface EditPanelProps {
   onClose: () => void;
   onUpdate: (data: any) => Promise<void>;
   onMerge?: (sourceId: string, targetId: string) => Promise<void>;
+  onDelete?: (data: any) => Promise<void>;
 }
 
 export default function EditPanel({
@@ -33,11 +34,13 @@ export default function EditPanel({
   onClose,
   onUpdate,
   onMerge,
+  onDelete,
 }: EditPanelProps) {
   const [mode, setMode] = useState<'edit' | 'merge'>('edit');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Entity edit state
   const [entityName, setEntityName] = useState(entity?.name || '');
@@ -57,7 +60,36 @@ export default function EditPanel({
     if (triple) {
       setTripleRelation(triple.relation);
     }
+    setConfirmDelete(false);
   }, [entity, triple]);
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      if (entity) {
+        await onDelete({ type: 'entity', id: entity.id });
+        setSuccess('Entity deleted successfully!');
+      } else if (triple) {
+        await onDelete({ type: 'triple', index: triple.index });
+        setSuccess('Triple deleted successfully!');
+      }
+      setTimeout(() => onClose(), 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete');
+      setConfirmDelete(false);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEntityUpdate = async () => {
     setLoading(true);
@@ -230,13 +262,26 @@ export default function EditPanel({
                 </div>
               </div>
 
-              <button
-                className={styles.primaryButton}
-                onClick={handleEntityUpdate}
-                disabled={loading}
-              >
-                {loading ? 'Updating...' : 'Update Entity'}
-              </button>
+              <div className={styles.buttonGroup}>
+                <button
+                  className={styles.primaryButton}
+                  onClick={handleEntityUpdate}
+                  disabled={loading}
+                >
+                  {loading ? 'Updating...' : 'Update Entity'}
+                </button>
+                {onDelete && (
+                  <button
+                    className={`${styles.deleteButton} ${confirmDelete ? styles.confirming : ''}`}
+                    onClick={handleDelete}
+                    disabled={loading}
+                    title={confirmDelete ? "Click again to confirm delete" : "Delete entity"}
+                  >
+                    <Trash2 size={18} />
+                    <span>{confirmDelete ? 'Confirm Delete' : 'Delete'}</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -315,13 +360,26 @@ export default function EditPanel({
               </div>
             </div>
 
-            <button
-              className={styles.primaryButton}
-              onClick={handleTripleUpdate}
-              disabled={loading}
-            >
-              {loading ? 'Updating...' : 'Update Triple'}
-            </button>
+            <div className={styles.buttonGroup}>
+              <button
+                className={styles.primaryButton}
+                onClick={handleTripleUpdate}
+                disabled={loading}
+              >
+                {loading ? 'Updating...' : 'Update Triple'}
+              </button>
+              {onDelete && (
+                <button
+                  className={`${styles.deleteButton} ${confirmDelete ? styles.confirming : ''}`}
+                  onClick={handleDelete}
+                  disabled={loading}
+                  title={confirmDelete ? "Click again to confirm delete" : "Delete triple"}
+                >
+                  <Trash2 size={18} />
+                  <span>{confirmDelete ? 'Confirm Delete' : 'Delete'}</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

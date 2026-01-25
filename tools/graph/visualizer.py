@@ -285,7 +285,7 @@ class GraphVisualizer:
         # Track unique edges if deduplicating
         seen_edges = set() if deduplicate else None
 
-        for tr in flat:
+        for i, tr in enumerate(flat):
             h_id = self._entity_key(tr.head)
             t_id = self._entity_key(tr.tail)
             r = (getattr(tr, "relation", "") or "").strip()
@@ -312,7 +312,7 @@ class GraphVisualizer:
             if not G.has_node(t_id):
                 G.add_node(t_id, node_type=t_type, name=t_name)
 
-            G.add_edge(h_id, t_id, label=r)
+            G.add_edge(h_id, t_id, label=r, index=i)
 
         return G
 
@@ -394,6 +394,7 @@ class GraphVisualizer:
                 color=edge_color,
                 width=edge_width,
                 title=title,
+                index=d.get("index", -1),
             )
 
         net.show(out_file, notebook=False)

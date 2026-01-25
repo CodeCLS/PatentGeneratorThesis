@@ -9,6 +9,7 @@ import { injectGraphClickHandler } from '@/lib/graph-interactions';
 
 const STORAGE_KEY_GRAPH_HTML = 'graph_html';
 const STORAGE_KEY_GRAPH_TIMESTAMP = 'graph_timestamp';
+const STORAGE_KEY_GRAPH_TRIPLES_COUNT = 'graph_triples_count';
 const GRAPH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 interface Entity {
@@ -34,12 +35,15 @@ export default function GraphPage() {
   const [selectedTriple, setSelectedTriple] = useState<Triple | null>(null);
   const [allEntities, setAllEntities] = useState<Entity[]>([]);
   const [editPanelOpen, setEditPanelOpen] = useState(false);
+  const [graphKey, setGraphKey] = useState(0);
+  const [chatValue, setChatValue] = useState('');
+  const [chatDisabled, setChatDisabled] = useState(false);
   const hasLoadedRef = useRef(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const loadTriples = useCallback(async () => {
+  const loadTriples = useCallback(async (): Promise<number | null> => {
     try {
-      const response = await fetch('/api/triples');
+      const response = await fetch('/api/triples', { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         if (data.triples) {
@@ -58,11 +62,13 @@ export default function GraphPage() {
             }
           }
           setAllEntities(entities);
+          return data.triples.length;
         }
       }
     } catch (err) {
       console.error('Failed to load triples:', err);
     }
+    return null;
   }, []);
 
   const loadGraph = useCallback(async (force = false) => {
@@ -71,6 +77,7 @@ export default function GraphPage() {
       try {
         const storedHtml = localStorage.getItem(STORAGE_KEY_GRAPH_HTML);
         const storedTimestamp = localStorage.getItem(STORAGE_KEY_GRAPH_TIMESTAMP);
+        const storedTriplesCount = localStorage.getItem(STORAGE_KEY_GRAPH_TRIPLES_COUNT);
         if (storedHtml && storedTimestamp && storedHtml.length > 0) {
           const timestamp = parseInt(storedTimestamp, 10);
           const now = Date.now();
@@ -78,12 +85,21 @@ export default function GraphPage() {
             console.log('Using cached graph');
             setGraphHtml(storedHtml);
             setLoading(false);
-            await loadTriples();
+            const latestCount = await loadTriples();
+            const cachedCount = storedTriplesCount ? parseInt(storedTriplesCount, 10) : null;
+            if (latestCount !== null && cachedCount !== null && latestCount !== cachedCount) {
+              console.log('Cached graph is stale, refetching');
+              localStorage.removeItem(STORAGE_KEY_GRAPH_HTML);
+              localStorage.removeItem(STORAGE_KEY_GRAPH_TIMESTAMP);
+              localStorage.removeItem(STORAGE_KEY_GRAPH_TRIPLES_COUNT);
+              await loadGraph(true);
+            }
             return; // Use cached version - don't fetch
           } else {
             console.log('Cache expired, clearing');
             localStorage.removeItem(STORAGE_KEY_GRAPH_HTML);
             localStorage.removeItem(STORAGE_KEY_GRAPH_TIMESTAMP);
+            localStorage.removeItem(STORAGE_KEY_GRAPH_TRIPLES_COUNT);
           }
         }
       } catch (e) {
@@ -96,7 +112,7 @@ export default function GraphPage() {
     try {
       setLoading(true);
       setError('');
-      const response = await fetch('/api/graph/html');
+      const response = await fetch('/api/graph/html', { cache: 'no-store' });
       if (!response.ok) {
         throw new Error('Failed to load graph');
       }
@@ -107,12 +123,16 @@ export default function GraphPage() {
         const html = data.html || '';
         if (html) {
           setGraphHtml(html);
+          setGraphKey(prev => prev + 1);
           if (typeof window !== 'undefined') {
             localStorage.setItem(STORAGE_KEY_GRAPH_HTML, html);
             localStorage.setItem(STORAGE_KEY_GRAPH_TIMESTAMP, Date.now().toString());
             console.log('Graph cached');
           }
-          await loadTriples();
+          const latestCount = await loadTriples();
+          if (typeof window !== 'undefined' && latestCount !== null) {
+            localStorage.setItem(STORAGE_KEY_GRAPH_TRIPLES_COUNT, latestCount.toString());
+          }
         }
       }
     } catch (err) {
@@ -122,7 +142,7 @@ export default function GraphPage() {
     }
   }, [loadTriples]);
 
-  const handleEntityUpdate = async (data: any) => {
+  const performUpdate = async (data: any) => {
     try {
       const response = await fetch('/api/entities/update', {
         method: 'POST',
@@ -132,12 +152,15 @@ export default function GraphPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update entity');
+        throw new Error(errorData.error || 'Failed to update');
       }
 
-      // Refresh the graph after update
-      await loadGraph(true);
-      return await response.json();
+      const payload = await response.json();
+      // Refresh the graph after update without blocking the UI
+      void loadGraph(true).catch((err) => {
+        console.error('Failed to refresh graph after update:', err);
+      });
+      return payload;
     } catch (err) {
       throw err;
     }
@@ -156,21 +179,86 @@ export default function GraphPage() {
         throw new Error(errorData.error || 'Failed to merge entities');
       }
 
-      // Refresh the graph after merge
-      await loadGraph(true);
-      return await response.json();
+      const payload = await response.json();
+      // Refresh the graph after merge without blocking the UI
+      void loadGraph(true).catch((err) => {
+        console.error('Failed to refresh graph after merge:', err);
+      });
+      return payload;
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  const handleDelete = async (data: any) => {
+    try {
+      let endpoint = '';
+      let body = {};
+
+      if (data.type === 'entity') {
+        endpoint = '/api/entities/delete';
+        body = { id: data.id };
+      } else if (data.type === 'triple') {
+        endpoint = '/api/triples/delete';
+        body = { index: data.index };
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to delete ${data.type}`);
+      }
+
+      const payload = await response.json();
+      // Refresh the graph after deletion without blocking the UI
+      void loadGraph(true).catch((err) => {
+        console.error('Failed to refresh graph after delete:', err);
+      });
+      return payload;
     } catch (err) {
       throw err;
     }
   };
 
   const handleUpdate = async (data: any) => {
-    if (data.type === 'entity') {
-      return handleEntityUpdate(data);
-    } else if (data.type === 'triple') {
-      return handleEntityUpdate(data);
-    }
+    return performUpdate(data);
   };
+
+  useEffect(() => {
+    const messageHandler = (event: MessageEvent) => {
+      try {
+        const data = event.data;
+        if (data.type === 'selectEntity') {
+          setSelectedEntity({
+            id: data.id,
+            name: data.name,
+            label: data.label,
+          });
+          setSelectedTriple(null);
+          setEditPanelOpen(true);
+        } else if (data.type === 'selectTriple') {
+          setSelectedTriple({
+            index: data.index,
+            head: data.head,
+            relation: data.relation,
+            tail: data.tail,
+          });
+          setSelectedEntity(null);
+          setEditPanelOpen(true);
+        }
+      } catch (err) {
+        console.error('Failed to process message from iframe:', err);
+      }
+    };
+
+    window.addEventListener('message', messageHandler);
+    return () => window.removeEventListener('message', messageHandler);
+  }, []);
 
   useEffect(() => {
     if (hasLoadedRef.current) return; // Prevent multiple loads
@@ -287,13 +375,14 @@ export default function GraphPage() {
         {error && (
           <div className={styles.error}>
             <p>Error: {error}</p>
-            <button onClick={loadGraph}>Retry</button>
+            <button onClick={() => loadGraph()}>Retry</button>
           </div>
         )}
         
         {!loading && !error && graphHtml && (
           <>
             <iframe
+              key={graphKey}
               ref={iframeRef}
               srcDoc={graphHtml}
               className={styles.graphIframe}
@@ -314,36 +403,6 @@ export default function GraphPage() {
                         injectGraphClickHandler(iframe.contentWindow);
                       }
                     }, 500);
-
-                    // Listen for entity/triple selection from iframe
-                    const messageHandler = (event: MessageEvent) => {
-                      try {
-                        const data = event.data;
-                        if (data.type === 'selectEntity') {
-                          setSelectedEntity({
-                            id: data.id,
-                            name: data.name,
-                            label: data.label,
-                          });
-                          setSelectedTriple(null);
-                          setEditPanelOpen(true);
-                        } else if (data.type === 'selectTriple') {
-                          setSelectedTriple({
-                            index: data.index,
-                            head: data.head,
-                            relation: data.relation,
-                            tail: data.tail,
-                          });
-                          setSelectedEntity(null);
-                          setEditPanelOpen(true);
-                        }
-                      } catch (err) {
-                        console.error('Failed to process message from iframe:', err);
-                      }
-                    };
-
-                    window.addEventListener('message', messageHandler);
-                    return () => window.removeEventListener('message', messageHandler);
                   }
                 } catch (err) {
                   // Cross-origin restrictions may prevent this
@@ -363,8 +422,26 @@ export default function GraphPage() {
                 }}
                 onUpdate={handleUpdate}
                 onMerge={handleMergeEntities}
+                onDelete={handleDelete}
               />
             )}
+            
+            <div className={styles.chatBarContainer}>
+              <input
+                type="text"
+                className={styles.chatInput}
+                placeholder="Ask a question about the graph or suggest a change..."
+                value={chatValue}
+                onChange={(e) => setChatValue(e.target.value)}
+                disabled={chatDisabled}
+              />
+              <button
+                className={styles.chatSendButton}
+                disabled={chatDisabled || !chatValue.trim()}
+              >
+                Enter
+              </button>
+            </div>
           </>
         )}
         
@@ -378,4 +455,3 @@ export default function GraphPage() {
     </div>
   );
 }
-

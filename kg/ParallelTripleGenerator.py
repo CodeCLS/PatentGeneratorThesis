@@ -5,7 +5,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional
-from tools.graph.Triple import Triple
+from tools.graph.data.Triple import Triple
 from tools.sentence.entity import InMemoryEntityRepository
 from kg.NodeGenerator import NodeGenerator
 

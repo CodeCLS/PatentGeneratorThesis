@@ -20,12 +20,15 @@ def orchestrator_node(validator: "GraphValidatorLangGraph", state: "GraphValidat
 
 
     # Reset transient turn-based state
+    recent_context = state.get(STATE_CHAT_CONTEXT_INFORMATION, [])
+    if len(recent_context) > 3:
+        recent_context = recent_context[-3:]
     state = {
         **state,
         STATE_DISPLAY_ACTIONS: [],
         STATE_CHAT_CHANGES_INFORMATION: [],
         STATE_CHANGES_SUMMARY: [],
-        STATE_CHAT_CONTEXT_INFORMATION: [],  # Optional: keep if you want context to persist
+        STATE_CHAT_CONTEXT_INFORMATION: recent_context,
     }
         
     user_msg_obj = get_last_message(messages, MessageRole.USER)
