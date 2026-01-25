@@ -91,6 +91,8 @@ def get_validator() -> Optional[GraphValidatorLangGraph]:
 
 class GraphValidatorHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the graph validator chat interface."""
+    def log_request(self, code='-', size='-'):
+        print(f"[REQ] {self.command} {self.path} -> {code} ({size} bytes)")
     
     def log_message(self, format, *args):
         """Log server requests."""
@@ -152,6 +154,10 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             self._send_json(self._get_state())
         elif path == '/api/export':
             self._send_json(self._export_data())
+        elif path == '/api/test':
+            print("TEST RUN")
+            self._send_json({"ok": True, "message": "TEST RUN"})
+            return
         elif path == '/api/triples':
             self._send_json(self._get_triples())
         elif path == '/api/graph/html':
@@ -1480,8 +1486,8 @@ def start_validator_chat(
                 ["npm", "run", "dev", "--", "-p", str(nextjs_port)],
                 cwd=str(nextjs_dir),
                 shell=shell_flag,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stdout=None,
+                stderr=None
             )
             # Wait for process to complete (or be terminated)
             _nextjs_process.wait()
