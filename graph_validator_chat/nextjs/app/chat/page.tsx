@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import styles from './page.module.css';
-import Widget from '../components/Widget';
+import styles from '../page.module.css';
+import Widget from '../../components/Widget';
 import { bootstrapPipelineIfNeeded } from '@/lib/pipeline-bootstrap';
 
 interface Message {
@@ -58,6 +58,36 @@ export default function ChatPage() {
 
   useEffect(() => {
     setMounted(true);
+
+    const verifySession = async () => {
+      try {
+        const response = await fetch('/api/session');
+        if (!response.ok) return;
+        const data = await response.json();
+        const sessionId = data?.session_id;
+        const storedSession = localStorage.getItem('server_session_id');
+        if (sessionId && storedSession && storedSession !== sessionId) {
+          localStorage.removeItem('pipeline_progress');
+          localStorage.removeItem('pipeline_result');
+          localStorage.removeItem('pipeline_payload');
+          localStorage.removeItem('graph_html');
+          localStorage.removeItem('graph_timestamp');
+          localStorage.removeItem('graph_triples_count');
+          localStorage.removeItem(STORAGE_KEY_MESSAGES);
+          localStorage.removeItem(STORAGE_KEY_TRIPLES);
+          localStorage.removeItem(STORAGE_KEY_CHANGES);
+          localStorage.removeItem(STORAGE_KEY_STATS);
+          localStorage.setItem('server_session_id', sessionId);
+          router.push('/upload');
+        } else if (sessionId && storedSession !== sessionId) {
+          localStorage.setItem('server_session_id', sessionId);
+        }
+      } catch (e) {
+        console.error('Failed to verify server session:', e);
+      }
+    };
+
+    verifySession();
     
     // Load stored state after mount to avoid hydration errors
     try {
@@ -167,10 +197,15 @@ export default function ChatPage() {
         setInputDisabled(false);
         const unanswered = data.num_unanswered !== undefined ? data.num_unanswered : data.num_questions;
         setStatus(`Ready | ${unanswered} question${unanswered !== 1 ? 's' : ''} remaining | ${data.num_triples} triples`);
-        
-        // Don't auto-start chat if we have stored messages (user was navigating)
-        const hasStoredMessages = messages.length > 1 || (messages.length === 1 && messages[0].content !== 'Welcome! I am setting up the environment. You can explore the sidebar while I analyze the graph.');
-        if (!chatStartedRef.current && !hasStoredMessages) {
+
+        const hasStoredMessages =
+          messages.length > 1 ||
+          (messages.length === 1 &&
+            messages[0].content !==
+              'Welcome! I am setting up the environment. You can explore the sidebar while I analyze the graph.');
+        const noQuestions = (data.num_questions ?? 0) === 0;
+
+        if (!chatStartedRef.current && (!hasStoredMessages || noQuestions)) {
           chatStartedRef.current = true;
           startChat();
         }

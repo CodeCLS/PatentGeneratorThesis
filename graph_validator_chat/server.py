@@ -19,6 +19,8 @@ import re
 from typing import Optional, Dict, Any, List
 import networkx as nx
 import logging
+from pathlib import Path
+import uuid
 
 try:
     from dotenv import load_dotenv
@@ -61,6 +63,8 @@ _neo4j_manager: Optional[Neo4jManager] = None
 _pipeline_manager: Optional[PipelineManager] = None
 _pipeline_lock = threading.Lock()
 _pipeline_thread: Optional[threading.Thread] = None
+_persist_path = Path(__file__).parent / "persisted_validator.pkl"
+_server_session_id = str(uuid.uuid4())
 
 # Global progress tracking
 _claim_generation_progress: Dict[str, Any] = {}
@@ -111,6 +115,43 @@ def initialize_validator(
     threading.Thread(target=background_analysis, daemon=True).start()
     
     return validator
+
+
+def _save_persisted_validator(
+    *,
+    graph: Optional[nx.MultiDiGraph],
+    triples: Optional[List[Triple]],
+    id_to_name: Optional[Dict[str, str]],
+    sentence_split: Optional[List[Any]],
+) -> None:
+    """Persist validator inputs for reuse across sessions."""
+    try:
+        payload = {
+            "graph": graph,
+            "triples": triples or [],
+            "id_to_name": id_to_name or {},
+            "sentence_split": sentence_split or [],
+        }
+        with open(_persist_path, "wb") as f:
+            pickle.dump(payload, f)
+        print(f"[Server] Persisted validator state to {_persist_path}")
+    except Exception as e:
+        print(f"[Server] Warning: failed to persist validator state: {e}")
+
+
+def _load_persisted_validator() -> Optional[Dict[str, Any]]:
+    """Load persisted validator inputs, if available."""
+    if not _persist_path.exists():
+        return None
+    try:
+        with open(_persist_path, "rb") as f:
+            payload = pickle.load(f)
+        if not isinstance(payload, dict):
+            return None
+        return payload
+    except Exception as e:
+        print(f"[Server] Warning: failed to load persisted validator state: {e}")
+        return None
 
 
 def _get_neo4j_manager() -> Optional[Neo4jManager]:
@@ -237,6 +278,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         elif path == '/api/pipeline/progress':
             # GET endpoint to retrieve pipeline progress
             self._send_json(self._get_pipeline_progress())
+        elif path == '/api/session':
+            self._send_json({"session_id": _server_session_id})
         else:
             print(f"[API] 404: Path not found: {path}")
             self.send_error(404)
@@ -644,6 +687,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         try:
             global _pipeline_progress
             def set_pipeline_progress(update: Dict[str, Any]) -> None:
+                global _pipeline_progress
                 with _pipeline_progress_lock:
                     _pipeline_progress = update
 
@@ -690,6 +734,12 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             })
 
             initialize_validator(
+                graph=result.graph,
+                triples=result.triples,
+                id_to_name=result.id_to_name,
+                sentence_split=result.sentence_split,
+            )
+            _save_persisted_validator(
                 graph=result.graph,
                 triples=result.triples,
                 id_to_name=result.id_to_name,
@@ -766,6 +816,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 return
 
             def set_pipeline_progress(update: Dict[str, Any]) -> None:
+                global _pipeline_progress
                 with _pipeline_progress_lock:
                     _pipeline_progress = update
 
@@ -806,6 +857,12 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     })
 
                     initialize_validator(
+                        graph=result.graph,
+                        triples=result.triples,
+                        id_to_name=result.id_to_name,
+                        sentence_split=result.sentence_split,
+                    )
+                    _save_persisted_validator(
                         graph=result.graph,
                         triples=result.triples,
                         id_to_name=result.id_to_name,
@@ -1843,8 +1900,15 @@ def start_validator_chat(
         open_browser: Whether to automatically open browser
         debug: Enable debug mode
     """
-    from pathlib import Path
     global validator, _server_running, _api_server, _api_thread, _nextjs_process, _nextjs_thread
+    if graph is None and triples is None and id_to_name is None and sentence_split is None:
+        persisted = _load_persisted_validator()
+        if persisted:
+            graph = persisted.get("graph")
+            triples = persisted.get("triples")
+            id_to_name = persisted.get("id_to_name")
+            sentence_split = persisted.get("sentence_split")
+            print("[Server] Loaded persisted validator state")
     api_port_in_use = not _is_port_available(port) if port else False
     nextjs_port_in_use = not _is_port_available(3000)
     if _server_running or api_port_in_use or nextjs_port_in_use:

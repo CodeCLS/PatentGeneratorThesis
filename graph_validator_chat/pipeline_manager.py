@@ -68,8 +68,14 @@ class PipelineManager:
     ) -> None:
         if use_gpu and torch.cuda.is_available():
             torch.cuda.set_per_process_memory_fraction(cuda_memory_fraction)
-            torch.set_num_threads(torch_num_threads)
-            torch.set_num_interop_threads(torch_num_interop_threads)
+            try:
+                torch.set_num_threads(torch_num_threads)
+            except RuntimeError as e:
+                print(f"[Pipeline] Warning: unable to set torch num threads: {e}")
+            try:
+                torch.set_num_interop_threads(torch_num_interop_threads)
+            except RuntimeError as e:
+                print(f"[Pipeline] Warning: unable to set torch interop threads: {e}")
 
         base_dir = Path(__file__).resolve().parents[1]
         if not Path(classifier_model_path).is_absolute():

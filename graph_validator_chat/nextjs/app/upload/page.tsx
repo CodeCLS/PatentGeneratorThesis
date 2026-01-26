@@ -107,19 +107,62 @@ export default function UploadPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = localStorage.getItem(PIPELINE_PROGRESS_KEY);
-    if (stored) {
+    const verifySession = async () => {
       try {
-        const parsed = JSON.parse(stored) as PipelineProgress;
-        if (parsed?.stage && parsed.stage !== "idle") {
-          setProgress(parsed);
-          setProgressHistory([parsed]);
+        const response = await fetch("/api/session");
+        if (response.ok) {
+          const data = await response.json();
+          const sessionId = data?.session_id;
+          const storedSession = localStorage.getItem("server_session_id");
+          if (sessionId && storedSession && storedSession !== sessionId) {
+            localStorage.removeItem(PIPELINE_PROGRESS_KEY);
+            localStorage.removeItem("pipeline_result");
+            localStorage.removeItem("pipeline_payload");
+            localStorage.removeItem("graph_html");
+            localStorage.removeItem("graph_timestamp");
+            localStorage.removeItem("graph_triples_count");
+            localStorage.removeItem("chat_messages");
+            localStorage.removeItem("chat_triples");
+            localStorage.removeItem("chat_changes");
+            localStorage.removeItem("chat_stats");
+          }
+          if (sessionId && storedSession !== sessionId) {
+            localStorage.setItem("server_session_id", sessionId);
+          }
         }
       } catch {
-        // Ignore invalid stored progress.
+        // Ignore session check errors.
       }
-    }
-    checkProgress();
+    };
+
+    verifySession().finally(() => {
+      const stored = localStorage.getItem(PIPELINE_PROGRESS_KEY);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored) as PipelineProgress;
+          if (parsed?.stage && parsed.stage !== "idle") {
+            setProgress(parsed);
+            setProgressHistory([parsed]);
+            if (parsed.stage === "complete") {
+              router.push("/chat");
+              return;
+            }
+          }
+        } catch {
+          // Ignore invalid stored progress.
+        }
+      }
+      try {
+        const existingResult = localStorage.getItem("pipeline_result");
+        if (existingResult) {
+          router.push("/chat");
+          return;
+        }
+      } catch {
+        // Ignore localStorage read errors.
+      }
+      checkProgress();
+    });
     return () => {
       stopProgressPolling();
     };
