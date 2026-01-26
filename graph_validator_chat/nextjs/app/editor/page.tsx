@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
+import { bootstrapPipelineIfNeeded } from '@/lib/pipeline-bootstrap';
 
 const STORAGE_KEY_EDITOR_CONTENT = 'editor_content';
 const STORAGE_KEY_CLAIMS = 'generated_claims';
@@ -29,10 +30,20 @@ export default function EditorPage() {
   const [showTriplesPanel, setShowTriplesPanel] = useState<boolean>(true);
   const [expandedPromptClaim, setExpandedPromptClaim] = useState<number | null>(null);
   const [similarityThreshold, setSimilarityThreshold] = useState<number>(0.3);
+  const [pipelineBootstrapError, setPipelineBootstrapError] = useState<string>('');
   const progressCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRegeneratingRef = useRef<boolean>(false);
 
   useEffect(() => {
+    const ensurePipeline = async () => {
+      const result = await bootstrapPipelineIfNeeded();
+      if (!result.initialized && result.error) {
+        setPipelineBootstrapError(result.error);
+      }
+    };
+
+    ensurePipeline();
+
     setMounted(true);
     
     // Load similarity threshold from localStorage
@@ -576,8 +587,13 @@ export default function EditorPage() {
         >
           →
         </button>
-      </div>
-      <div className={styles.toolbar}>
+        </div>
+        {pipelineBootstrapError && (
+          <div className={styles.pipelineNotice}>
+            Pipeline not initialized. Please upload a file to build the graph before editing claims.
+          </div>
+        )}
+        <div className={styles.toolbar}>
         <div className={styles.toolbarGroup}>
           <button
             className={styles.toolbarButton}

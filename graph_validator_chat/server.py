@@ -40,6 +40,12 @@ from tools.graph.langgraph.question import Question
 from tools.graph.claim_generation.claim_generator_langchain import ClaimGeneratorLangChain
 from tools.graph.rag.graph_rag import GraphRAG
 from tools.graph.visualizer import GraphVisualizer
+from PatentProvider import PatentProvider
+
+try:
+    from .pipeline_manager import PipelineManager
+except ImportError:  # pragma: no cover
+    from pipeline_manager import PipelineManager
 
 
 # Global validator instance
@@ -52,9 +58,14 @@ _api_thread: Optional[threading.Thread] = None
 _nextjs_process: Optional[subprocess.Popen] = None
 _nextjs_thread: Optional[threading.Thread] = None
 _neo4j_manager: Optional[Neo4jManager] = None
+_pipeline_manager: Optional[PipelineManager] = None
+_pipeline_lock = threading.Lock()
+_pipeline_thread: Optional[threading.Thread] = None
 
 # Global progress tracking
 _claim_generation_progress: Dict[str, Any] = {}
+_pipeline_progress: Dict[str, Any] = {"stage": "idle", "message": "No pipeline running", "progress": 0}
+_pipeline_progress_lock = threading.Lock()
 _cached_claims: List[Dict[str, Any]] = []
 
 if load_dotenv:
@@ -137,6 +148,14 @@ def get_validator() -> Optional[GraphValidatorLangGraph]:
     return validator
 
 
+def _get_pipeline_manager() -> PipelineManager:
+    """Lazy-load PipelineManager."""
+    global _pipeline_manager
+    if _pipeline_manager is None:
+        _pipeline_manager = PipelineManager()
+    return _pipeline_manager
+
+
 class GraphValidatorHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the graph validator chat interface."""
     def log_request(self, code='-', size='-'):
@@ -181,11 +200,6 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             self._serve_static_file(path)
             return
         
-        # Serve widget showcase page
-        if path == '/widget-showcase':
-            self._serve_widget_showcase()
-            return
-        
         # Serve main index page
         if path == '/' or path == '/index.html':
             self._serve_index()
@@ -220,6 +234,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         elif path == '/api/claims/progress':
             # GET endpoint to retrieve claim generation progress
             self._send_json(self._get_claim_progress())
+        elif path == '/api/pipeline/progress':
+            # GET endpoint to retrieve pipeline progress
+            self._send_json(self._get_pipeline_progress())
         else:
             print(f"[API] 404: Path not found: {path}")
             self.send_error(404)
@@ -239,6 +256,12 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             elif path == '/api/neo4j/upload':
                 print("[API] Routing to _handle_neo4j_upload")
                 self._handle_neo4j_upload()
+            elif path == '/api/pipeline/start':
+                print("[API] Routing to _handle_pipeline_start")
+                self._handle_pipeline_start()
+            elif path == '/api/pipeline/run':
+                print("[API] Routing to _handle_pipeline_run")
+                self._handle_pipeline_run()
             elif path == '/api/claims/generate':
                 print("[API ] Routing to _handle_generate_claims")
                 self._handle_generate_claims()
@@ -614,6 +637,220 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             print(f"[API] Error in _handle_neo4j_upload: {e}")
             print(traceback.format_exc())
             self._send_error(f"Error: {str(e)}", 500)
+
+    def _handle_pipeline_run(self):
+        """Run the Main.ipynb pipeline using a patent ID or raw text."""
+        print("[API] Starting _handle_pipeline_run")
+        try:
+            global _pipeline_progress
+            def set_pipeline_progress(update: Dict[str, Any]) -> None:
+                with _pipeline_progress_lock:
+                    _pipeline_progress = update
+
+            set_pipeline_progress({
+                "stage": "starting",
+                "message": "Starting pipeline",
+                "progress": 1,
+            })
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length <= 0:
+                self._send_error("Request body required", 400)
+                return
+
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+            patent_id = data.get("patent_id") or data.get("patentId") or data.get("patentID")
+            text = data.get("text") or data.get("patent_text") or ""
+            filename = data.get("filename") or ""
+
+            source = None
+            if isinstance(text, str) and text.strip():
+                source = "text"
+            elif patent_id:
+                patent_id = str(patent_id).strip()
+                if not patent_id:
+                    self._send_error("Patent ID is empty", 400)
+                    return
+                source = "patent_id"
+                print(f"[API] Fetching patent description for {patent_id}")
+                text = PatentProvider().getDescription(patent_id)
+
+            if not isinstance(text, str) or not text.strip():
+                self._send_error("No text provided or fetched", 400)
+                return
+
+            manager = _get_pipeline_manager()
+            with _pipeline_lock:
+                result = manager.run(text, progress_callback=set_pipeline_progress)
+
+            set_pipeline_progress({
+                "stage": "validator_init",
+                "message": "Initializing validator",
+                "progress": 98,
+            })
+
+            initialize_validator(
+                graph=result.graph,
+                triples=result.triples,
+                id_to_name=result.id_to_name,
+                sentence_split=result.sentence_split,
+            )
+
+            graph_data = None
+            if result.graph is not None:
+                graph_data = base64.b64encode(pickle.dumps(result.graph)).decode('utf-8')
+
+            self._send_json({
+                "success": True,
+                "source": source,
+                "patent_id": patent_id if source == "patent_id" else None,
+                "filename": filename if filename else None,
+                "num_nodes": result.graph.number_of_nodes() if result.graph else 0,
+                "num_edges": result.graph.number_of_edges() if result.graph else 0,
+                "num_triples": len(result.triples),
+                "id_to_name": result.id_to_name,
+                "graph": graph_data,
+                "merge_stats": result.merge_stats,
+            })
+            set_pipeline_progress({
+                "stage": "complete",
+                "message": "Pipeline complete",
+                "progress": 100,
+            })
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_pipeline_run: {e}")
+            print(traceback.format_exc())
+            with _pipeline_progress_lock:
+                _pipeline_progress = {
+                    "stage": "error",
+                    "message": f"Pipeline failed: {str(e)}",
+                    "progress": 0,
+                }
+            self._send_error(f"Error: {str(e)}", 500)
+
+    def _handle_pipeline_start(self):
+        """Start the pipeline in a background thread and return immediately."""
+        print("[API] Starting _handle_pipeline_start")
+        try:
+            global _pipeline_progress, _pipeline_thread
+
+            with _pipeline_lock:
+                if _pipeline_thread and _pipeline_thread.is_alive():
+                    self._send_error("Pipeline already running", 409)
+                    return
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length <= 0:
+                self._send_error("Request body required", 400)
+                return
+
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+            patent_id = data.get("patent_id") or data.get("patentId") or data.get("patentID")
+            text = data.get("text") or data.get("patent_text") or ""
+            filename = data.get("filename") or ""
+
+            source = None
+            if isinstance(text, str) and text.strip():
+                source = "text"
+            elif patent_id:
+                patent_id = str(patent_id).strip()
+                if not patent_id:
+                    self._send_error("Patent ID is empty", 400)
+                    return
+                source = "patent_id"
+            else:
+                self._send_error("No text provided or fetched", 400)
+                return
+
+            def set_pipeline_progress(update: Dict[str, Any]) -> None:
+                with _pipeline_progress_lock:
+                    _pipeline_progress = update
+
+            set_pipeline_progress({
+                "stage": "starting",
+                "message": "Starting pipeline",
+                "progress": 1,
+            })
+
+            def pipeline_task() -> None:
+                global _pipeline_thread
+                try:
+                    task_text = text
+                    task_patent_id = patent_id
+                    task_filename = filename
+                    task_source = source
+
+                    if task_source == "patent_id":
+                        print(f"[API] Fetching patent description for {task_patent_id}")
+                        task_text = PatentProvider().getDescription(task_patent_id)
+
+                    if not isinstance(task_text, str) or not task_text.strip():
+                        set_pipeline_progress({
+                            "stage": "error",
+                            "message": "No text provided or fetched",
+                            "progress": 0,
+                        })
+                        return
+
+                    manager = _get_pipeline_manager()
+                    with _pipeline_lock:
+                        result = manager.run(task_text, progress_callback=set_pipeline_progress)
+
+                    set_pipeline_progress({
+                        "stage": "validator_init",
+                        "message": "Initializing validator",
+                        "progress": 98,
+                    })
+
+                    initialize_validator(
+                        graph=result.graph,
+                        triples=result.triples,
+                        id_to_name=result.id_to_name,
+                        sentence_split=result.sentence_split,
+                    )
+
+                    set_pipeline_progress({
+                        "stage": "complete",
+                        "message": "Pipeline complete",
+                        "progress": 100,
+                    })
+                except Exception as e:
+                    print(f"[API] Error in pipeline background task: {e}")
+                    set_pipeline_progress({
+                        "stage": "error",
+                        "message": f"Pipeline failed: {str(e)}",
+                        "progress": 0,
+                    })
+                finally:
+                    _pipeline_thread = None
+
+            _pipeline_thread = threading.Thread(target=pipeline_task, daemon=True)
+            _pipeline_thread.start()
+
+            self._send_json({
+                "success": True,
+                "started": True,
+                "source": source,
+                "patent_id": patent_id if source == "patent_id" else None,
+                "filename": filename if filename else None,
+                "progress": _pipeline_progress,
+            })
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_pipeline_start: {e}")
+            print(traceback.format_exc())
+            with _pipeline_progress_lock:
+                _pipeline_progress = {
+                    "stage": "error",
+                    "message": f"Pipeline failed: {str(e)}",
+                    "progress": 0,
+                }
+            self._send_error(f"Error: {str(e)}", 500)
     
     def _export_data(self) -> Dict[str, Any]:
         """Export full graph, triples, and entities."""
@@ -915,29 +1152,6 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             print(traceback.format_exc())
             self.send_error(500)
     
-    def _serve_widget_showcase(self):
-        """Serve the widget showcase page."""
-        try:
-            # Read the widget showcase HTML file
-            showcase_path = os.path.join(os.path.dirname(__file__), 'templates', 'widget-showcase.html')
-            
-            if not os.path.exists(showcase_path):
-                self.send_error(404)
-                return
-            
-            with open(showcase_path, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(html_content.encode('utf-8'))
-        except Exception as e:
-            import traceback
-            print(f"[API] Error serving widget showcase: {e}")
-            print(traceback.format_exc())
-            self.send_error(500)
-    
     def _extract_entities(self, triples: List[Triple]) -> List[Dict[str, Any]]:
         """Extract unique entities from triples."""
         entities = []
@@ -1195,6 +1409,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             return {"error": str(e)}
     
     def _get_claim_progress(self) -> Dict[str, Any]:
+
         """Get current claim generation progress."""
         global _claim_generation_progress
         try:
@@ -1220,7 +1435,31 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     },
                 }
         except Exception as e:
-            print(f"[API] Error getting progress: {e}")
+                print(f"[API] Error getting progress: {e}")
+                import traceback
+                print(traceback.format_exc())
+                return {"error": str(e)}
+
+    def _get_pipeline_progress(self) -> Dict[str, Any]:
+        """Get current pipeline progress."""
+        global _pipeline_progress
+        try:
+            with _pipeline_progress_lock:
+                progress = dict(_pipeline_progress) if isinstance(_pipeline_progress, dict) else {}
+
+            if progress.get("stage"):
+                return {"success": True, "progress": progress}
+
+            return {
+                "success": True,
+                "progress": {
+                    "stage": "idle",
+                    "message": "No pipeline running",
+                    "progress": 0,
+                },
+            }
+        except Exception as e:
+            print(f"[API] Error getting pipeline progress: {e}")
             import traceback
             print(traceback.format_exc())
             return {"error": str(e)}
@@ -1667,12 +1906,6 @@ def start_validator_chat(
         config_content = re.sub(
             r"destination: 'http://localhost:\d+/api/:path\*'",
             f"destination: 'http://localhost:{api_port}/api/:path*'",
-            config_content
-        )
-        # Replace the port for widget-showcase route
-        config_content = re.sub(
-            r"destination: 'http://localhost:\d+/widget-showcase'",
-            f"destination: 'http://localhost:{api_port}/widget-showcase'",
             config_content
         )
         # Replace the port for static files route

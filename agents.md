@@ -1,1 +1,2 @@
 Long-running tooling (tests, docker compose, migrations, etc.) must always be invoked with sensible timeouts or in non-interactive batch mode. Never leave a shell command waiting indefinitely—prefer explicit timeouts, scripted runs, or log polling after the command exits.
+Please do not get stuck reading long file because you keep doing it and it is annoying. if after reading a file for a minute you still dont have enough information. please find another way.

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import styles from './page.module.css';
 import EditPanel from '@/components/EditPanel';
 import { injectGraphClickHandler } from '@/lib/graph-interactions';
+import { bootstrapPipelineIfNeeded } from '@/lib/pipeline-bootstrap';
 
 const STORAGE_KEY_GRAPH_HTML = 'graph_html';
 const STORAGE_KEY_GRAPH_TIMESTAMP = 'graph_timestamp';
@@ -45,6 +46,8 @@ export default function GraphPage() {
   const [neo4jStats, setNeo4jStats] = useState<{ nodes: number; edges: number; database?: string } | null>(null);
   const [neo4jStatsError, setNeo4jStatsError] = useState<string>('');
   const [neo4jStatsLoading, setNeo4jStatsLoading] = useState(false);
+  const [pipelineBootstrapping, setPipelineBootstrapping] = useState(false);
+  const [pipelineBootstrapError, setPipelineBootstrapError] = useState<string>('');
   const hasLoadedRef = useRef(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -304,6 +307,17 @@ export default function GraphPage() {
     }
   };
 
+  const ensurePipeline = useCallback(async () => {
+    setPipelineBootstrapError('');
+    setPipelineBootstrapping(true);
+    const result = await bootstrapPipelineIfNeeded();
+    if (!result.initialized && result.error) {
+      setPipelineBootstrapError(result.error);
+    }
+    setPipelineBootstrapping(false);
+    return result.initialized;
+  }, []);
+
   useEffect(() => {
     const messageHandler = (event: MessageEvent) => {
       try {
@@ -339,18 +353,27 @@ export default function GraphPage() {
     if (hasLoadedRef.current) return; // Prevent multiple loads
     hasLoadedRef.current = true;
     setMounted(true);
-    
-    // Try to load from cache first - loadGraph will check cache
-    loadGraph(false);
-    loadNeo4jStats();
-  }, [loadGraph, loadNeo4jStats]);
+
+    const initialize = async () => {
+      const ready = await ensurePipeline();
+      if (ready) {
+        // Try to load from cache first - loadGraph will check cache
+        loadGraph(false);
+        loadNeo4jStats();
+      } else {
+        setLoading(false);
+      }
+    };
+
+    initialize();
+  }, [ensurePipeline, loadGraph, loadNeo4jStats]);
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <button
           className={styles.navButton}
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/chat')}
           title="Go to Chat"
         >
           ←
@@ -470,9 +493,9 @@ export default function GraphPage() {
       </div>
 
       <div className={styles.graphContainer}>
-        {loading && (
+        {(loading || pipelineBootstrapping) && (
           <div className={styles.loading}>
-            <p>Loading graph...</p>
+            <p>{pipelineBootstrapping ? 'Initializing pipeline...' : 'Loading graph...'}</p>
           </div>
         )}
         
@@ -580,10 +603,22 @@ export default function GraphPage() {
           </>
         )}
         
-        {!loading && !error && !graphHtml && (
+        {!loading && !pipelineBootstrapping && !error && !graphHtml && (
           <div className={styles.empty}>
-            <p>No graph data available. Please initialize the graph validator first.</p>
-            <p className={styles.hint}>Go back to the chat page to initialize the graph.</p>
+            <p>
+              {pipelineBootstrapError
+                ? pipelineBootstrapError
+                : 'No graph data available. Please initialize the graph validator first.'}
+            </p>
+            <p className={styles.hint}>
+              Upload a file to build the graph, or start the pipeline again.
+            </p>
+            <button
+              className={styles.refreshButton}
+              onClick={() => router.push('/upload')}
+            >
+              Go to Upload
+            </button>
           </div>
         )}
       </div>

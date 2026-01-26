@@ -22,10 +22,13 @@ langfuse = Langfuse(
 )
 
 class LLmApi_Repo:
-        def __init__(self, llm_client: LLMModel = GPTOSSModel()):
+        def __init__(self, llm_client: LLMModel = GPTOSSModel(), test_mode: bool = False):
+            self.test_mode = test_mode
             self.client = llm_client
         @observe
         def chat(self, message: str, **kwargs) -> dict:
+            if self.test_mode:
+                return {"response": "Dummy response for testing.", "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}
             return self.client.send(message)
 
 if __name__ == "__main__":

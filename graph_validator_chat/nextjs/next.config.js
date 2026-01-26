@@ -8,10 +8,6 @@ const nextConfig = {
         destination: 'http://localhost:50025/api/:path*',
       },
       {
-        source: '/widget-showcase',
-        destination: 'http://localhost:50025/widget-showcase',
-      },
-      {
         source: '/static/:path*',
         destination: 'http://localhost:50025/static/:path*',
       },
