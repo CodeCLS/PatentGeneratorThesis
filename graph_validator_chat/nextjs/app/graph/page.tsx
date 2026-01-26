@@ -11,7 +11,7 @@ const STORAGE_KEY_GRAPH_HTML = 'graph_html';
 const STORAGE_KEY_GRAPH_TIMESTAMP = 'graph_timestamp';
 const STORAGE_KEY_GRAPH_TRIPLES_COUNT = 'graph_triples_count';
 const GRAPH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-const GRAPH_HTML_ENDPOINT = process.env.NEXT_PUBLIC_GRAPH_ENDPOINT || '/api/graph/neo4j';
+const GRAPH_HTML_ENDPOINT = process.env.NEXT_PUBLIC_GRAPH_ENDPOINT || '/api/graph/html';
 
 interface Entity {
   id: string;

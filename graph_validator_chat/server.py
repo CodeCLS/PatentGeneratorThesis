@@ -18,11 +18,19 @@ import subprocess
 import re
 from typing import Optional, Dict, Any, List
 import networkx as nx
+import logging
 
 try:
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover
     load_dotenv = None
+
+# Setup logging for server errors
+logging.basicConfig(
+    filename='server_error.log',
+    level=logging.ERROR,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 from tools.graph.data.Triple import Triple
 from tools.graph.neo4j_manager import Neo4jManager
@@ -746,79 +754,71 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
 
         env_cypher = (os.getenv("NEO4J_GRAPH_CYPHER") or "").strip()
         if not env_cypher:
-            env_cypher = (
-                "MATCH (n:Entity) "
-                "OPTIONAL MATCH (n)-[r:LINKS_TO]->(m:Entity) "
-                "RETURN n, r, m LIMIT 200;"
-            )
+            env_cypher = "MATCH (n)-[r:INTERACTS]->(m) RETURN *"
         initial_cypher = env_cypher
         database = manager.database or ""
-
-        config_lines = [
-            'const config = {',
-            '  container_id: "viz",',
-            f'  server_url: {json.dumps(manager.uri)},',
-            f'  server_user: {json.dumps(manager.user)},',
-            f'  server_password: {json.dumps(manager.password)},',
-            '  labels: { Entity: { caption: "name" } },',
-            '  relationships: { LINKS_TO: { caption: "relation" } },',
-            f'  initial_cypher: {json.dumps(initial_cypher)},',
-        ]
-        if database:
-            config_lines.append(f'  database: {json.dumps(database)},')
-        config_lines.append("};")
-        config_js = "\n".join(config_lines)
+        database_line = f'            database: {json.dumps(database)},\n' if database else ""
 
         html = f"""
-<!DOCTYPE html>
+<!doctype html>
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Neo4j Graph</title>
-    <style>
-      html, body, #viz {{
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        background: #ffffff;
-      }}
+<head>
+    <title>Neovis.js Simple Example</title>
+    <style type="text/css">
+        html, body {{
+            font: 16pt arial;
+        }}
+
+        #viz {{
+            width: 900px;
+            height: 700px;
+            border: 1px solid lightgray;
+            font: 22pt arial;
+        }}
     </style>
-    <script src="https://unpkg.com/neo4j-driver/lib/browser/neo4j-web.min.js"></script>
-    <script src="https://unpkg.com/neovis.js/dist/neovis.js"></script>
-  </head>
-  <body>
-    <div id="viz"></div>
-    <script>
-      {config_js}
-      
-      console.log('Neovis.js config:', config); // Log the configuration
-      
-      const viz = new NeoVis.default(config);
-      
-      viz.on("completed", function (event) {{
-          console.log("Neovis.js rendering completed.", event);
-          console.log("Nodes rendered:", viz.nodes.length);
-          console.log("Edges rendered:", viz.edges.length);
-          if (viz.nodes.length === 0 && viz.edges.length === 0) {{
-              console.warn("Neovis.js rendered an empty graph. Check your Cypher query and Neo4j data.");
-          }}
-      }});
-      
-      viz.on("error", function (error) {{
-          console.error("Neovis.js error:", error); // Log any errors from Neovis.js
-      }});
-      
-      try {{
-          viz.render();
-          console.log('Neovis.js render initiated.');
-      }} catch (e) {{
-          console.error('Error initiating Neovis.js render:', e);
-      }}
-      window.network = viz._network || viz.network;
-    </script>
-  </body>
+    <script src="https://unpkg.com/neovis.js@2.0.2"></script>
+</head>
+<body onload="draw()">
+<div id="viz"></div>
+<script type="text/javascript">
+    let neoViz;
+
+    function draw() {{
+        const config = {{
+            containerId: "viz",
+            neo4j: {{
+                serverUrl: {json.dumps(manager.uri)},
+                serverUser: {json.dumps(manager.user)},
+                serverPassword: {json.dumps(manager.password)},
+            }},
+{database_line}            labels: {{
+                Character: {{
+                    label: "name",
+                    value: "pagerank",
+                    group: "community",
+                    [NeoVis.NEOVIS_ADVANCED_CONFIG]: {{
+                        function: {{
+                            title: (node) => neoViz.nodeToHtml(node, [
+                                "name",
+                                "pagerank"
+                            ])
+                        }}
+                    }}
+                }}
+            }},
+            relationships: {{
+                INTERACTS: {{
+                    value: "weight"
+                }}
+            }},
+            initialCypher: {json.dumps(initial_cypher)}
+        }};
+
+        neoViz = new NeoVis.default(config);
+        neoViz.render();
+    }}
+</script>
+</body>
 </html>
 """.strip()
 
