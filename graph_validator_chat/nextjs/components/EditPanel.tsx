@@ -167,6 +167,14 @@ export default function EditPanel({
     "UNCLASSIFIED_ENTITY", "UNKNOWN",
   ];
 
+  const availableLabels = Array.from(
+    new Set([
+      ...SUGGESTED_LABELS,
+      ...allEntities.map((e) => e.label).filter(Boolean),
+      ...(entityLabel ? [entityLabel] : []),
+    ])
+  ).sort();
+
   return (
     <div className={styles.panel}>
       <div className={styles.header}>
@@ -243,23 +251,20 @@ export default function EditPanel({
 
               <div className={styles.section}>
                 <label htmlFor="entityLabel">Entity Label/Type</label>
-                <div className={styles.inputWrapper}>
-                  <input
-                    id="entityLabel"
-                    type="text"
-                    list="labelOptions"
-                    value={entityLabel}
-                    onChange={(e) => setEntityLabel(e.target.value.toUpperCase())}
-                    disabled={loading}
-                    className={styles.input}
-                    placeholder="Select or enter label"
-                  />
-                  <datalist id="labelOptions">
-                    {SUGGESTED_LABELS.map(label => (
-                      <option key={label} value={label} />
-                    ))}
-                  </datalist>
-                </div>
+                <select
+                  id="entityLabel"
+                  value={entityLabel}
+                  onChange={(e) => setEntityLabel(e.target.value)}
+                  disabled={loading}
+                  className={styles.select}
+                >
+                  <option value="">-- Select label --</option>
+                  {availableLabels.map((label) => (
+                    <option key={label} value={label}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className={styles.buttonGroup}>
