@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import styles from './page.module.css';
 import EditPanel from '@/components/EditPanel';
 import { injectGraphClickHandler } from '@/lib/graph-interactions';
 import { bootstrapPipelineIfNeeded } from '@/lib/pipeline-bootstrap';
+import SideNav from '@/components/SideNav';
 
 const STORAGE_KEY_GRAPH_HTML = 'graph_html';
 const STORAGE_KEY_GRAPH_TIMESTAMP = 'graph_timestamp';
@@ -368,128 +368,143 @@ export default function GraphPage() {
     initialize();
   }, [ensurePipeline, loadGraph, loadNeo4jStats]);
 
+  const handleGenerateClaims = async () => {
+    // Generate claims before navigating to editor
+    try {
+      setLoading(true);
+      // Store initial progress BEFORE starting generation
+      const initialProgress = {
+        stage: 'planning',
+        message: 'Planning claim structure...',
+        progress: 0,
+      };
+      localStorage.setItem('claim_generation_progress', JSON.stringify(initialProgress));
+      console.log('[Graph] Set initial progress:', initialProgress);
+
+      // Navigate to editor immediately so user can see progress
+      router.push('/editor');
+
+      // Get stored similarity threshold or use default
+      const storedThreshold = localStorage.getItem('similarity_threshold');
+      const similarityThreshold = storedThreshold ? parseFloat(storedThreshold) : 0.3;
+
+      // Start generation in background
+      const response = await fetch('/api/claims/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          num_independent: 3,
+          num_dependent_per_independent: 2,
+          similarity_threshold: similarityThreshold,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[Graph] Generated ${data.num_claims} claims`);
+        console.log(`[Graph] Response data:`, data);
+        // Store claims in localStorage for editor page
+        if (data.claims && data.claims.length > 0) {
+          localStorage.setItem('generated_claims', JSON.stringify(data.claims));
+          console.log(`[Graph] Stored ${data.claims.length} claims in localStorage`);
+          console.log(`[Graph] First claim preview:`, data.claims[0]);
+        } else {
+          console.warn(`[Graph] No claims in response! data.claims:`, data.claims);
+        }
+        // Store final progress
+        if (data.progress) {
+          localStorage.setItem('claim_generation_progress', JSON.stringify(data.progress));
+          console.log('[Graph] Set final progress:', data.progress);
+        }
+      } else {
+        console.error('[Graph] Failed to generate claims');
+        const errorData = await response.json().catch(() => ({}));
+        // Store error progress
+        localStorage.setItem(
+          'claim_generation_progress',
+          JSON.stringify({
+            stage: 'error',
+            message: errorData.error || 'Failed to generate claims',
+            progress: 0,
+          })
+        );
+      }
+    } catch (error) {
+      console.error('[Graph] Error generating claims:', error);
+      localStorage.setItem(
+        'claim_generation_progress',
+        JSON.stringify({
+          stage: 'error',
+          message: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          progress: 0,
+        })
+      );
+    } finally {
+      setLoading(false);
+      // Navigate to editor after generation completes (or fails)
+      router.push('/editor');
+    }
+  };
+
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <button
-          className={styles.navButton}
-          onClick={() => router.push('/chat')}
-          title="Go to Chat"
-        >
-          ←
-        </button>
-        <div className={styles.headerContent}>
-          <h1>Knowledge Graph Visualization</h1>
-          <div
-            className={`${styles.neo4jStatus} ${
-              neo4jStatsError
-                ? styles.neo4jStatusError
-                : neo4jStatsLoading
-                ? styles.neo4jStatusLoading
-                : styles.neo4jStatusOk
-            }`}
-            role="status"
-            aria-live="polite"
-          >
-            {neo4jStatsLoading && 'Neo4j: checking connection...'}
-            {!neo4jStatsLoading && neo4jStatsError && `Neo4j: ${neo4jStatsError}`}
-            {!neo4jStatsLoading && !neo4jStatsError && neo4jStats && (
-              <>
-                Neo4j: {neo4jStats.nodes} nodes, {neo4jStats.edges} edges
-                {neo4jStats.database ? ` (${neo4jStats.database})` : ''}
-              </>
-            )}
-            {!neo4jStatsLoading && !neo4jStatsError && !neo4jStats && 'Neo4j: no data'}
-          </div>
-          <button
-            className={styles.refreshButton}
-            onClick={() => {
-              loadGraph(true);
-              loadNeo4jStats();
-            }}
-            disabled={loading}
-          >
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
+    <div className={styles.layout}>
+      <SideNav current="graph" />
+      <div className={styles.container}>
+        <div className={styles.header}>
+          <div className={styles.headerContent}>
+            <div className={styles.headerTitle}>
+              <h1>Knowledge Graph Visualization</h1>
+            </div>
+            <div className={styles.headerActions}>
+              <div
+                className={`${styles.neo4jStatus} ${
+                  neo4jStatsError
+                    ? styles.neo4jStatusError
+                    : neo4jStatsLoading
+                    ? styles.neo4jStatusLoading
+                    : styles.neo4jStatusOk
+                }`}
+                role="status"
+                aria-live="polite"
+              >
+                {neo4jStatsLoading && 'Neo4j: checking connection...'}
+                {!neo4jStatsLoading && neo4jStatsError && `Neo4j: ${neo4jStatsError}`}
+                {!neo4jStatsLoading && !neo4jStatsError && neo4jStats && (
+                  <>
+                    Neo4j: {neo4jStats.nodes} nodes, {neo4jStats.edges} edges
+                    {neo4jStats.database ? ` (${neo4jStats.database})` : ''}
+                  </>
+                )}
+                {!neo4jStatsLoading && !neo4jStatsError && !neo4jStats && 'Neo4j: no data'}
+              </div>
+              <button
+                className={styles.refreshButton}
+                onClick={() => {
+                  loadGraph(true);
+                  loadNeo4jStats();
+                }}
+                disabled={loading}
+              >
+                {loading ? 'Loading...' : 'Refresh'}
+              </button>
+              <button
+                className={styles.editButton}
+                onClick={() => router.push('/edit')}
+                disabled={loading}
+              >
+                Edit Triples
+              </button>
+              <button
+                className={styles.primaryButton}
+                onClick={() => {
+                  void handleGenerateClaims();
+                }}
+                disabled={loading}
+              >
+                Generate Claims
+              </button>
+            </div>
         </div>
-        <button
-          className={styles.navButton}
-          onClick={async () => {
-            // Generate claims before navigating to editor
-            try {
-              setLoading(true);
-              // Store initial progress BEFORE starting generation
-              const initialProgress = {
-                stage: 'planning',
-                message: 'Planning claim structure...',
-                progress: 0,
-              };
-              localStorage.setItem('claim_generation_progress', JSON.stringify(initialProgress));
-              console.log('[Graph] Set initial progress:', initialProgress);
-              
-              // Navigate to editor immediately so user can see progress
-              router.push('/editor');
-              
-              // Get stored similarity threshold or use default
-              const storedThreshold = localStorage.getItem('similarity_threshold');
-              const similarityThreshold = storedThreshold ? parseFloat(storedThreshold) : 0.3;
-              
-              // Start generation in background
-              const response = await fetch('/api/claims/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  num_independent: 3,
-                  num_dependent_per_independent: 2,
-                  similarity_threshold: similarityThreshold,
-                }),
-              });
-              
-              if (response.ok) {
-                const data = await response.json();
-                console.log(`[Graph] Generated ${data.num_claims} claims`);
-                console.log(`[Graph] Response data:`, data);
-                // Store claims in localStorage for editor page
-                if (data.claims && data.claims.length > 0) {
-                  localStorage.setItem('generated_claims', JSON.stringify(data.claims));
-                  console.log(`[Graph] Stored ${data.claims.length} claims in localStorage`);
-                  console.log(`[Graph] First claim preview:`, data.claims[0]);
-                } else {
-                  console.warn(`[Graph] No claims in response! data.claims:`, data.claims);
-                }
-                // Store final progress
-                if (data.progress) {
-                  localStorage.setItem('claim_generation_progress', JSON.stringify(data.progress));
-                  console.log('[Graph] Set final progress:', data.progress);
-                }
-              } else {
-                console.error('[Graph] Failed to generate claims');
-                const errorData = await response.json().catch(() => ({}));
-                // Store error progress
-                localStorage.setItem('claim_generation_progress', JSON.stringify({
-                  stage: 'error',
-                  message: errorData.error || 'Failed to generate claims',
-                  progress: 0,
-                }));
-              }
-            } catch (error) {
-              console.error('[Graph] Error generating claims:', error);
-              localStorage.setItem('claim_generation_progress', JSON.stringify({
-                stage: 'error',
-                message: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                progress: 0,
-              }));
-            } finally {
-              setLoading(false);
-              // Navigate to editor after generation completes (or fails)
-              router.push('/editor');
-            }
-          }}
-          title="Generate Claims & Go to Editor"
-          disabled={loading}
-        >
-          →
-        </button>
       </div>
 
       <div className={styles.graphContainer}>
@@ -622,6 +637,8 @@ export default function GraphPage() {
           </div>
         )}
       </div>
+      </div>
     </div>
   );
 }
+

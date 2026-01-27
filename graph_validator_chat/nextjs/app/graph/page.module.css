@@ -1,11 +1,16 @@
+.layout {
+  min-height: 100dvh;
+  display: flex;
+  background: #f7f6f3;
+}
+
 .container {
   position: relative;
-  width: 100vw;
+  width: 100%;
   min-height: 100dvh;
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: #f7f6f3;
   padding: 16px;
 }
 
@@ -32,11 +37,24 @@
   flex-wrap: wrap;
 }
 
+.headerTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .header h1 {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
   color: rgb(55, 53, 47);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .refreshButton {
@@ -55,6 +73,46 @@
 }
 
 .refreshButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.editButton {
+  padding: 8px 16px;
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.editButton:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.editButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.primaryButton {
+  padding: 8px 16px;
+  background: rgb(55, 53, 47);
+  color: #ffffff;
+  border: 1px solid rgba(55, 53, 47, 0.4);
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: rgba(55, 53, 47, 0.9);
+}
+
+.primaryButton:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -152,38 +210,6 @@
   color: rgba(55, 53, 47, 0.6);
 }
 
-.navButton {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(55, 53, 47, 0.08);
-  color: rgb(55, 53, 47);
-  border: 1px solid rgba(55, 53, 47, 0.16);
-  font-size: 18px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-  padding: 0;
-}
-
-.navButton:hover:not(:disabled) {
-  background: rgba(55, 53, 47, 0.12);
-  border-color: rgba(55, 53, 47, 0.24);
-  transform: scale(1.05);
-}
-
-.navButton:active:not(:disabled) {
-  transform: scale(0.95);
-}
-
-.navButton:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
 
 .chatBarContainer {
   position: absolute;
@@ -299,4 +325,10 @@
 
 .nextButton:active {
   transform: translateY(0);
+}
+
+@media (max-width: 900px) {
+  .layout {
+    flex-direction: column;
+  }
 }

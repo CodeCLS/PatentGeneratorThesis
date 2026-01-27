@@ -1,10 +1,15 @@
+.layout {
+  min-height: 100dvh;
+  display: flex;
+  background: #f7f6f3;
+}
+
 .container {
   position: relative;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: #f7f6f3;
   padding: 16px;
 }
 
@@ -45,38 +50,6 @@
   color: rgb(55, 53, 47);
 }
 
-.navButton {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(55, 53, 47, 0.08);
-  color: rgb(55, 53, 47);
-  border: 1px solid rgba(55, 53, 47, 0.16);
-  font-size: 18px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-  padding: 0;
-}
-
-.navButton:hover:not(:disabled) {
-  background: rgba(55, 53, 47, 0.12);
-  border-color: rgba(55, 53, 47, 0.24);
-  transform: scale(1.05);
-}
-
-.navButton:active:not(:disabled) {
-  transform: scale(0.95);
-}
-
-.navButton:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
 
 .toolbar {
   display: flex;
@@ -117,6 +90,12 @@
 
 .toolbarButton:active {
   background: rgba(55, 53, 47, 0.1);
+}
+
+@media (max-width: 900px) {
+  .layout {
+    flex-direction: column;
+  }
 }
 
 .toolbarSeparator {

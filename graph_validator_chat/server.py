@@ -320,6 +320,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             elif path == '/api/triples/delete':
                 print("[API] Routing to _handle_triple_delete")
                 self._handle_triple_delete()
+            elif path == '/api/triples/update':
+                print("[API] Routing to _handle_triple_update")
+                self._handle_triple_update()
             else:
                 print(f"[API] POST 404: Path not found: {path}")
                 self._send_error("Not found", 404)
@@ -1565,6 +1568,12 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     visualizer = GraphVisualizer()
                     validator.graph = visualizer.build_graph(validator.triples)
                 
+                _save_persisted_validator(
+                    graph=validator.graph,
+                    triples=validator.triples,
+                    id_to_name=validator.id_to_name,
+                    sentence_split=_sentence_split,
+                )
                 print(f"[API] Updated entity {entity_id}: name={new_name}, label={new_label}, triples_updated={triples_updated}")
                 self._send_json({
                     "success": True,
@@ -1598,6 +1607,12 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     visualizer = GraphVisualizer()
                     validator.graph = visualizer.build_graph(validator.triples)
                 
+                _save_persisted_validator(
+                    graph=validator.graph,
+                    triples=validator.triples,
+                    id_to_name=validator.id_to_name,
+                    sentence_split=_sentence_split,
+                )
                 print(f"[API] Updated triple {triple_index}: relation={new_relation}")
                 self._send_json({
                     "success": True,
@@ -1611,6 +1626,128 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         except Exception as e:
             import traceback
             print(f"[API] Error in _handle_entity_update: {e}")
+            print(traceback.format_exc())
+            self._send_error(f"Error: {str(e)}", 500)
+
+    def _handle_triple_update(self):
+        """Handle head/tail replacement for a single triple."""
+        if not validator:
+            self._send_error("Validator not initialized")
+            return
+
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+
+            triple_index = data.get("index")
+            if triple_index is None or not isinstance(triple_index, int):
+                self._send_error("Triple index is required", 400)
+                return
+
+            if triple_index < 0 or triple_index >= len(validator.triples):
+                self._send_error("Invalid triple index", 400)
+                return
+
+            triple = validator.triples[triple_index]
+
+            create_head = bool(data.get("create_head"))
+            create_tail = bool(data.get("create_tail"))
+            head_id = data.get("head_id")
+            tail_id = data.get("tail_id")
+
+            head_name = (data.get("head_name") or "").strip()
+            head_label = (data.get("head_label") or "").strip() or "unknown_entity"
+            tail_name = (data.get("tail_name") or "").strip()
+            tail_label = (data.get("tail_label") or "").strip() or "unknown_entity"
+            relation = (data.get("relation") or "").strip()
+
+            def find_entity(entity_id: str):
+                for item in validator.triples:
+                    if get_triple_head_id(item) == entity_id:
+                        return item.head
+                    if get_triple_tail_id(item) == entity_id:
+                        return item.tail
+                return None
+
+            def create_entity(name: str, label: str):
+                from tools.sentence.entity import Entity
+                entity_id = str(uuid.uuid4())
+                return Entity(
+                    id=entity_id,
+                    ref=entity_id,
+                    ref_short=entity_id[-4:],
+                    name=name,
+                    label=label,
+                    start=0,
+                    end=len(name),
+                    sentence_id="manual",
+                    entity_type=label,
+                )
+
+            updated = False
+
+            if create_head:
+                if not head_name:
+                    self._send_error("Head name is required to create a new entity", 400)
+                    return
+                new_head = create_entity(head_name, head_label)
+                triple.head = new_head
+                validator.id_to_name[new_head.ref] = new_head.name
+                updated = True
+            elif head_id:
+                existing_head = find_entity(head_id)
+                if not existing_head:
+                    self._send_error("Head entity not found", 404)
+                    return
+                triple.head = existing_head
+                if head_id not in validator.id_to_name:
+                    validator.id_to_name[head_id] = existing_head.name
+                updated = True
+
+            if create_tail:
+                if not tail_name:
+                    self._send_error("Tail name is required to create a new entity", 400)
+                    return
+                new_tail = create_entity(tail_name, tail_label)
+                triple.tail = new_tail
+                validator.id_to_name[new_tail.ref] = new_tail.name
+                updated = True
+            elif tail_id:
+                existing_tail = find_entity(tail_id)
+                if not existing_tail:
+                    self._send_error("Tail entity not found", 404)
+                    return
+                triple.tail = existing_tail
+                if tail_id not in validator.id_to_name:
+                    validator.id_to_name[tail_id] = existing_tail.name
+                updated = True
+
+            if relation:
+                triple.relation = relation
+                updated = True
+
+            if validator.graph is not None and updated:
+                visualizer = GraphVisualizer()
+                validator.graph = visualizer.build_graph(validator.triples)
+
+            _save_persisted_validator(
+                graph=validator.graph,
+                triples=validator.triples,
+                id_to_name=validator.id_to_name,
+                sentence_split=_sentence_split,
+            )
+
+            self._send_json({
+                "success": True,
+                "message": "Triple updated successfully",
+                "updated": updated,
+                "index": triple_index,
+            })
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_triple_update: {e}")
             print(traceback.format_exc())
             self._send_error(f"Error: {str(e)}", 500)
     
@@ -1689,7 +1826,14 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             if validator.graph is not None:
                 visualizer = GraphVisualizer()
                 validator.graph = visualizer.build_graph(validator.triples)
-            
+
+            _save_persisted_validator(
+                graph=validator.graph,
+                triples=validator.triples,
+                id_to_name=validator.id_to_name,
+                sentence_split=_sentence_split,
+            )
+
             print(f"[API] Merged entity {source_id} into {target_id}: "
                   f"relations_transferred={relations_transferred}, "
                   f"self_references_removed={len(triples_to_remove)}")
@@ -1748,6 +1892,13 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 visualizer = GraphVisualizer()
                 validator.graph = visualizer.build_graph(validator.triples)
                 print("[API] Graph rebuild complete")
+
+            _save_persisted_validator(
+                graph=validator.graph,
+                triples=validator.triples,
+                id_to_name=validator.id_to_name,
+                sentence_split=_sentence_split,
+            )
             
             print(f"[API] Deleted entity {entity_id} and {triples_removed} connected triples")
             
@@ -1802,6 +1953,13 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 visualizer = GraphVisualizer()
                 validator.graph = visualizer.build_graph(validator.triples)
                 print("[API] Graph rebuild complete")
+
+            _save_persisted_validator(
+                graph=validator.graph,
+                triples=validator.triples,
+                id_to_name=validator.id_to_name,
+                sentence_split=_sentence_split,
+            )
             
             print(f"[API] Deleted triple {triple_index}: {head_id} --{relation}--> {tail_id}")
             

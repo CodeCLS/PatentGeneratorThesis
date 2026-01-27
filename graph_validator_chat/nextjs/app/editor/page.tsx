@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 import { bootstrapPipelineIfNeeded } from '@/lib/pipeline-bootstrap';
+import SideNav from '@/components/SideNav';
 
 const STORAGE_KEY_EDITOR_CONTENT = 'editor_content';
 const STORAGE_KEY_CLAIMS = 'generated_claims';
@@ -20,7 +20,6 @@ interface ProgressUpdate {
 }
 
 export default function EditorPage() {
-  const router = useRouter();
   const editorRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   const [content, setContent] = useState<string>('');
@@ -568,25 +567,13 @@ export default function EditorPage() {
   };
 
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <button
-          className={styles.navButton}
-          onClick={() => router.push('/graph')}
-          title="Go to Graph"
-        >
-          ←
-        </button>
-        <div className={styles.headerContent}>
-          <h1>Text Editor</h1>
-        </div>
-        <button
-          className={styles.navButton}
-          disabled
-          title="No next page"
-        >
-          →
-        </button>
+    <div className={styles.layout}>
+      <SideNav current="editor" />
+      <div className={styles.container}>
+        <div className={styles.header}>
+          <div className={styles.headerContent}>
+            <h1>Text Editor</h1>
+          </div>
         </div>
         {pipelineBootstrapError && (
           <div className={styles.pipelineNotice}>
@@ -594,7 +581,7 @@ export default function EditorPage() {
           </div>
         )}
         <div className={styles.toolbar}>
-        <div className={styles.toolbarGroup}>
+          <div className={styles.toolbarGroup}>
           <button
             className={styles.toolbarButton}
             onClick={() => formatText('bold')}
@@ -868,7 +855,9 @@ export default function EditorPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
+
 
