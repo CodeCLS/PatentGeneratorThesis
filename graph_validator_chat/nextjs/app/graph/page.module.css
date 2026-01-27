@@ -1,21 +1,26 @@
 .container {
   position: relative;
   width: 100vw;
-  height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: #f7f6f3;
+  padding: 16px;
 }
 
 .header {
   padding: 16px 24px;
-  border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+  border: 1px solid rgba(55, 53, 47, 0.08);
+  border-bottom: none;
   background: #ffffff;
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
 .headerContent {
@@ -85,6 +90,11 @@
   flex: 1;
   position: relative;
   overflow: hidden;
+  background: #ffffff;
+  border: 1px solid rgba(55, 53, 47, 0.08);
+  border-top: none;
+  border-radius: 0 0 20px 20px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
 .graphContainer::before {
