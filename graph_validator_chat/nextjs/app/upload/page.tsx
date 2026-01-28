@@ -89,7 +89,7 @@ export default function UploadPage() {
         if (data.progress.stage === "complete") {
           stopProgressPolling();
           setSubmitting(false);
-          router.push("/edit");
+          router.push("/analyze");
         }
         if (data.progress.stage === "error") {
           stopProgressPolling();
@@ -141,14 +141,14 @@ export default function UploadPage() {
       if (stored) {
         try {
           const parsed = JSON.parse(stored) as PipelineProgress;
-          if (parsed?.stage && parsed.stage !== "idle") {
-            setProgress(parsed);
-            setProgressHistory([parsed]);
-            if (parsed.stage === "complete") {
-              router.push("/edit");
-              return;
+            if (parsed?.stage && parsed.stage !== "idle") {
+              setProgress(parsed);
+              setProgressHistory([parsed]);
+              if (parsed.stage === "complete") {
+                router.push("/analyze");
+                return;
+              }
             }
-          }
         } catch {
           // Ignore invalid stored progress.
         }
@@ -156,7 +156,7 @@ export default function UploadPage() {
       try {
         const existingResult = localStorage.getItem("pipeline_result");
         if (existingResult) {
-          router.push("/edit");
+          router.push("/analyze");
           return;
         }
       } catch {

@@ -278,6 +278,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         elif path == '/api/pipeline/progress':
             # GET endpoint to retrieve pipeline progress
             self._send_json(self._get_pipeline_progress())
+        elif path == '/api/analyze':
+            self._send_json(self._get_analyze_data())
         elif path == '/api/session':
             self._send_json({"session_id": _server_session_id})
         else:
@@ -981,6 +983,68 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             })
         
         return {"triples": triples_data}
+
+    def _get_analyze_data(self) -> Dict[str, Any]:
+        """Get sentence text with entity spans for analysis view."""
+        if not _sentence_split:
+            return {
+                "error": "No sentence data available. Please run the pipeline first.",
+                "text": "",
+                "sentences": [],
+                "triples": [],
+            }
+
+        sentences_data = []
+        parts = []
+        offset = 0
+        for idx, sentence in enumerate(_sentence_split):
+            text = getattr(sentence, "text", "") or ""
+            sentence_start = offset
+            sentence_end = sentence_start + len(text)
+            parts.append(text)
+
+            entities_data = []
+            for entity in getattr(sentence, "entities", []) or []:
+                ref_value = (
+                    getattr(entity, "ref", None)
+                    or getattr(entity, "id", None)
+                    or getattr(entity, "ref_short", None)
+                    or getattr(entity, "name", "")
+                )
+                entities_data.append({
+                    "name": getattr(entity, "name", ""),
+                    "label": getattr(entity, "label", ""),
+                    "ref": ref_value,
+                    "ref_short": getattr(entity, "ref_short", "") or "",
+                    "start": int(getattr(entity, "start", 0) or 0),
+                    "end": int(getattr(entity, "end", 0) or 0),
+                    "sentence_id": getattr(entity, "sentence_id", "") or f"s{idx}",
+                    "sentence_index": idx,
+                    "entity_type": getattr(entity, "entity_type", None),
+                })
+
+            sentences_data.append({
+                "id": getattr(sentence, "id", None) or f"s{idx}",
+                "index": idx,
+                "text": text,
+                "start": sentence_start,
+                "end": sentence_end,
+                "entities": entities_data,
+            })
+
+            offset = sentence_end + 1
+
+        full_text = " ".join(parts)
+        triples_data = []
+        if validator:
+            triples_payload = self._get_triples()
+            triples_data = triples_payload.get("triples", [])
+
+        return {
+            "text": full_text,
+            "sentences": sentences_data,
+            "triples": triples_data,
+        }
     
     def _get_graph_html(self) -> Dict[str, Any]:
         print("[API] Starting _get_graph_html")
