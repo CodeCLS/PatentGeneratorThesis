@@ -289,6 +289,34 @@ export default function AnalyzePage() {
     return parts;
   };
 
+  const renderMentionSnippet = (sentenceText: string, mention: AnalyzeEntity) => {
+    const rawStart = Number.isFinite(mention.start) ? mention.start : 0;
+    const rawEnd = Number.isFinite(mention.end) ? mention.end : rawStart;
+    const start = Math.max(0, Math.min(sentenceText.length, rawStart));
+    const end = Math.max(start, Math.min(sentenceText.length, rawEnd));
+
+    const snippetStart = Math.max(0, start - 24);
+    const snippetEnd = Math.min(sentenceText.length, end + 24);
+    const snippet = sentenceText.slice(snippetStart, snippetEnd);
+
+    const relativeStart = Math.max(0, start - snippetStart);
+    const relativeEnd = Math.max(relativeStart, end - snippetStart);
+
+    const prefix = snippet.slice(0, relativeStart);
+    const match = snippet.slice(relativeStart, relativeEnd);
+    const suffix = snippet.slice(relativeEnd);
+
+    return (
+      <>
+        {snippetStart > 0 ? "…" : ""}
+        {prefix}
+        {match ? <span className={styles.mentionHighlight}>{match}</span> : null}
+        {suffix}
+        {snippetEnd < sentenceText.length ? "…" : ""}
+      </>
+    );
+  };
+
   return (
     <div className={styles.layout}>
       <SideNav current="analyze" />
@@ -372,15 +400,14 @@ export default function AnalyzePage() {
                         {selectedSummary.mentions.map((mention, idx) => {
                           const sentence = sentenceByIndex.get(mention.sentence_index ?? -1);
                           const snippetSource = sentence?.text || "";
-                          const start = Math.max(0, (mention.start || 0) - 24);
-                          const end = Math.min(snippetSource.length, (mention.end || 0) + 24);
-                          const snippet = snippetSource.slice(start, end);
                           return (
                             <div key={`${mention.sentence_id}-${idx}`} className={styles.mentionItem}>
                               <span className={styles.mentionMeta}>
                                 Sentence {typeof mention.sentence_index === "number" ? mention.sentence_index + 1 : "?"}
                               </span>
-                              <span className={styles.mentionSnippet}>{snippet}</span>
+                              <span className={styles.mentionSnippet}>
+                                {renderMentionSnippet(snippetSource, mention)}
+                              </span>
                             </div>
                           );
                         })}

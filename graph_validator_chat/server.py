@@ -5,7 +5,7 @@ Single file with everything needed - no Flask, no Jinja2 dependencies!
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 import json
 import threading
 import webbrowser
@@ -42,6 +42,8 @@ from tools.graph.langgraph.question import Question
 from tools.graph.claim_generation.claim_generator_langchain import ClaimGeneratorLangChain
 from tools.graph.rag.graph_rag import GraphRAG
 from tools.graph.visualizer import GraphVisualizer
+from tools.api.llm_api_repo import LLmApi_Repo
+from tools.helper.json_helper import JsonHelper
 from PatentProvider import PatentProvider
 
 try:
@@ -233,7 +235,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         """Handle GET requests."""
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
         print(f"[API] GET {path}")
         
         # Serve static files
@@ -266,7 +270,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         elif path == '/api/neo4j/stats':
             self._send_json(self._get_neo4j_stats())
         elif path == '/api/graph/html':
-            self._send_json(self._get_graph_html())
+            layout = (query.get("layout") or [""])[0].strip().lower()
+            self._send_json(self._get_graph_html(layout=layout))
         elif path == '/api/graph/neo4j':
             self._send_json(self._get_graph_neo4j_html())
         elif path == '/api/claims':
@@ -325,6 +330,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             elif path == '/api/triples/update':
                 print("[API] Routing to _handle_triple_update")
                 self._handle_triple_update()
+            elif path == '/api/triples/suggest':
+                print("[API] Routing to _handle_triple_suggest")
+                self._handle_triple_suggest()
             else:
                 print(f"[API] POST 404: Path not found: {path}")
                 self._send_error("Not found", 404)
@@ -683,6 +691,173 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         except Exception as e:
             import traceback
             print(f"[API] Error in _handle_neo4j_upload: {e}")
+            print(traceback.format_exc())
+            self._send_error(f"Error: {str(e)}", 500)
+
+    @staticmethod
+    def _entity_matches_ref(entity: Any, ref_value: str) -> bool:
+        if not entity or not ref_value:
+            return False
+        return (
+            getattr(entity, "ref", None) == ref_value
+            or getattr(entity, "id", None) == ref_value
+            or getattr(entity, "ref_short", None) == ref_value
+        )
+
+    @staticmethod
+    def _highlight_mentions(text: str, mentions: List[Any]) -> str:
+        if not text or not mentions:
+            return text
+        spans = []
+        for ent in mentions:
+            try:
+                start = int(getattr(ent, "start", 0) or 0)
+                end = int(getattr(ent, "end", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= start < end <= len(text):
+                spans.append((start, end))
+        if not spans:
+            return text
+        spans.sort()
+        out = []
+        cursor = 0
+        for start, end in spans:
+            if start < cursor:
+                continue
+            if start > cursor:
+                out.append(text[cursor:start])
+            out.append(f"[[{text[start:end]}]]")
+            cursor = end
+        if cursor < len(text):
+            out.append(text[cursor:])
+        return "".join(out)
+
+    def _collect_entity_context(self, ref_value: str, max_sentences: int = 8) -> Dict[str, Any]:
+        if not _sentence_split or not ref_value:
+            return {"mentions": [], "total_mentions": 0}
+
+        mentions = []
+        total = 0
+        for idx, sentence in enumerate(_sentence_split):
+            text = getattr(sentence, "text", "") or ""
+            entities = getattr(sentence, "entities", []) or []
+            matched = [e for e in entities if self._entity_matches_ref(e, ref_value)]
+            if not matched:
+                continue
+            total += len(matched)
+            if len(mentions) < max_sentences:
+                mentions.append({
+                    "sentence_index": idx + 1,
+                    "text": self._highlight_mentions(text, matched),
+                })
+
+        return {"mentions": mentions, "total_mentions": total}
+
+    def _handle_triple_suggest(self):
+        """Generate AI suggestions for triples with textual context."""
+        if not validator:
+            self._send_error("Validator not initialized")
+            return
+
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length).decode('utf-8')) if content_length > 0 else {}
+            indices = data.get("indices") or []
+            if not isinstance(indices, list) or not indices:
+                self._send_error("indices must be a non-empty list", 400)
+                return
+
+            # Build prompt payload
+            batch = []
+            for idx in indices:
+                try:
+                    idx_int = int(idx)
+                except (TypeError, ValueError):
+                    continue
+                if idx_int < 0 or idx_int >= len(validator.triples):
+                    continue
+                triple = validator.triples[idx_int]
+                head_id = get_triple_head_id(triple)
+                tail_id = get_triple_tail_id(triple)
+                batch.append({
+                    "index": idx_int,
+                    "head": triple.head.name,
+                    "relation": triple.relation,
+                    "tail": triple.tail.name,
+                    "head_id": head_id,
+                    "tail_id": tail_id,
+                })
+
+            if not batch:
+                self._send_error("No valid triples found for indices", 400)
+                return
+
+            context_payload = []
+            for item in batch:
+                head_ctx = self._collect_entity_context(item["head_id"])
+                tail_ctx = self._collect_entity_context(item["tail_id"])
+                context_payload.append({
+                    "index": item["index"],
+                    "display_index": item["index"] + 1,
+                    "triple": f"{item['head']} --[{item['relation']}]--> {item['tail']}",
+                    "head_mentions_total": head_ctx["total_mentions"],
+                    "head_mentions": head_ctx["mentions"],
+                    "tail_mentions_total": tail_ctx["total_mentions"],
+                    "tail_mentions": tail_ctx["mentions"],
+                })
+
+            prompt = (
+                "You are reviewing knowledge-graph triples extracted from a patent.\n"
+                "For each triple, suggest one action:\n"
+                "- KEEP (no change)\n"
+                "- DELETE (bad or irrelevant)\n"
+                "- CHANGE (specify exact change, e.g., change head to X, tail to Y, or relation to Z)\n"
+                "Use the provided mention context to decide. The mention text highlights the entity as [[...]].\n"
+                "Return ONLY a JSON array of objects with fields:\n"
+                "index (number, 0-based), action (KEEP|DELETE|CHANGE), suggestion (short text), reason (short text).\n"
+                "You will also see display_index (1-based); do NOT use it for the response.\n"
+                "If action is KEEP, reason can be empty.\n\n"
+                f"Triples with context:\n{json.dumps(context_payload, ensure_ascii=False, indent=2)}\n"
+            )
+
+            llm = LLmApi_Repo()
+            raw = llm.chat(prompt)
+            response_text = raw.get("content") if isinstance(raw, dict) else str(raw or "")
+            parsed = JsonHelper.parse_json(response_text)
+            if not isinstance(parsed, list):
+                parsed = []
+
+            suggestions = []
+            batch_indices = {b["index"] for b in batch}
+            for item in parsed:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    idx_val = int(item.get("index"))
+                except (TypeError, ValueError):
+                    continue
+                if idx_val not in batch_indices and (idx_val - 1) in batch_indices:
+                    idx_val = idx_val - 1
+                action = str(item.get("action", "")).strip().upper()
+                suggestion = str(item.get("suggestion", "")).strip()
+                reason = str(item.get("reason", "")).strip()
+                if idx_val in batch_indices:
+                    if action == "KEEP":
+                        reason = ""
+                    suggestions.append({
+                        "index": idx_val,
+                        "action": action or "KEEP",
+                        "suggestion": suggestion or "Keep as-is.",
+                        "reason": reason,
+                    })
+
+            self._send_json({"suggestions": suggestions})
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_triple_suggest: {e}")
             print(traceback.format_exc())
             self._send_error(f"Error: {str(e)}", 500)
 
@@ -1046,7 +1221,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             "triples": triples_data,
         }
     
-    def _get_graph_html(self) -> Dict[str, Any]:
+    def _get_graph_html(self, *, layout: str = "") -> Dict[str, Any]:
         print("[API] Starting _get_graph_html")
         if not validator:
             return {"error": "Validator not initialized", "html": ""}
@@ -1086,7 +1261,13 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     webbrowser.open = original_open
             
             with disable_webbrowser():
-                visualizer.visualize_pyvis(graph, out_file=temp_path, id_to_name=id_to_name)
+                hierarchical = layout in {"tree", "hierarchical", "hierarchy"}
+                visualizer.visualize_pyvis(
+                    graph,
+                    out_file=temp_path,
+                    id_to_name=id_to_name,
+                    hierarchical=hierarchical,
+                )
             
             with open(temp_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()

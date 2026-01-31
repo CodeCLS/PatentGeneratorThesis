@@ -318,6 +318,12 @@
   color: rgb(55, 53, 47);
 }
 
+.mentionHighlight {
+  background: rgba(251, 191, 36, 0.35);
+  border-radius: 6px;
+  padding: 0 4px;
+}
+
 .relationList {
   display: flex;
   flex-direction: column;

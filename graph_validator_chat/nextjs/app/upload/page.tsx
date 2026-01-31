@@ -22,6 +22,18 @@ const fraunces = Fraunces({
 });
 
 const PIPELINE_PROGRESS_KEY = "pipeline_progress";
+const GRAPH_CACHE_KEYS = [
+  "graph_html",
+  "graph_timestamp",
+  "graph_triples_count",
+  "graph_html_chaotic",
+  "graph_timestamp_chaotic",
+  "graph_triples_count_chaotic",
+  "graph_html_tree",
+  "graph_timestamp_tree",
+  "graph_triples_count_tree",
+  "graph_layout",
+];
 const PIPELINE_STAGE_ORDER = [
   { id: "ingest", label: "Input ingest" },
   { id: "sentence_split", label: "Sentence splitting" },
@@ -119,9 +131,7 @@ export default function UploadPage() {
             localStorage.removeItem(PIPELINE_PROGRESS_KEY);
             localStorage.removeItem("pipeline_result");
             localStorage.removeItem("pipeline_payload");
-            localStorage.removeItem("graph_html");
-            localStorage.removeItem("graph_timestamp");
-            localStorage.removeItem("graph_triples_count");
+            GRAPH_CACHE_KEYS.forEach((key) => localStorage.removeItem(key));
             localStorage.removeItem("chat_messages");
             localStorage.removeItem("chat_triples");
             localStorage.removeItem("chat_changes");
@@ -224,9 +234,7 @@ export default function UploadPage() {
       }
 
       if (typeof window !== "undefined") {
-        localStorage.removeItem("graph_html");
-        localStorage.removeItem("graph_timestamp");
-        localStorage.removeItem("graph_triples_count");
+        GRAPH_CACHE_KEYS.forEach((key) => localStorage.removeItem(key));
         localStorage.setItem("pipeline_result", JSON.stringify(data));
       }
     } catch (err) {

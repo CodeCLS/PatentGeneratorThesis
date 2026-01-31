@@ -1041,7 +1041,7 @@ Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." 
                 # Set limit to exactly what we expect: max_iterations * 2
                 # If we hit this limit, it means the stop conditions aren't working correctly
                 config = {"recursion_limit": max_iterations * 2}
-                
+
                 for state_update in app.stream(initial_state, config=config):
                     node_name = list(state_update.keys())[-1]
                     final_state = list(state_update.values())[-1]

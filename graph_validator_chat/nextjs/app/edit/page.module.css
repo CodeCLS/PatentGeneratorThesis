@@ -78,6 +78,17 @@
   justify-content: space-between;
 }
 
+.controlsLeft {
+  flex: 1;
+  min-width: 240px;
+}
+
+.controlsRight {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .searchInput {
   min-width: 240px;
   flex: 1;
@@ -114,6 +125,24 @@
   border: 1px solid rgba(55, 53, 47, 0.12);
   box-shadow: none;
   gap: 12px;
+}
+
+.tripleTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.suggestionNote {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+  background: rgba(14, 116, 144, 0.12);
+  border: 1px solid rgba(14, 116, 144, 0.25);
+  padding: 4px 8px;
+  border-radius: 999px;
 }
 
 .tripleRow {

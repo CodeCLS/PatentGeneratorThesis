@@ -35,6 +35,18 @@ const STORAGE_KEY_MESSAGES = 'chat_messages';
 const STORAGE_KEY_TRIPLES = 'chat_triples';
 const STORAGE_KEY_CHANGES = 'chat_changes';
 const STORAGE_KEY_STATS = 'chat_stats';
+const GRAPH_CACHE_KEYS = [
+  'graph_html',
+  'graph_timestamp',
+  'graph_triples_count',
+  'graph_html_chaotic',
+  'graph_timestamp_chaotic',
+  'graph_triples_count_chaotic',
+  'graph_html_tree',
+  'graph_timestamp_tree',
+  'graph_triples_count_tree',
+  'graph_layout',
+];
 
 export default function ChatPage() {
   const router = useRouter();
@@ -70,9 +82,7 @@ export default function ChatPage() {
           localStorage.removeItem('pipeline_progress');
           localStorage.removeItem('pipeline_result');
           localStorage.removeItem('pipeline_payload');
-          localStorage.removeItem('graph_html');
-          localStorage.removeItem('graph_timestamp');
-          localStorage.removeItem('graph_triples_count');
+          GRAPH_CACHE_KEYS.forEach((key) => localStorage.removeItem(key));
           localStorage.removeItem(STORAGE_KEY_MESSAGES);
           localStorage.removeItem(STORAGE_KEY_TRIPLES);
           localStorage.removeItem(STORAGE_KEY_CHANGES);

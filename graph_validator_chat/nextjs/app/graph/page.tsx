@@ -11,8 +11,12 @@ import SideNav from '@/components/SideNav';
 const STORAGE_KEY_GRAPH_HTML = 'graph_html';
 const STORAGE_KEY_GRAPH_TIMESTAMP = 'graph_timestamp';
 const STORAGE_KEY_GRAPH_TRIPLES_COUNT = 'graph_triples_count';
+const STORAGE_KEY_GRAPH_LAYOUT = 'graph_layout';
 const GRAPH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const GRAPH_HTML_ENDPOINT = process.env.NEXT_PUBLIC_GRAPH_ENDPOINT || '/api/graph/html';
+const USE_NEO4J_GRAPH = GRAPH_HTML_ENDPOINT.includes('/api/graph/neo4j');
+
+type LayoutMode = 'chaotic' | 'tree';
 
 interface Entity {
   id: string;
@@ -30,6 +34,10 @@ interface Triple {
 export default function GraphPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(() => {
+    if (typeof window === 'undefined') return 'chaotic';
+    return localStorage.getItem(STORAGE_KEY_GRAPH_LAYOUT) === 'tree' ? 'tree' : 'chaotic';
+  });
   const [graphHtml, setGraphHtml] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -46,10 +54,16 @@ export default function GraphPage() {
   const [neo4jStats, setNeo4jStats] = useState<{ nodes: number; edges: number; database?: string } | null>(null);
   const [neo4jStatsError, setNeo4jStatsError] = useState<string>('');
   const [neo4jStatsLoading, setNeo4jStatsLoading] = useState(false);
+  const [localStats, setLocalStats] = useState<{ nodes: number; edges: number } | null>(null);
+  const [localStatsError, setLocalStatsError] = useState<string>('');
+  const [localStatsLoading, setLocalStatsLoading] = useState(false);
   const [pipelineBootstrapping, setPipelineBootstrapping] = useState(false);
   const [pipelineBootstrapError, setPipelineBootstrapError] = useState<string>('');
   const hasLoadedRef = useRef(false);
+  const layoutInitializedRef = useRef(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const cacheKey = (base: string, layout: LayoutMode) => `${base}_${layout}`;
 
   const loadTriples = useCallback(async (): Promise<number | null> => {
     try {
@@ -82,12 +96,15 @@ export default function GraphPage() {
   }, []);
 
   const loadGraph = useCallback(async (force = false) => {
+    const htmlKey = cacheKey(STORAGE_KEY_GRAPH_HTML, layoutMode);
+    const timestampKey = cacheKey(STORAGE_KEY_GRAPH_TIMESTAMP, layoutMode);
+    const countKey = cacheKey(STORAGE_KEY_GRAPH_TRIPLES_COUNT, layoutMode);
     // Check cache first unless forcing a reload
     if (!force && typeof window !== 'undefined') {
       try {
-        const storedHtml = localStorage.getItem(STORAGE_KEY_GRAPH_HTML);
-        const storedTimestamp = localStorage.getItem(STORAGE_KEY_GRAPH_TIMESTAMP);
-        const storedTriplesCount = localStorage.getItem(STORAGE_KEY_GRAPH_TRIPLES_COUNT);
+        const storedHtml = localStorage.getItem(htmlKey);
+        const storedTimestamp = localStorage.getItem(timestampKey);
+        const storedTriplesCount = localStorage.getItem(countKey);
         if (storedHtml && storedTimestamp && storedHtml.length > 0) {
           const timestamp = parseInt(storedTimestamp, 10);
           const now = Date.now();
@@ -99,17 +116,17 @@ export default function GraphPage() {
             const cachedCount = storedTriplesCount ? parseInt(storedTriplesCount, 10) : null;
             if (latestCount !== null && cachedCount !== null && latestCount !== cachedCount) {
               console.log('Cached graph is stale, refetching');
-              localStorage.removeItem(STORAGE_KEY_GRAPH_HTML);
-              localStorage.removeItem(STORAGE_KEY_GRAPH_TIMESTAMP);
-              localStorage.removeItem(STORAGE_KEY_GRAPH_TRIPLES_COUNT);
+              localStorage.removeItem(htmlKey);
+              localStorage.removeItem(timestampKey);
+              localStorage.removeItem(countKey);
               await loadGraph(true);
             }
             return; // Use cached version - don't fetch
           } else {
             console.log('Cache expired, clearing');
-            localStorage.removeItem(STORAGE_KEY_GRAPH_HTML);
-            localStorage.removeItem(STORAGE_KEY_GRAPH_TIMESTAMP);
-            localStorage.removeItem(STORAGE_KEY_GRAPH_TRIPLES_COUNT);
+            localStorage.removeItem(htmlKey);
+            localStorage.removeItem(timestampKey);
+            localStorage.removeItem(countKey);
           }
         }
       } catch (e) {
@@ -122,7 +139,10 @@ export default function GraphPage() {
     try {
       setLoading(true);
       setError('');
-      const response = await fetch(GRAPH_HTML_ENDPOINT, { cache: 'no-store' });
+      const graphUrl = GRAPH_HTML_ENDPOINT.includes('?')
+        ? `${GRAPH_HTML_ENDPOINT}&layout=${layoutMode}`
+        : `${GRAPH_HTML_ENDPOINT}?layout=${layoutMode}`;
+      const response = await fetch(graphUrl, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error('Failed to load graph');
       }
@@ -135,13 +155,13 @@ export default function GraphPage() {
           setGraphHtml(html);
           setGraphKey(prev => prev + 1);
           if (typeof window !== 'undefined') {
-            localStorage.setItem(STORAGE_KEY_GRAPH_HTML, html);
-            localStorage.setItem(STORAGE_KEY_GRAPH_TIMESTAMP, Date.now().toString());
+            localStorage.setItem(htmlKey, html);
+            localStorage.setItem(timestampKey, Date.now().toString());
             console.log('Graph cached');
           }
           const latestCount = await loadTriples();
           if (typeof window !== 'undefined' && latestCount !== null) {
-            localStorage.setItem(STORAGE_KEY_GRAPH_TRIPLES_COUNT, latestCount.toString());
+            localStorage.setItem(countKey, latestCount.toString());
           }
         }
       }
@@ -150,7 +170,7 @@ export default function GraphPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadTriples]);
+  }, [layoutMode, loadTriples]);
 
   const loadNeo4jStats = useCallback(async () => {
     try {
@@ -171,6 +191,28 @@ export default function GraphPage() {
       setNeo4jStatsError(err instanceof Error ? err.message : 'Failed to load Neo4j stats');
     } finally {
       setNeo4jStatsLoading(false);
+    }
+  }, []);
+
+  const loadLocalStats = useCallback(async () => {
+    try {
+      setLocalStatsLoading(true);
+      setLocalStatsError('');
+      const response = await fetch('/api/state', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to load local graph stats');
+      }
+      const graph = data.graph || {};
+      setLocalStats({
+        nodes: typeof graph.num_nodes === 'number' ? graph.num_nodes : 0,
+        edges: typeof graph.num_edges === 'number' ? graph.num_edges : 0,
+      });
+    } catch (err) {
+      setLocalStats(null);
+      setLocalStatsError(err instanceof Error ? err.message : 'Failed to load local graph stats');
+    } finally {
+      setLocalStatsLoading(false);
     }
   }, []);
 
@@ -359,14 +401,33 @@ export default function GraphPage() {
       if (ready) {
         // Try to load from cache first - loadGraph will check cache
         loadGraph(false);
-        loadNeo4jStats();
+        if (USE_NEO4J_GRAPH) {
+          loadNeo4jStats();
+        } else {
+          loadLocalStats();
+        }
       } else {
         setLoading(false);
       }
     };
 
     initialize();
-  }, [ensurePipeline, loadGraph, loadNeo4jStats]);
+  }, [ensurePipeline, loadGraph, loadLocalStats, loadNeo4jStats]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (!layoutInitializedRef.current) {
+      layoutInitializedRef.current = true;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY_GRAPH_LAYOUT, layoutMode);
+      }
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_GRAPH_LAYOUT, layoutMode);
+    }
+    void loadGraph(true);
+  }, [layoutMode, loadGraph, mounted]);
 
   const handleGenerateClaims = async () => {
     // Generate claims before navigating to editor
@@ -456,32 +517,68 @@ export default function GraphPage() {
               <h1>Knowledge Graph Visualization</h1>
             </div>
             <div className={styles.headerActions}>
-              <div
-                className={`${styles.neo4jStatus} ${
-                  neo4jStatsError
-                    ? styles.neo4jStatusError
-                    : neo4jStatsLoading
-                    ? styles.neo4jStatusLoading
-                    : styles.neo4jStatusOk
+              {USE_NEO4J_GRAPH ? (
+                <div
+                  className={`${styles.neo4jStatus} ${
+                    neo4jStatsError
+                      ? styles.neo4jStatusError
+                      : neo4jStatsLoading
+                      ? styles.neo4jStatusLoading
+                      : styles.neo4jStatusOk
+                  }`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {neo4jStatsLoading && 'Neo4j: checking connection...'}
+                  {!neo4jStatsLoading && neo4jStatsError && `Neo4j: ${neo4jStatsError}`}
+                  {!neo4jStatsLoading && !neo4jStatsError && neo4jStats && (
+                    <>
+                      Neo4j: {neo4jStats.nodes} nodes, {neo4jStats.edges} edges
+                      {neo4jStats.database ? ` (${neo4jStats.database})` : ''}
+                    </>
+                  )}
+                  {!neo4jStatsLoading && !neo4jStatsError && !neo4jStats && 'Neo4j: no data'}
+                </div>
+              ) : (
+                <div
+                  className={`${styles.neo4jStatus} ${
+                    localStatsError
+                      ? styles.neo4jStatusError
+                      : localStatsLoading
+                      ? styles.neo4jStatusLoading
+                      : styles.neo4jStatusOk
+                  }`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {localStatsLoading && 'Local: loading graph stats...'}
+                  {!localStatsLoading && localStatsError && `Local: ${localStatsError}`}
+                  {!localStatsLoading && !localStatsError && localStats && (
+                    <>Local: {localStats.nodes} nodes, {localStats.edges} edges</>
+                  )}
+                  {!localStatsLoading && !localStatsError && !localStats && 'Local: no data'}
+                </div>
+              )}
+              <button
+                className={`${styles.toggleButton} ${
+                  layoutMode === 'tree' ? styles.toggleButtonActive : ''
                 }`}
-                role="status"
-                aria-live="polite"
+                onClick={() =>
+                  setLayoutMode(layoutMode === 'tree' ? 'chaotic' : 'tree')
+                }
+                disabled={loading}
               >
-                {neo4jStatsLoading && 'Neo4j: checking connection...'}
-                {!neo4jStatsLoading && neo4jStatsError && `Neo4j: ${neo4jStatsError}`}
-                {!neo4jStatsLoading && !neo4jStatsError && neo4jStats && (
-                  <>
-                    Neo4j: {neo4jStats.nodes} nodes, {neo4jStats.edges} edges
-                    {neo4jStats.database ? ` (${neo4jStats.database})` : ''}
-                  </>
-                )}
-                {!neo4jStatsLoading && !neo4jStatsError && !neo4jStats && 'Neo4j: no data'}
-              </div>
+                Layout: {layoutMode === 'tree' ? 'Tree' : 'Chaotic'}
+              </button>
               <button
                 className={styles.refreshButton}
                 onClick={() => {
                   loadGraph(true);
-                  loadNeo4jStats();
+                  if (USE_NEO4J_GRAPH) {
+                    loadNeo4jStats();
+                  } else {
+                    loadLocalStats();
+                  }
                 }}
                 disabled={loading}
               >

@@ -57,7 +57,8 @@ class FormattingManager():
                     kg_node_id=original_sentence.kg_node_id,  # Keep original KG node ID if exists
                     embedding=original_sentence.embedding,  # Keep original embedding
                     tokens=original_sentence.tokens,  # Keep original tokens
-                    entities=original_sentence.entities,  # Keep original entities
+                    # Copy entities list to avoid sharing across split sentences
+                    entities=list(original_sentence.entities) if original_sentence.entities else [],
                     tags=original_sentence.tags.copy() if original_sentence.tags else {},  # Copy tags
                     importance=original_sentence.importance,
                     info_quality=original_sentence.info_quality,
@@ -218,7 +219,8 @@ class FormattingManager():
                             kg_node_id=sentence.kg_node_id,
                             embedding=sentence.embedding,
                             tokens=sentence.tokens,
-                            entities=sentence.entities,
+                            # Copy entities list to avoid shared references
+                            entities=list(sentence.entities) if sentence.entities else [],
                             tags=sentence.tags.copy() if sentence.tags else {},
                             importance=sentence.importance,
                             info_quality=sentence.info_quality,

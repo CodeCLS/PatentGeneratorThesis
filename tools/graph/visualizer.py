@@ -323,6 +323,7 @@ class GraphVisualizer:
         id_to_name: Optional[Dict[str, str]] = None,
         cluster_attr: Optional[str] = None,
         cid_to_seedtype: Optional[Dict[int, str]] = None,
+        hierarchical: bool = False,
     ) -> None:
         """
         Create an interactive PyVis visualization of the graph.
@@ -333,10 +334,33 @@ class GraphVisualizer:
             id_to_name: Optional mapping from node ID to display name
             cluster_attr: Optional edge attribute name for cluster ID
             cid_to_seedtype: Optional mapping from cluster ID to seed type
+            hierarchical: If True, render as a tree-like layout
         """
         id_to_name = id_to_name or {}
         net = Network(height="100vh", width="100%", directed=True, notebook=False)
-        net.barnes_hut()
+        if hierarchical:
+            # Use hierarchical layout to reduce chaotic graph placement
+            net.set_options(
+                """
+                {
+                  "layout": {
+                    "hierarchical": {
+                      "enabled": true,
+                      "direction": "UD",
+                      "sortMethod": "directed",
+                      "levelSeparation": 120,
+                      "nodeSpacing": 200,
+                      "treeSpacing": 250
+                    }
+                  },
+                  "physics": {
+                    "enabled": false
+                  }
+                }
+                """
+            )
+        else:
+            net.barnes_hut()
 
         # Add nodes
         for n in G.nodes():

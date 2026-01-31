@@ -121,11 +121,7 @@ export default function EditorPage() {
               if (!storedProgress || JSON.parse(storedProgress).stage === 'idle') {
                 setProgress(null);
               }
-              // Stop checking if idle
-              if (progressCheckIntervalRef.current) {
-                clearInterval(progressCheckIntervalRef.current);
-                progressCheckIntervalRef.current = null;
-              }
+              // Keep polling so we don't miss a new generation start
             }
           } else {
             console.log('[Editor] No progress data in response:', data);
@@ -170,10 +166,18 @@ export default function EditorPage() {
       const storedProgress = localStorage.getItem(STORAGE_KEY_CLAIM_PROGRESS);
       if (storedProgress) {
         const progressData = JSON.parse(storedProgress);
-        console.log('[Editor] Loaded stored progress:', progressData);
-        setProgress(progressData);
+        const isStaleGenerateMessage =
+          !isRegeneratingRef.current &&
+          typeof progressData?.message === 'string' &&
+          progressData.message.toLowerCase().includes('generating claims with similarity');
+        if (isStaleGenerateMessage) {
+          localStorage.removeItem(STORAGE_KEY_CLAIM_PROGRESS);
+        } else {
+          console.log('[Editor] Loaded stored progress:', progressData);
+          setProgress(progressData);
+        }
         // If complete, load claims immediately
-        if (progressData.stage === 'complete') {
+        if (!isStaleGenerateMessage && progressData.stage === 'complete') {
           console.log('[Editor] Stored progress shows complete, loading claims...');
           // Small delay to ensure editor is ready
           setTimeout(async () => {
@@ -428,7 +432,7 @@ export default function EditorPage() {
         progressCheckIntervalRef.current = null;
       }
       
-      const customMessage = `Regenerating claims with similarity threshold ${(threshold * 100).toFixed(0)}%...`;
+      const customMessage = `Generating claims with similarity threshold ${(threshold * 100).toFixed(0)}%...`;
       
       setProgress({
         stage: 'planning',
@@ -506,10 +510,7 @@ export default function EditorPage() {
                         }, 500);
                       }
                     } else if (progressUpdate.stage === 'idle') {
-                      if (progressCheckIntervalRef.current) {
-                        clearInterval(progressCheckIntervalRef.current);
-                        progressCheckIntervalRef.current = null;
-                      }
+                      // Keep polling so we don't miss a new generation start
                     }
                   }
                 }
@@ -529,19 +530,19 @@ export default function EditorPage() {
       } else {
         isRegeneratingRef.current = false;
         // Try to get error message from response
-        let errorMessage = 'Failed to regenerate claims';
+        let errorMessage = 'Failed to generate claims';
         try {
           const errorData = await response.json();
           if (errorData.error) {
-            errorMessage = `Failed to regenerate claims: ${errorData.error}`;
+            errorMessage = `Failed to generate claims: ${errorData.error}`;
           } else if (errorData.message) {
-            errorMessage = `Failed to regenerate claims: ${errorData.message}`;
+            errorMessage = `Failed to generate claims: ${errorData.message}`;
           }
         } catch (e) {
           // If response is not JSON, use status text
-          errorMessage = `Failed to regenerate claims: ${response.status} ${response.statusText}`;
+          errorMessage = `Failed to generate claims: ${response.status} ${response.statusText}`;
         }
-        console.error('[Editor] Failed to regenerate claims:', errorMessage);
+        console.error('[Editor] Failed to generate claims:', errorMessage);
         setProgress({
           stage: 'error',
           message: errorMessage,
@@ -551,7 +552,7 @@ export default function EditorPage() {
     } catch (error) {
       isRegeneratingRef.current = false;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('[Editor] Error regenerating claims:', error);
+      console.error('[Editor] Error generating claims:', error);
       setProgress({
         stage: 'error',
         message: `Error regenerating claims: ${errorMessage}`,
@@ -563,7 +564,7 @@ export default function EditorPage() {
   const handleSimilarityThresholdChange = (value: number) => {
     setSimilarityThreshold(value);
     localStorage.setItem(STORAGE_KEY_SIMILARITY_THRESHOLD, value.toString());
-    // Don't regenerate automatically - user must click "Regenerate" button
+    // Don't auto-generate; user must click the button
   };
 
   return (
@@ -695,9 +696,9 @@ export default function EditorPage() {
           <button
             className={styles.toolbarButton}
             onClick={() => regenerateClaimsWithThreshold(similarityThreshold)}
-            title="Regenerate claims with new similarity threshold"
+            title="Generate claims with new similarity threshold"
           >
-            Regenerate
+            Generate
           </button>
         </div>
       </div>

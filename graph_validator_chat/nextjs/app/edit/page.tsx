@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./page.module.css";
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ interface TripleEditState {
   relationSelection: string;
   newRelation: string;
   saving: boolean;
+  deleting: boolean;
   message?: string;
   messageType?: "success" | "error";
 }
@@ -52,6 +53,18 @@ type ComboOption = { value: string; label: string };
 
 const NEW_ENTITY_VALUE = "__new__";
 const NEW_RELATION_VALUE = "__new_relation__";
+const GRAPH_CACHE_KEYS = [
+  "graph_html",
+  "graph_timestamp",
+  "graph_triples_count",
+  "graph_html_chaotic",
+  "graph_timestamp_chaotic",
+  "graph_triples_count_chaotic",
+  "graph_html_tree",
+  "graph_timestamp_tree",
+  "graph_triples_count_tree",
+  "graph_layout",
+];
 
 const Combobox = ({
   valueLabel,
@@ -152,7 +165,13 @@ const buildEditState = (triple: Triple): TripleEditState => ({
   relationSelection: triple.relation,
   newRelation: "",
   saving: false,
+  deleting: false,
 });
+
+const clearGraphCache = () => {
+  if (typeof window === "undefined") return;
+  GRAPH_CACHE_KEYS.forEach((key) => localStorage.removeItem(key));
+};
 
 export default function EditPage() {
   const [triples, setTriples] = useState<Triple[]>([]);
@@ -161,6 +180,10 @@ export default function EditPage() {
   const [error, setError] = useState<string>("");
   const [pipelineError, setPipelineError] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [suggestions, setSuggestions] = useState<Record<string, { action: string; suggestion: string; reason?: string }>>({});
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string>("");
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   const entities = useMemo(() => {
     const map = new Map<string, Entity>();
@@ -216,6 +239,7 @@ export default function EditPage() {
   }, [triples, searchTerm]);
 
   const loadTriples = async () => {
+    const previousScrollTop = listRef.current?.scrollTop ?? 0;
     try {
       setLoading(true);
       setError("");
@@ -231,6 +255,11 @@ export default function EditPage() {
         nextStates[String(triple.index)] = buildEditState(triple);
       });
       setEditStates(nextStates);
+      requestAnimationFrame(() => {
+        if (listRef.current) {
+          listRef.current.scrollTop = previousScrollTop;
+        }
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load triples");
     } finally {
@@ -349,6 +378,7 @@ export default function EditPage() {
         message: "Triple updated.",
         messageType: "success",
       });
+      clearGraphCache();
       await loadTriples();
     } catch (err) {
       updateEditState(triple.index, {
@@ -357,6 +387,40 @@ export default function EditPage() {
       });
     } finally {
       updateEditState(triple.index, { saving: false });
+    }
+  };
+
+  const handleDeleteTriple = async (triple: Triple) => {
+    const state = editStates[String(triple.index)];
+    if (!state || state.deleting) return;
+
+    const confirmed = window.confirm(`Delete triple #${triple.index + 1}?`);
+    if (!confirmed) return;
+
+    updateEditState(triple.index, { deleting: true, message: undefined, messageType: undefined });
+    try {
+      const response = await fetch("/api/triples/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index: triple.index }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) {
+        throw new Error(data.error || "Failed to delete triple");
+      }
+      updateEditState(triple.index, {
+        message: "Triple deleted.",
+        messageType: "success",
+      });
+      clearGraphCache();
+      await loadTriples();
+    } catch (err) {
+      updateEditState(triple.index, {
+        message: err instanceof Error ? err.message : "Failed to delete triple",
+        messageType: "error",
+      });
+    } finally {
+      updateEditState(triple.index, { deleting: false });
     }
   };
 
@@ -393,6 +457,48 @@ export default function EditPage() {
     }
   };
 
+  const fetchSuggestions = async (indices: number[]) => {
+    const response = await fetch("/api/triples/suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ indices }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.error) {
+      throw new Error(data.error || "Failed to fetch AI suggestions");
+    }
+    return data.suggestions || [];
+  };
+
+  const handleSuggest = async () => {
+    if (suggesting || filteredTriples.length === 0) return;
+    setSuggestError("");
+    setSuggesting(true);
+    try {
+      const batchSize = 6; // original + 5 other triples
+      const nextSuggestions: Record<string, { action: string; suggestion: string; reason?: string }> = {};
+      for (let i = 0; i < filteredTriples.length; i += batchSize) {
+        const batch = filteredTriples.slice(i, i + batchSize);
+        const indices = batch.map((t) => t.index);
+        const results = await fetchSuggestions(indices);
+        results.forEach((item: any) => {
+          if (item && typeof item.index === "number") {
+            nextSuggestions[String(item.index)] = {
+              action: String(item.action || "KEEP"),
+              suggestion: String(item.suggestion || "Keep as-is."),
+              reason: item.reason ? String(item.reason) : "",
+            };
+          }
+        });
+      }
+      setSuggestions(nextSuggestions);
+    } catch (err) {
+      setSuggestError(err instanceof Error ? err.message : "Failed to fetch AI suggestions");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
   return (
     <div className={styles.layout}>
       <SideNav current="edit" />
@@ -413,17 +519,26 @@ export default function EditPage() {
         <main className={styles.main}>
         {pipelineError && <div className={styles.pipelineNotice}>{pipelineError}</div>}
         <div className={styles.controls}>
-          <input
-            className={styles.searchInput}
-            type="text"
-            placeholder="Search by entity, label, or relation..."
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-          />
-          <Button variant="outline" size="sm" onClick={loadTriples} disabled={loading}>
-            {loading ? "Loading..." : "Refresh"}
-          </Button>
+          <div className={styles.controlsLeft}>
+            <input
+              className={styles.searchInput}
+              type="text"
+              placeholder="Search by entity, label, or relation..."
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
+          </div>
+          <div className={styles.controlsRight}>
+            <Button variant="outline" size="sm" onClick={handleSuggest} disabled={loading || suggesting}>
+              {suggesting ? "Suggesting..." : "AI Suggestions"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={loadTriples} disabled={loading}>
+              {loading ? "Loading..." : "Refresh"}
+            </Button>
+          </div>
         </div>
+
+        {suggestError && <div className={styles.pipelineNotice}>{suggestError}</div>}
 
         {error && <div className={styles.pipelineNotice}>{error}</div>}
 
@@ -441,7 +556,7 @@ export default function EditPage() {
         )}
 
         {!loading && !error && filteredTriples.length > 0 && (
-          <div className={styles.list}>
+          <div className={styles.list} ref={listRef}>
             {filteredTriples.map((triple) => {
               const state = editStates[String(triple.index)] || buildEditState(triple);
               const selectedHead = entitiesById.get(state.headSelection);
@@ -462,7 +577,18 @@ export default function EditPage() {
               return (
                 <Card key={triple.index} className={styles.tripleCard}>
                   <CardHeader>
-                    <CardTitle>Triple #{triple.index + 1}</CardTitle>
+                    <CardTitle className={styles.tripleTitle}>
+                      <span>Triple #{triple.index + 1}</span>
+                      {suggestions[String(triple.index)] && (
+                        <span className={styles.suggestionNote}>
+                          AI: {suggestions[String(triple.index)].suggestion}
+                          {suggestions[String(triple.index)].action !== "KEEP" &&
+                          suggestions[String(triple.index)].reason
+                            ? ` — ${suggestions[String(triple.index)].reason}`
+                            : ""}
+                        </span>
+                      )}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className={styles.tripleRow}>
@@ -648,8 +774,20 @@ export default function EditPage() {
                     </div>
 
                     <div className={styles.tripleActions}>
-                      <Button size="sm" onClick={() => handleApply(triple)} disabled={state.saving}>
+                      <Button
+                        size="sm"
+                        onClick={() => handleApply(triple)}
+                        disabled={state.saving || state.deleting}
+                      >
                         {state.saving ? "Saving..." : "Apply changes"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDeleteTriple(triple)}
+                        disabled={state.saving || state.deleting}
+                      >
+                        {state.deleting ? "Deleting..." : "Delete"}
                       </Button>
                       {state.message && (
                         <span
