@@ -6,7 +6,7 @@ bin/
 lib/
 
 # Ignore large data/model folders (unless specifically needed)
-kg/
+# kg/ is required by graph_validator_chat (pipeline_manager) - do not ignore
 training/
 __pycache__/
 *.ipynb
