@@ -387,7 +387,6 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             return {"initialized": False, "message": "Validator initializing..."}
         
         questions = validator._current_state.get("questions", []) if hasattr(validator, '_current_state') and validator._current_state else []
-        print(q.type for q in questions )
         unanswered = [q for q in questions if not (q.answered if isinstance(q, Question) else q.get("answered", False))]
         
         return {
@@ -1610,26 +1609,31 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             return
         
         try:
+            patent_description = ""
+            num_independent = 3
+            num_dependent_per_independent = 2
+            similarity_threshold = 0.3
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length > 0:
-                data = json.loads(self.rfile.read(content_length).decode('utf-8'))
-                patent_description = data.get("patent_description", "")
+                try:
+                    raw = self.rfile.read(content_length)
+                    body = raw.decode('utf-8') if isinstance(raw, bytes) else raw
+                    data = json.loads(body) if body and body.strip() else {}
+                except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                    print(f"[API] _handle_generate_claims: Body parse failed (using defaults): {e}")
+                    data = {}
+                patent_description = data.get("patent_description") or ""
                 num_independent = data.get("num_independent", 3)
                 num_dependent_per_independent = data.get("num_dependent_per_independent", 2)
                 similarity_threshold = data.get("similarity_threshold", 0.3)
-            else:
-                # Use default values if no body provided
-                patent_description = ""
-                num_independent = 3
-                num_dependent_per_independent = 2
-                similarity_threshold = 0.3
             
+            patent_description = (patent_description or "").strip() if patent_description is not None else ""
             # Get patent description from validator state if not provided
             print(f"[DEBUG] _handle_generate_claims: Initial patent_description: '{patent_description[:100] if patent_description else 'EMPTY'}...'")
             print(f"[DEBUG] _handle_generate_claims: patent_description is None: {patent_description is None}")
-            print(f"[DEBUG] _handle_generate_claims: patent_description.strip() == '': {patent_description.strip() == '' if patent_description else 'N/A'}")
+            print(f"[DEBUG] _handle_generate_claims: patent_description.strip() == '': {(patent_description or '').strip() == ''}")
             
-            if not patent_description or patent_description.strip() == "":
+            if not patent_description:
                 print(f"[DEBUG] _handle_generate_claims: Patent description empty, trying to extract from sentence_split...")
                 # First try to get from sentence_split (global variable)
                 global _sentence_split
@@ -1658,7 +1662,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                         traceback.print_exc()
                 
                 # Fallback: Try to get from validator state (chat messages)
-                if not patent_description or patent_description.strip() == "":
+                if not patent_description:
                     print(f"[DEBUG] _handle_generate_claims: Trying to extract from validator state...")
                     if hasattr(validator, '_current_state') and validator._current_state:
                         print(f"[DEBUG] _handle_generate_claims: Validator has _current_state")
@@ -1689,8 +1693,15 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                         print(f"[DEBUG] _handle_generate_claims: No validator state, using placeholder")
             
             print(f"[DEBUG] _handle_generate_claims: Final patent_description length: {len(patent_description)} chars")
-            print(f"[DEBUG] _handle_generate_claims: Final patent_description preview: {patent_description[:200]}...")
+            print(f"[DEBUG] _handle_generate_claims: Final patent_description preview: {patent_description[:200] if patent_description else 'EMPTY'}...")
             print(f"[DEBUG] _handle_generate_claims: num_independent={num_independent}, num_dependent_per_independent={num_dependent_per_independent}")
+            
+            if not validator.graph or not validator.triples:
+                self._send_error(
+                    "Graph or triples not ready. Run the pipeline (upload/analyze) first, then generate claims.",
+                    400,
+                )
+                return
             
             # Declare globals at the start of the function
             global _claim_generation_progress, _cached_claims
