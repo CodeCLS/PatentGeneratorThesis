@@ -13,6 +13,7 @@ import time
 import socket
 import pickle
 import base64
+import io
 import os
 import subprocess
 import re
@@ -76,6 +77,21 @@ _cached_claims: List[Dict[str, Any]] = []
 
 if load_dotenv:
     load_dotenv()
+
+
+def _extract_pdf_text_from_bytes(pdf_bytes: bytes) -> str:
+    try:
+        from PyPDF2 import PdfReader
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError("PyPDF2 is required for PDF uploads") from exc
+
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    pages = []
+    for page in reader.pages:
+        page_text = page.extract_text() or ""
+        if page_text.strip():
+            pages.append(page_text)
+    return "\n\n".join(pages).strip()
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -312,6 +328,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             elif path == '/api/pipeline/run':
                 print("[API] Routing to _handle_pipeline_run")
                 self._handle_pipeline_run()
+            elif path == '/api/pipeline/restore':
+                print("[API] Routing to _handle_pipeline_restore")
+                self._handle_pipeline_restore()
             elif path == '/api/claims/generate':
                 print("[API ] Routing to _handle_generate_claims")
                 self._handle_generate_claims()
@@ -885,11 +904,14 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(content_length).decode('utf-8'))
             patent_id = data.get("patent_id") or data.get("patentId") or data.get("patentID")
             text = data.get("text") or data.get("patent_text") or ""
+            pdf_base64 = data.get("pdf_base64") or data.get("pdfBase64") or ""
             filename = data.get("filename") or ""
 
             source = None
             if isinstance(text, str) and text.strip():
                 source = "text"
+            elif isinstance(pdf_base64, str) and pdf_base64.strip():
+                source = "pdf"
             elif patent_id:
                 patent_id = str(patent_id).strip()
                 if not patent_id:
@@ -899,8 +921,19 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 print(f"[API] Fetching patent description for {patent_id}")
                 text = PatentProvider().getDescription(patent_id)
 
+            if source == "pdf":
+                try:
+                    pdf_bytes = base64.b64decode(pdf_base64)
+                except Exception:
+                    self._send_error("Invalid PDF data", 400)
+                    return
+                text = _extract_pdf_text_from_bytes(pdf_bytes)
+
             if not isinstance(text, str) or not text.strip():
-                self._send_error("No text provided or fetched", 400)
+                if source == "pdf":
+                    self._send_error("No extractable text found in PDF. Try a text-based PDF or OCR.", 400)
+                else:
+                    self._send_error("No text provided or fetched", 400)
                 return
 
             manager = _get_pipeline_manager()
@@ -980,11 +1013,14 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(content_length).decode('utf-8'))
             patent_id = data.get("patent_id") or data.get("patentId") or data.get("patentID")
             text = data.get("text") or data.get("patent_text") or ""
+            pdf_base64 = data.get("pdf_base64") or data.get("pdfBase64") or ""
             filename = data.get("filename") or ""
 
             source = None
             if isinstance(text, str) and text.strip():
                 source = "text"
+            elif isinstance(pdf_base64, str) and pdf_base64.strip():
+                source = "pdf"
             elif patent_id:
                 patent_id = str(patent_id).strip()
                 if not patent_id:
@@ -1011,17 +1047,33 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 try:
                     task_text = text
                     task_patent_id = patent_id
+                    task_pdf_base64 = pdf_base64
                     task_filename = filename
                     task_source = source
 
                     if task_source == "patent_id":
                         print(f"[API] Fetching patent description for {task_patent_id}")
                         task_text = PatentProvider().getDescription(task_patent_id)
+                    elif task_source == "pdf":
+                        try:
+                            pdf_bytes = base64.b64decode(task_pdf_base64)
+                            task_text = _extract_pdf_text_from_bytes(pdf_bytes)
+                        except Exception as exc:
+                            set_pipeline_progress({
+                                "stage": "error",
+                                "message": f"Failed to read PDF: {exc}",
+                                "progress": 0,
+                            })
+                            return
 
                     if not isinstance(task_text, str) or not task_text.strip():
                         set_pipeline_progress({
                             "stage": "error",
-                            "message": "No text provided or fetched",
+                            "message": (
+                                "No extractable text found in PDF. Try a text-based PDF or OCR."
+                                if task_source == "pdf"
+                                else "No text provided or fetched"
+                            ),
                             "progress": 0,
                         })
                         return
@@ -1085,6 +1137,73 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 _pipeline_progress = {
                     "stage": "error",
                     "message": f"Pipeline failed: {str(e)}",
+                    "progress": 0,
+                }
+            self._send_error(f"Error: {str(e)}", 500)
+
+    def _handle_pipeline_restore(self):
+        """Restore validator/graph from persisted cache if available."""
+        print("[API] Starting _handle_pipeline_restore")
+        try:
+            global _pipeline_progress
+
+            # If validator already exists, nothing to restore
+            if validator is not None:
+                self._send_json({
+                    "success": True,
+                    "restored": False,
+                    "message": "Validator already initialized",
+                })
+                return
+
+            persisted = _load_persisted_validator()
+            if not persisted:
+                self._send_error("No persisted validator state found", 404)
+                return
+
+            with _pipeline_lock:
+                set_progress = {
+                    "stage": "validator_init",
+                    "message": "Restoring validator from cache",
+                    "progress": 98,
+                }
+                with _pipeline_progress_lock:
+                    _pipeline_progress = set_progress
+
+                initialize_validator(
+                    graph=persisted.get("graph"),
+                    triples=persisted.get("triples"),
+                    id_to_name=persisted.get("id_to_name"),
+                    sentence_split=persisted.get("sentence_split"),
+                )
+
+                with _pipeline_progress_lock:
+                    _pipeline_progress = {
+                        "stage": "complete",
+                        "message": "Cache restore complete",
+                        "progress": 100,
+                    }
+
+            graph = persisted.get("graph")
+            triples = persisted.get("triples") or []
+            id_to_name = persisted.get("id_to_name") or {}
+
+            self._send_json({
+                "success": True,
+                "restored": True,
+                "num_nodes": graph.number_of_nodes() if graph else 0,
+                "num_edges": graph.number_of_edges() if graph else 0,
+                "num_triples": len(triples),
+                "id_to_name": id_to_name,
+            })
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_pipeline_restore: {e}")
+            print(traceback.format_exc())
+            with _pipeline_progress_lock:
+                _pipeline_progress = {
+                    "stage": "error",
+                    "message": f"Restore failed: {str(e)}",
                     "progress": 0,
                 }
             self._send_error(f"Error: {str(e)}", 500)
@@ -2312,6 +2431,7 @@ def start_validator_chat(
             id_to_name = persisted.get("id_to_name")
             sentence_split = persisted.get("sentence_split")
             print("[Server] Loaded persisted validator state")
+    api_host = (os.getenv("API_HOST") or "127.0.0.1").strip() or "127.0.0.1"
     api_port_in_use = not _is_port_available(port) if port else False
     nextjs_port_in_use = not _is_port_available(3000)
     if _server_running or api_port_in_use or nextjs_port_in_use:
@@ -2338,8 +2458,8 @@ def start_validator_chat(
     
     def run_api_server():
         global _api_server
-        _api_server = ThreadedHTTPServer(('127.0.0.1', api_port), GraphValidatorHandler)
-        print(f"✓ API Server running on http://localhost:{api_port}")
+        _api_server = ThreadedHTTPServer((api_host, api_port), GraphValidatorHandler)
+        print(f"✓ API Server running on http://{api_host}:{api_port}")
         _api_server.serve_forever()
     
     _api_thread = threading.Thread(target=run_api_server, daemon=False)

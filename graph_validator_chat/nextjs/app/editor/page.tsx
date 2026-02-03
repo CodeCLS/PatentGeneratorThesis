@@ -76,7 +76,7 @@ export default function EditorPage() {
             
             // Only show notification if there's active progress (not idle)
             // Don't overwrite progress if we're in the middle of a regeneration
-            if (progressUpdate.stage && progressUpdate.stage !== 'idle' && !isRegeneratingRef.current) {
+            if (progressUpdate.stage && progressUpdate.stage !== 'idle') {
               console.log('[Editor] Setting active progress:', progressUpdate);
               setProgress(progressUpdate);
               // Store in localStorage
@@ -426,12 +426,6 @@ export default function EditorPage() {
       // Set flag to prevent progress checker from overwriting our custom message
       isRegeneratingRef.current = true;
       
-      // Stop any existing progress checking
-      if (progressCheckIntervalRef.current) {
-        clearInterval(progressCheckIntervalRef.current);
-        progressCheckIntervalRef.current = null;
-      }
-      
       const customMessage = `Generating claims with similarity threshold ${(threshold * 100).toFixed(0)}%...`;
       
       setProgress({
@@ -472,54 +466,6 @@ export default function EditorPage() {
           setProgress(data.progress);
           localStorage.setItem(STORAGE_KEY_CLAIM_PROGRESS, JSON.stringify(data.progress));
         }
-        
-        // Restart progress checking interval after a delay
-        setTimeout(() => {
-          if (!progressCheckIntervalRef.current) {
-            progressCheckIntervalRef.current = setInterval(async () => {
-              try {
-                const progressResponse = await fetch('/api/claims/progress');
-                if (progressResponse.ok) {
-                  const progressData = await progressResponse.json();
-                  if (progressData.success && progressData.progress) {
-                    const progressUpdate = progressData.progress;
-                    if (progressUpdate.stage && progressUpdate.stage !== 'idle') {
-                      setProgress(progressUpdate);
-                      localStorage.setItem(STORAGE_KEY_CLAIM_PROGRESS, JSON.stringify(progressUpdate));
-                      
-                      if (progressUpdate.stage === 'complete') {
-                        if (progressCheckIntervalRef.current) {
-                          clearInterval(progressCheckIntervalRef.current);
-                          progressCheckIntervalRef.current = null;
-                        }
-                        // Load claims when complete
-                        setTimeout(async () => {
-                          try {
-                            const claimsResponse = await fetch('/api/claims');
-                            if (claimsResponse.ok) {
-                              const claimsData = await claimsResponse.json();
-                              if (claimsData.success && claimsData.claims && claimsData.claims.length > 0) {
-                                localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(claimsData.claims));
-                                setClaims(claimsData.claims);
-                                formatClaimsForEditor(claimsData.claims);
-                              }
-                            }
-                          } catch (e) {
-                            console.error('[Editor] Error fetching claims:', e);
-                          }
-                        }, 500);
-                      }
-                    } else if (progressUpdate.stage === 'idle') {
-                      // Keep polling so we don't miss a new generation start
-                    }
-                  }
-                }
-              } catch (e) {
-                console.error('[Editor] Error checking progress:', e);
-              }
-            }, 1000);
-          }
-        }, 500);
         
         // Load claims if already complete
         if (data.claims && data.claims.length > 0) {

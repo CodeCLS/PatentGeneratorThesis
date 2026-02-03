@@ -1040,7 +1040,9 @@ Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." 
                 # For max_iterations=2: judge(1) + refine(2) + judge(3) + refine(4) = 4 nodes maximum
                 # Set limit to exactly what we expect: max_iterations * 2
                 # If we hit this limit, it means the stop conditions aren't working correctly
-                config = {"recursion_limit": max_iterations * 2}
+                # Add a small buffer to avoid false positives when the graph emits
+                # an extra terminal step before END.
+                config = {"recursion_limit": (max_iterations * 2) + 2}
 
                 for state_update in app.stream(initial_state, config=config):
                     node_name = list(state_update.keys())[-1]

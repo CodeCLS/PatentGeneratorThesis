@@ -1,15 +1,17 @@
 /** @type {import('next').NextConfig} */
+const backendUrl = process.env.BACKEND_URL || 'http://localhost:50025';
+
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:50026/api/:path*',
+        destination: `${backendUrl}/api/:path*`,
       },
       {
         source: '/static/:path*',
-        destination: 'http://localhost:50026/static/:path*',
+        destination: `${backendUrl}/static/:path*`,
       },
     ];
   },

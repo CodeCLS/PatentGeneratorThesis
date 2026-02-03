@@ -2,6 +2,7 @@ export interface PipelinePayload {
   text?: string;
   filename?: string;
   patent_id?: string;
+  pdf_base64?: string;
 }
 
 export interface PipelineBootstrapResult {
@@ -44,6 +45,18 @@ export const bootstrapPipelineIfNeeded = async (): Promise<PipelineBootstrapResu
       }
     } catch {
       // Ignore status errors and try bootstrapping from payload.
+    }
+
+    try {
+      const restoreRes = await fetch('/api/pipeline/restore', { method: 'POST' });
+      if (restoreRes.ok) {
+        const restoreData = await restoreRes.json().catch(() => ({}));
+        if (restoreData?.success) {
+          return { initialized: true, bootstrapped: true };
+        }
+      }
+    } catch {
+      // Ignore restore errors and try bootstrapping from payload.
     }
 
     const payload = readPayload();

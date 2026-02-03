@@ -54,6 +54,18 @@ interface PipelineProgress {
   progress: number;
 }
 
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+};
+
 export default function UploadPage() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -189,19 +201,32 @@ export default function UploadPage() {
       let payload: Record<string, string> = {};
 
       if (file) {
-        const isTxt = file.name.toLowerCase().endsWith(".txt");
-        if (!isTxt) {
-          setError("Please upload a .txt file for now.");
+        const lowerName = file.name.toLowerCase();
+        const isTxt = lowerName.endsWith(".txt");
+        const isPdf = lowerName.endsWith(".pdf");
+        if (!isTxt && !isPdf) {
+          setError("Please upload a .txt or .pdf file.");
           setSubmitting(false);
           return;
         }
-        const text = await file.text();
-        if (!text.trim()) {
-          setError("The selected text file is empty.");
-          setSubmitting(false);
-          return;
+        if (isPdf) {
+          const buffer = await file.arrayBuffer();
+          const pdf_base64 = arrayBufferToBase64(buffer);
+          if (!pdf_base64) {
+            setError("The selected PDF could not be read.");
+            setSubmitting(false);
+            return;
+          }
+          payload = { pdf_base64, filename: file.name };
+        } else {
+          const text = await file.text();
+          if (!text.trim()) {
+            setError("The selected text file is empty.");
+            setSubmitting(false);
+            return;
+          }
+          payload = { text, filename: file.name };
         }
-        payload = { text, filename: file.name };
       } else {
         const trimmed = patentId.trim();
         if (!trimmed) {
@@ -286,7 +311,7 @@ export default function UploadPage() {
               <input
                 id="upload-file"
                 type="file"
-                accept=".txt"
+                accept=".txt,.pdf"
                 className="w-full rounded-2xl border px-4 py-3 text-sm"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
