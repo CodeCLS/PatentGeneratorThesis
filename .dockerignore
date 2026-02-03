@@ -1,0 +1,17 @@
+# Ignore local python environments
+.venv/
+venv/
+ENV/
+bin/
+lib/
+
+# Ignore large data/model folders (unless specifically needed)
+kg/
+training/
+__pycache__/
+*.ipynb
+
+# Ignore git and logs
+.git
+.gitignore
+*.log

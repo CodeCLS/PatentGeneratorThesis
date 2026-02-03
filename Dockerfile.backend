@@ -1,13 +1,24 @@
 FROM python:3.11-slim
 
 WORKDIR /app
+
+# Install system dependencies needed for some ML packages and epo-ops
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     API_HOST=0.0.0.0 \
     API_PORT=5000
 
 COPY requirements.txt ./
+
+# Upgrade pip first, then install requirements
+RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
+
 RUN python -m spacy download en_core_web_sm
 COPY . .
 

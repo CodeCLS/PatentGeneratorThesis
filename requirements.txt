@@ -30,4 +30,4 @@ jinja2
 python-dotenv
 
 # EPO patent API (PatentProvider)
-epo-ops
+python-epo-ops-client>=3.0.1
