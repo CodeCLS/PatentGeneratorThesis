@@ -1,3 +1,33 @@
+# Graph & DB
 neo4j==6.0.3
 networkx>=3.0
+pyvis>=0.3.2
+
+# PDF
 PyPDF2==3.0.1
+
+# LLM APIs & observability
+langfuse>=2.0
+anthropic
+openai
+langsmith
+groq
+google-genai
+
+# LangGraph (graph validator & claim refinement)
+langgraph>=0.2
+
+# ML / NLP
+torch
+transformers
+numpy
+faiss-cpu
+spacy
+fastcoref
+
+# Templating & utils
+jinja2
+python-dotenv
+
+# EPO patent API (PatentProvider)
+epo-ops
