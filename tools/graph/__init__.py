@@ -3,22 +3,7 @@ Graph processing tools for knowledge graphs.
 """
 
 # Fix Jinja2 compatibility - patch before any Flask imports
-import jinja2
-if not hasattr(jinja2, 'escape'):
-    try:
-        from markupsafe import escape
-        jinja2.escape = escape
-    except ImportError:
-        def escape(s):
-            if s is None:
-                return ''
-            s = str(s)
-            return (s.replace('&', '&amp;')
-                    .replace('<', '&lt;')
-                    .replace('>', '&gt;')
-                    .replace('"', '&quot;')
-                    .replace("'", '&#x27;'))
-        jinja2.escape = escape
+
 
 from tools.graph.graph_edits.llm_relation_filter import LLMRelationFilter
 from tools.graph.graph_edits.small_cluster_filter import SmallClusterFilter
