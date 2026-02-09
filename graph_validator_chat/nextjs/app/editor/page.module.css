@@ -160,7 +160,8 @@
 .editorWrapper {
   flex: 1;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   overflow-y: auto;
   padding: 32px 20px;
   padding-bottom: 100px; /* Extra padding at bottom for scrolling */
@@ -170,20 +171,60 @@
   min-height: 100%;
 }
 
+/* Column wrapping abstract + paper so they align (same width and offset when panel open) */
+.editorColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 816px;
+  max-width: 100%;
+  align-self: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.editorColumn.editorColumnWithPanel {
+  margin-right: 400px;
+}
+
+/* Source header for PDF: patent ID or file used, short abstract (same width as editor) */
+.sourceHeader {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: #fff;
+  border: 1px solid rgba(55, 53, 47, 0.12);
+  border-radius: 8px;
+  font-family: Georgia, serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgb(55, 53, 47);
+}
+
+.sourceLabel {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.sourceAbstract {
+  margin-top: 8px;
+  color: rgb(55, 53, 47);
+}
+
+.sourceAbstract strong {
+  font-weight: 600;
+}
+
 .editorContainer {
   flex: 1;
   display: flex;
   justify-content: center;
-  max-width: 816px;
-  margin-right: 0;
+  width: 100%;
+  min-width: 0;
   transition: margin-right 0.3s ease;
-  /* Ensure container grows with content */
   align-items: flex-start;
   min-height: 100%;
-}
-
-.editorContainer.editorWithPanel {
-  margin-right: 400px; /* Space for side panel */
 }
 
 .editor {
@@ -608,5 +649,62 @@
   background: #f7f6f3;
   transform: scale(1.1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Print / Save as PDF: show only editor content, centered, no cutoff */
+@media print {
+  @page {
+    margin: 0.75in;
+  }
+  .layout,
+  .layout * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .layout > *:first-child,
+  .header,
+  .toolbar,
+  .triplesPanel,
+  .pipelineNotice,
+  .toggleTriplesButton {
+    display: none !important;
+  }
+  .container {
+    padding: 0 !important;
+    justify-content: flex-start;
+    align-items: center;
+    width: 100%;
+    max-width: 100%;
+  }
+  .editorWrapper {
+    padding: 0 !important;
+    background: #fff;
+    width: 100%;
+    max-width: 100%;
+    justify-content: flex-start;
+    align-items: center;
+  }
+  /* Remove panel offset so content is centered, not shifted left */
+  .editorColumn,
+  .editorColumn.editorColumnWithPanel {
+    margin-right: 0 !important;
+    margin-left: 0 !important;
+    width: 100%;
+    max-width: 100%;
+  }
+  .editor {
+    box-shadow: none;
+    border-radius: 0;
+    min-height: auto;
+    padding: 0.5in 0.75in;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .sourceHeader {
+    padding: 0.4in 0.75in;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
 }
 

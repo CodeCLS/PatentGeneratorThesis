@@ -116,31 +116,32 @@ class ClaimGeneratorLangChain:
             except Exception as e:
                 print(f"[DEBUG] plan_claims: Error getting entities from GraphRAG: {e}")
         
-        prompt = f"""You are a patent claim planning expert. Analyze the following patent description and plan a structured set of patent claims.
+        prompt = f"""You are a patent claim planning expert. Analyze the following patent description and plan a structured set of patent claims that will be defensible, internally consistent, and commercially meaningful.
 
 Patent Description:
 {patent_description[:3000]}  # Limit to avoid token limits{entities_context}
 
-Based on the patent description, plan an appropriate number of independent and dependent claims. 
+Based on the patent description, plan an appropriate number of independent and dependent claims.
 - Aim for approximately {num_independent} independent claims (but adjust if the invention requires more or fewer)
 - For each independent claim, plan approximately {num_dependent_per_independent} dependent claims (but adjust based on what makes sense for that particular independent claim)
 - The total number of claims should be reasonable and comprehensive, covering all major aspects of the invention
 - You may have different numbers of dependent claims for different independent claims if that better reflects the invention
 
-IMPORTANT: Extract SPECIFIC components, features, and details from the patent description. Use actual names, terms, and concepts mentioned in the description. Do NOT use generic placeholders.
+Planning principles:
+- Plan so that the resulting claims read as proper patent claims (clear legal scope, consistent terminology), not as engineering specifications or implementation details.
+- Each independent claim should define a distinct, defensible scope that could be commercially enforced; avoid planning claims that are so narrow they cover only one trivial implementation.
+- Ensure the plan supports internal consistency: the same concepts should be referred to with the same terms across claims, and dependents should logically narrow their parent without contradicting it.
+- Extract real components and features from the description, but frame the focus in terms of what the claim should protect (inventive concept and scope), not just a list of technical details.
 
 For each claim, provide:
 - claim_number: Sequential number (1, 2, 3...)
 - claim_type: "independent" or "dependent"
-- focus: A SPECIFIC description (2-4 sentences) explaining what this claim should focus on, using ACTUAL components/features from the patent description above.
-  * For independent claims: Identify a specific main component or system from the description. Use the actual names and terms mentioned in the patent. Explain what this specific component does and its key features as described.
-  * For dependent claims: Identify a specific feature, detail, or variation of the parent claim's component. Use actual names from the description. Explain how this specific detail relates to the parent claim and what it adds.
-  * Extract real components/features from the patent description - be concrete and specific, not generic.
+- focus: A clear description (2-4 sentences) of what this claim should focus on, using actual components/features from the patent description. For independent claims: the main inventive concept and key elements that define a defensible scope. For dependent claims: a specific limitation that narrows the parent in a consistent way. Be concrete but avoid encouraging over-specification or spec-style drafting.
 - parent_claim_number: For dependent claims, the number of the parent independent claim (null for independent claims)
 - keywords: List of key terms relevant to this claim (extract actual terms from the description)
 - entities: List of entity names/components relevant to this claim (extract actual component names from the description)
 
-Return ONLY a JSON array of claim plans. The focus field should reference actual components, systems, or features mentioned in the patent description above. Example structure:
+Return ONLY a JSON array of claim plans. Example structure:
 [
   {{
     "claim_number": 1,
@@ -386,6 +387,13 @@ Return ONLY the JSON array, no other text."""
                 top_k=20,
                 similarity_threshold=similarity_threshold,
             )
+            # If threshold filtered everything out, get top triples anyway for display
+            if not similar_triples:
+                similar_triples = self.graph_rag.find_similar_triples(
+                    query_text=query,
+                    top_k=10,
+                    similarity_threshold=0.0,
+                )
             
             # Convert to dict format
             for triple, similarity in similar_triples:
@@ -420,7 +428,7 @@ Return ONLY the JSON array, no other text."""
         if planned_claim.claim_type == "dependent" and planned_claim.parent_claim_number:
             parent_text = f"\nThis is a dependent claim that depends on claim {planned_claim.parent_claim_number}."
         
-        prompt = f"""You are a patent claim drafting expert. Generate a formal patent claim based on the following information.
+        prompt = f"""You are a patent claim drafting expert. Generate a formal patent claim based on the following information. Draft in proper patent claim style: clear, legally defensible scope with consistent terminology—not like an engineering specification.
 
 Patent Description:
 {patent_description[:4000]}
@@ -436,12 +444,12 @@ Claim Plan:
 {context}
 
 Instructions:
-1. Draft a formal patent claim in standard patent claim format
-2. The claim must accurately reflect the triples provided above
-3. Use precise technical language
-4. For independent claims: Start with "A [system/method/apparatus] comprising:"
-5. For dependent claims: Start with "The [system/method/apparatus] of claim {planned_claim.parent_claim_number}, wherein..."
-6. Ensure all mentioned components/features correspond to entities and relations in the knowledge graph
+1. Draft a formal patent claim in standard patent claim format. Use claim-style language (clear scope, defined elements); avoid reading like a technical spec or implementation manual.
+2. The claim must accurately reflect the triples provided above. Use consistent terms for the same concepts (align with the patent description and, where applicable, with language used in previous claims).
+3. Balance specificity with defensibility: be precise enough to be supported by the description and triples, but do not limit the claim to a single implementation or trivial detail where the invention is broader; aim for scope that is commercially meaningful and enforceable.
+4. For independent claims: Start with "A [system/method/apparatus] comprising:" and define elements that together express the inventive concept without unnecessary implementation detail.
+5. For dependent claims: Start with "The [system/method/apparatus] of claim {planned_claim.parent_claim_number}, wherein..." and add a clear limitation that is internally consistent with the parent.
+6. Ensure all mentioned components/features correspond to entities and relations in the knowledge graph. Keep the claim internally consistent (no contradictory or redundant phrasing).
 7. Number the claim as "{planned_claim.claim_number}."
 
 Return ONLY the claim text, numbered as "{planned_claim.claim_number}." No additional explanation."""
@@ -542,7 +550,7 @@ Return ONLY the claim text, numbered as "{planned_claim.claim_number}." No addit
             for c in claims
         ])
         
-        prompt = f"""You are a patent claim evaluation expert. Evaluate the following set of patent claims for unity and quality.
+        prompt = f"""You are a patent claim evaluation expert. Evaluate the following set of patent claims for unity, quality, defensibility, and consistency.
 
 Patent Description:
 {patent_description[:2000]}
@@ -552,8 +560,10 @@ Claims:
 
 Evaluate:
 1. Unity: Do all claims relate to a single inventive concept? Score 0-100.
-2. Quality: Are claims well-drafted, clear, and properly structured?
-3. Improvements: For each claim, identify specific improvements needed.
+2. Quality and clarity: Are claims well-drafted, clear, and properly structured? Do they read as patent claims rather than engineering specifications? Score 0-100.
+3. Defensibility and scope: Is the scope clear and legally defensible? Are claims overly narrow (e.g., tied to one implementation) so that commercial enforceability is weak? Flag if claims read like specs or are over-engineered.
+4. Internal consistency: Is terminology consistent across claims? Do dependents align with their parents without contradiction or redundancy?
+5. Improvements: For each claim, identify specific improvements needed (e.g., clarify scope, fix inconsistency, reduce over-specification, strengthen defensibility).
 
 Return a JSON object with:
 {{
@@ -705,7 +715,12 @@ Return ONLY the JSON object, no other text."""
                 top_k=20,
                 similarity_threshold=similarity_threshold,
             )
-            
+            if not similar_triples:
+                similar_triples = self.graph_rag.find_similar_triples(
+                    query_text=query,
+                    top_k=10,
+                    similarity_threshold=0.0,
+                )
             for triple, similarity in similar_triples:
                 relevant_triples.append({
                     "head": triple.head.name if hasattr(triple.head, 'name') else str(triple.head),
@@ -736,7 +751,7 @@ Return ONLY the JSON object, no other text."""
         if planned_claim.claim_type == "dependent" and planned_claim.parent_claim_number:
             parent_text = f"\nThis is a dependent claim that depends on claim {planned_claim.parent_claim_number}."
         
-        prompt = f"""You are a patent claim drafting expert. Refine the following claim based on the provided criticism.
+        prompt = f"""You are a patent claim drafting expert. Refine the following claim based on the provided criticism. The result should read as a proper patent claim (clear, defensible, consistent)—not as an engineering specification.
 
 Patent Description:
 {patent_description[:4000]}
@@ -758,10 +773,10 @@ Claim Plan:
 {context}
 
 Instructions:
-1. Address the criticism and incorporate the required improvements
-2. Keep the good parts of the original claim
-3. Improve clarity, precision, and adherence to the triples
-4. Maintain proper patent claim format
+1. Address the criticism and incorporate the required improvements.
+2. Keep the good parts of the original claim. Improve clarity, defensibility, and internal consistency; avoid adding implementation detail that makes the claim read like a spec or overly narrow.
+3. Maintain proper patent claim format and claim-style language. Use consistent terminology with the patent description and, where relevant, with other claims.
+4. Ensure the refined claim remains supported by the triples and description. Do not introduce contradictions or redundant limitations.
 5. Number the claim as "{planned_claim.claim_number}."
 
 Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." No additional explanation."""

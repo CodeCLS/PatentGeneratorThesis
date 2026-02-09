@@ -36,3 +36,23 @@ class PatentProvider:
             description_text = "\n".join([p.text.strip() for p in paragraphs if p.text])
 
             return description_text
+
+    def getAbstract(self, patentId):
+        """Fetch abstract for an EPO patent ID. Returns plain text or empty string on error."""
+        try:
+            response = self.client.published_data(
+                reference_type="publication",
+                input=epo_ops.models.Docdb(str(patentId), "EP", "A1"),
+                endpoint="abstract",
+            )
+            xml_text = response.text
+            root = ET.fromstring(xml_text)
+            ns = {
+                "ops": "http://www.epo.org/exchange",
+                "ep": "http://www.epo.org/fulltext",
+            }
+            paragraphs = root.findall(".//ep:p", ns)
+            abstract_text = " ".join([p.text.strip() for p in paragraphs if p.text])
+            return abstract_text.strip() if abstract_text else ""
+        except Exception:
+            return ""

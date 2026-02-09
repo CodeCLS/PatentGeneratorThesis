@@ -75,6 +75,25 @@ _pipeline_progress: Dict[str, Any] = {"stage": "idle", "message": "No pipeline r
 _pipeline_progress_lock = threading.Lock()
 _cached_claims: List[Dict[str, Any]] = []
 
+# Graph HTML cache: only built on explicit Refresh; invalidated when triples/entities change
+_cached_graph_html: Optional[str] = None
+_cached_graph_triples_count: Optional[int] = None
+_cached_graph_layout: Optional[str] = None
+
+# Source metadata for PDF header (patent ID or file used, short abstract)
+_source_patent_id: Optional[str] = None
+_source_filename: Optional[str] = None
+_source_type: Optional[str] = None  # "patent_id" | "pdf" | "text"
+
+
+def _invalidate_graph_cache() -> None:
+    """Call when triples or entities change so the graph page shows 'outdated' until Refresh."""
+    global _cached_graph_html, _cached_graph_triples_count, _cached_graph_layout
+    _cached_graph_html = None
+    _cached_graph_triples_count = None
+    _cached_graph_layout = None
+
+
 if load_dotenv:
     load_dotenv()
 
@@ -143,12 +162,18 @@ def _save_persisted_validator(
     sentence_split: Optional[List[Any]],
 ) -> None:
     """Persist validator inputs for reuse across sessions."""
+    global _source_patent_id, _source_filename, _source_type
     try:
         payload = {
             "graph": graph,
             "triples": triples or [],
             "id_to_name": id_to_name or {},
             "sentence_split": sentence_split or [],
+            "source_metadata": {
+                "patent_id": _source_patent_id,
+                "filename": _source_filename,
+                "source": _source_type,
+            },
         }
         with open(_persist_path, "wb") as f:
             pickle.dump(payload, f)
@@ -285,14 +310,20 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             self._send_json(self._get_triples())
         elif path == '/api/neo4j/stats':
             self._send_json(self._get_neo4j_stats())
+        elif path == '/api/graph/status':
+            self._send_json(self._get_graph_status())
         elif path == '/api/graph/html':
             layout = (query.get("layout") or [""])[0].strip().lower()
-            self._send_json(self._get_graph_html(layout=layout))
+            refresh = (query.get("refresh") or ["0"])[0].strip().lower() in ("1", "true", "yes")
+            self._send_json(self._get_graph_html(layout=layout, refresh=refresh))
         elif path == '/api/graph/neo4j':
             self._send_json(self._get_graph_neo4j_html())
         elif path == '/api/claims':
             # GET endpoint to retrieve generated claims
             self._send_json(self._get_generated_claims())
+        elif path == '/api/source':
+            # GET source metadata for PDF header (patent ID or file, short abstract)
+            self._send_json(self._get_source())
         elif path == '/api/claims/progress':
             # GET endpoint to retrieve claim generation progress
             self._send_json(self._get_claim_progress())
@@ -349,6 +380,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             elif path == '/api/triples/update':
                 print("[API] Routing to _handle_triple_update")
                 self._handle_triple_update()
+            elif path == '/api/triples/add':
+                print("[API] Routing to _handle_triple_add")
+                self._handle_triple_add()
             elif path == '/api/triples/suggest':
                 print("[API] Routing to _handle_triple_suggest")
                 self._handle_triple_suggest()
@@ -839,7 +873,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 f"Triples with context:\n{json.dumps(context_payload, ensure_ascii=False, indent=2)}\n"
             )
 
-            llm = LLmApi_Repo()
+            from tools.api.llm_models.deepseek_model import DeepSeekModel
+            llm = LLmApi_Repo(llm_client=DeepSeekModel(max_tokens=2000))
             raw = llm.chat(prompt)
             response_text = raw.get("content") if isinstance(raw, dict) else str(raw or "")
             parsed = JsonHelper.parse_json(response_text)
@@ -944,6 +979,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 "message": "Initializing validator",
                 "progress": 98,
             })
+
+            global _source_patent_id, _source_filename, _source_type
+            _source_patent_id = patent_id if source == "patent_id" else None
+            _source_filename = filename if filename else None
+            _source_type = source
 
             initialize_validator(
                 graph=result.graph,
@@ -1087,6 +1127,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                         "progress": 98,
                     })
 
+                    global _source_patent_id, _source_filename, _source_type
+                    _source_patent_id = task_patent_id if task_source == "patent_id" else None
+                    _source_filename = task_filename if task_filename else None
+                    _source_type = task_source
+
                     initialize_validator(
                         graph=result.graph,
                         triples=result.triples,
@@ -1159,6 +1204,12 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             if not persisted:
                 self._send_error("No persisted validator state found", 404)
                 return
+
+            global _source_patent_id, _source_filename, _source_type
+            sm = persisted.get("source_metadata") or {}
+            _source_patent_id = sm.get("patent_id")
+            _source_filename = sm.get("filename")
+            _source_type = sm.get("source")
 
             with _pipeline_lock:
                 set_progress = {
@@ -1339,36 +1390,84 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             "triples": triples_data,
         }
     
-    def _get_graph_html(self, *, layout: str = "") -> Dict[str, Any]:
-        print("[API] Starting _get_graph_html")
+    def _get_graph_status(self) -> Dict[str, Any]:
+        """Return whether the cached graph is current. Used by graph page to show 'outdated' tag."""
+        global _cached_graph_html, _cached_graph_triples_count
+        v = validator
+        triples_count = len(v.triples) if v else 0
+        has_graph = _cached_graph_html is not None and len((_cached_graph_html or "").strip()) > 0
+        outdated = not has_graph or _cached_graph_triples_count is None or _cached_graph_triples_count != triples_count
+        return {
+            "hasGraph": has_graph,
+            "outdated": outdated,
+            "triplesCount": triples_count,
+            "graphTriplesCount": _cached_graph_triples_count,
+        }
+
+    def _get_graph_html(self, *, layout: str = "", refresh: bool = False) -> Dict[str, Any]:
+        """Return cached graph HTML, or build and cache when refresh=True. Never auto-build on first visit."""
+        global _cached_graph_html, _cached_graph_triples_count, _cached_graph_layout
         if not validator:
             return {"error": "Validator not initialized", "html": ""}
-        
+
+        triples_count = len(validator.triples)
+        layout_n = (layout or "").strip().lower()
+
+        if refresh:
+            # Explicit Refresh: build and cache
+            result = self._build_graph_html(layout=layout_n)
+            if "error" not in result or result.get("html"):
+                _cached_graph_html = result.get("html") or ""
+                _cached_graph_triples_count = triples_count
+                _cached_graph_layout = layout_n
+            return result
+
+        # No refresh: return cache only if current and same layout
+        if (
+            _cached_graph_html
+            and _cached_graph_triples_count == triples_count
+            and _cached_graph_layout == layout_n
+        ):
+            return {"html": _cached_graph_html}
+        # No cache or outdated
+        if not _cached_graph_html:
+            return {
+                "html": "",
+                "error": "Graph not generated. Press Refresh to generate.",
+            }
+        return {
+            "html": _cached_graph_html,
+            "error": "Graph is outdated (triples changed). Press Refresh to update.",
+            "outdated": True,
+        }
+
+    def _build_graph_html(self, *, layout: str = "") -> Dict[str, Any]:
+        """Build graph HTML from current triples. Does not read or set cache."""
+        if not validator:
+            return {"error": "Validator not initialized", "html": ""}
         try:
             from tools.graph.visualizer import GraphVisualizer
             import tempfile
             import os
-            
+
             triples = validator.triples
             id_to_name = validator.id_to_name
-            
+
             if not triples:
-                print("[API] Warning: No triples available in _get_graph_html")
                 return {"error": "No graph or triples available", "html": ""}
-            
+
             visualizer = GraphVisualizer()
             graph = visualizer.build_graph(triples)
             validator.graph = graph
-            
+
             print(f"[API] Generating graph HTML (nodes: {graph.number_of_nodes()}, edges: {graph.number_of_edges()})...")
             temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False)
             temp_path = temp_file.name
             temp_file.close()
-            
-            # Temporarily disable webbrowser to prevent auto-opening
+
             import webbrowser
             import contextlib
-            
+
             @contextlib.contextmanager
             def disable_webbrowser():
                 original_open = webbrowser.open
@@ -1377,7 +1476,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     yield
                 finally:
                     webbrowser.open = original_open
-            
+
             with disable_webbrowser():
                 hierarchical = layout in {"tree", "hierarchical", "hierarchy"}
                 visualizer.visualize_pyvis(
@@ -1386,19 +1485,18 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     id_to_name=id_to_name,
                     hierarchical=hierarchical,
                 )
-            
+
             with open(temp_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
-            
+
             os.unlink(temp_path)
             print(f"[API] Graph HTML generated successfully ({len(html_content)} chars)")
-            
-            # Sanitize HTML: remove any file:// links that might cause unwanted navigation
+
             import re
             html_content = re.sub(r'file:///[^\s"\'<>]*', '', html_content)
             html_content = re.sub(r'href=["\']file:///[^"\']*["\']', 'href="#"', html_content)
             html_content = re.sub(r'src=["\']file:///[^"\']*["\']', 'src="#"', html_content)
-            
+
             return {"html": html_content}
         except Exception as e:
             import traceback
@@ -1783,19 +1881,34 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     focus="Main invention",
                 )]
             
-            # Convert to JSON-serializable format
+            # Convert to JSON-serializable format (ensure used_triples and prompt always present)
             claims_data = []
             for claim in generated_claims:
+                raw_triples = getattr(claim, "used_triples", None)
+                if not isinstance(raw_triples, list):
+                    raw_triples = []
+                # Ensure each triple is a plain dict for JSON
+                used_triples = []
+                for t in raw_triples:
+                    if isinstance(t, dict):
+                        used_triples.append({
+                            "head": str(t.get("head", "")),
+                            "relation": str(t.get("relation", "")),
+                            "tail": str(t.get("tail", "")),
+                            "similarity": float(t.get("similarity", 0.0)) if t.get("similarity") is not None else 0.0,
+                        })
+                raw_prompt = getattr(claim, "prompt", None)
+                prompt = str(raw_prompt) if raw_prompt else ""
                 claims_data.append({
                     "claim_number": claim.claim_number,
                     "claim_text": claim.claim_text,
                     "claim_type": claim.claim_type,
-                    "parent_claim_number": claim.parent_claim_number,
-                    "focus": claim.focus,
-                    "used_triples": claim.used_triples if hasattr(claim, 'used_triples') else [],
-                    "prompt": claim.prompt if hasattr(claim, 'prompt') else "",
-                    "refinement_iterations": claim.refinement_iterations if hasattr(claim, 'refinement_iterations') else 0,
-                    "final_score": claim.final_score if hasattr(claim, 'final_score') else 0.0,
+                    "parent_claim_number": getattr(claim, "parent_claim_number", None),
+                    "focus": getattr(claim, "focus", "") or "",
+                    "used_triples": used_triples,
+                    "prompt": prompt,
+                    "refinement_iterations": getattr(claim, "refinement_iterations", 0) or 0,
+                    "final_score": float(getattr(claim, "final_score", 0.0) or 0.0),
                 })
             
             print(f"[API] Final claims_data: {len(claims_data)} claims")
@@ -1842,6 +1955,41 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 }
         except Exception as e:
             return {"error": str(e)}
+
+    def _get_source(self) -> Dict[str, Any]:
+        """Get source metadata for PDF header: patent ID or file used, and short abstract.
+        When source is an EPO patent ID, abstract comes from PatentProvider.getAbstract only.
+        When source is a file upload, abstract is first 4 sentences from pipeline text."""
+        global _source_patent_id, _source_filename, _source_type, _sentence_split
+        short_abstract = ""
+        if _source_type == "patent_id" and _source_patent_id:
+            try:
+                short_abstract = PatentProvider().getAbstract(_source_patent_id) or ""
+            except Exception:
+                short_abstract = ""
+        # Only use pipeline text for file uploads (pdf/text), not when patent_id was used
+        if not short_abstract and _source_type != "patent_id" and _sentence_split and len(_sentence_split) > 0:
+            sentences = []
+            for s in _sentence_split[:4]:
+                t = getattr(s, "text", None) or (s if isinstance(s, str) else str(s))
+                if t and str(t).strip():
+                    sentences.append(str(t).strip())
+            short_abstract = " ".join(sentences) if sentences else ""
+        source_label = None
+        if _source_type == "patent_id" and _source_patent_id:
+            source_label = f"Patent ID: {_source_patent_id}"
+        elif _source_filename:
+            source_label = f"File: {_source_filename}"
+        elif _source_type:
+            source_label = f"Source: {_source_type}"
+        return {
+            "success": True,
+            "patent_id": _source_patent_id,
+            "filename": _source_filename,
+            "source": _source_type,
+            "source_label": source_label,
+            "short_abstract": short_abstract,
+        }
     
     def _get_claim_progress(self) -> Dict[str, Any]:
 
@@ -1949,6 +2097,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     id_to_name=validator.id_to_name,
                     sentence_split=_sentence_split,
                 )
+                _invalidate_graph_cache()
                 print(f"[API] Updated entity {entity_id}: name={new_name}, label={new_label}, triples_updated={triples_updated}")
                 self._send_json({
                     "success": True,
@@ -1988,6 +2137,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     id_to_name=validator.id_to_name,
                     sentence_split=_sentence_split,
                 )
+                _invalidate_graph_cache()
                 print(f"[API] Updated triple {triple_index}: relation={new_relation}")
                 self._send_json({
                     "success": True,
@@ -2111,6 +2261,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 id_to_name=validator.id_to_name,
                 sentence_split=_sentence_split,
             )
+            _invalidate_graph_cache()
 
             self._send_json({
                 "success": True,
@@ -2125,7 +2276,118 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             print(f"[API] Error in _handle_triple_update: {e}")
             print(traceback.format_exc())
             self._send_error(f"Error: {str(e)}", 500)
-    
+
+    def _handle_triple_add(self):
+        """Add a new triple. Payload: head_id or (create_head, head_name, head_label); tail_id or (create_tail, tail_name, tail_label); relation (required)."""
+        if not validator:
+            self._send_error("Validator not initialized")
+            return
+
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+
+            create_head = bool(data.get("create_head"))
+            create_tail = bool(data.get("create_tail"))
+            head_id = data.get("head_id")
+            tail_id = data.get("tail_id")
+
+            head_name = (data.get("head_name") or "").strip()
+            head_label = (data.get("head_label") or "").strip() or "unknown_entity"
+            tail_name = (data.get("tail_name") or "").strip()
+            tail_label = (data.get("tail_label") or "").strip() or "unknown_entity"
+            relation = (data.get("relation") or "").strip()
+
+            if not relation:
+                self._send_error("Relation is required", 400)
+                return
+
+            def find_entity(entity_id: str):
+                for item in validator.triples:
+                    if get_triple_head_id(item) == entity_id:
+                        return item.head
+                    if get_triple_tail_id(item) == entity_id:
+                        return item.tail
+                return None
+
+            def create_entity(name: str, label: str):
+                from tools.sentence.entity import Entity
+                entity_id = str(uuid.uuid4())
+                return Entity(
+                    id=entity_id,
+                    ref=entity_id,
+                    ref_short=entity_id[-4:],
+                    name=name,
+                    label=label,
+                    start=0,
+                    end=len(name),
+                    sentence_id="manual",
+                    entity_type=label,
+                )
+
+            if create_head:
+                if not head_name:
+                    self._send_error("Head name is required to create a new entity", 400)
+                    return
+                head = create_entity(head_name, head_label)
+                validator.id_to_name[head.ref] = head.name
+            elif head_id:
+                head = find_entity(head_id)
+                if not head:
+                    self._send_error("Head entity not found", 404)
+                    return
+                if head_id not in validator.id_to_name:
+                    validator.id_to_name[head_id] = head.name
+            else:
+                self._send_error("Provide head_id or create_head with head_name and head_label", 400)
+                return
+
+            if create_tail:
+                if not tail_name:
+                    self._send_error("Tail name is required to create a new entity", 400)
+                    return
+                tail = create_entity(tail_name, tail_label)
+                validator.id_to_name[tail.ref] = tail.name
+            elif tail_id:
+                tail = find_entity(tail_id)
+                if not tail:
+                    self._send_error("Tail entity not found", 404)
+                    return
+                if tail_id not in validator.id_to_name:
+                    validator.id_to_name[tail_id] = tail.name
+            else:
+                self._send_error("Provide tail_id or create_tail with tail_name and tail_label", 400)
+                return
+
+            new_triple = Triple(head=head, relation=relation, tail=tail)
+            validator.triples.append(new_triple)
+
+            if validator.graph is not None:
+                visualizer = GraphVisualizer()
+                validator.graph = visualizer.build_graph(validator.triples)
+
+            _save_persisted_validator(
+                graph=validator.graph,
+                triples=validator.triples,
+                id_to_name=validator.id_to_name,
+                sentence_split=_sentence_split,
+            )
+            _invalidate_graph_cache()
+
+            new_index = len(validator.triples) - 1
+            self._send_json({
+                "success": True,
+                "message": "Triple added",
+                "index": new_index,
+            })
+        except json.JSONDecodeError:
+            self._send_error("Invalid JSON", 400)
+        except Exception as e:
+            import traceback
+            print(f"[API] Error in _handle_triple_add: {e}")
+            print(traceback.format_exc())
+            self._send_error(f"Error: {str(e)}", 500)
+
     def _handle_entity_merge(self):
         """Handle entity merge request.
         
@@ -2208,6 +2470,7 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 id_to_name=validator.id_to_name,
                 sentence_split=_sentence_split,
             )
+            _invalidate_graph_cache()
 
             print(f"[API] Merged entity {source_id} into {target_id}: "
                   f"relations_transferred={relations_transferred}, "
@@ -2274,7 +2537,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 id_to_name=validator.id_to_name,
                 sentence_split=_sentence_split,
             )
-            
+            _invalidate_graph_cache()
+
             print(f"[API] Deleted entity {entity_id} and {triples_removed} connected triples")
             
             self._send_json({
@@ -2335,7 +2599,8 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 id_to_name=validator.id_to_name,
                 sentence_split=_sentence_split,
             )
-            
+            _invalidate_graph_cache()
+
             print(f"[API] Deleted triple {triple_index}: {head_id} --{relation}--> {tail_id}")
             
             self._send_json({
@@ -2434,6 +2699,7 @@ def start_validator_chat(
         debug: Enable debug mode
     """
     global validator, _server_running, _api_server, _api_thread, _nextjs_process, _nextjs_thread
+    global _source_patent_id, _source_filename, _source_type
     if graph is None and triples is None and id_to_name is None and sentence_split is None:
         persisted = _load_persisted_validator()
         if persisted:
@@ -2441,6 +2707,10 @@ def start_validator_chat(
             triples = persisted.get("triples")
             id_to_name = persisted.get("id_to_name")
             sentence_split = persisted.get("sentence_split")
+            sm = persisted.get("source_metadata") or {}
+            _source_patent_id = sm.get("patent_id")
+            _source_filename = sm.get("filename")
+            _source_type = sm.get("source")
             print("[Server] Loaded persisted validator state")
     api_host = (os.getenv("API_HOST") or "127.0.0.1").strip() or "127.0.0.1"
     api_port_in_use = not _is_port_available(port) if port else False

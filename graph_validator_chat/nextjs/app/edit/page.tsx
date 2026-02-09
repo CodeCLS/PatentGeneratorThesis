@@ -53,6 +53,12 @@ type ComboOption = { value: string; label: string };
 
 const NEW_ENTITY_VALUE = "__new__";
 const NEW_RELATION_VALUE = "__new_relation__";
+
+/** Stable key for a triple so suggestions stay attached after delete (indices shift). */
+function tripleKey(t: Triple): string {
+  return `${t.head.id}|${t.relation}|${t.tail.id}`;
+}
+
 const GRAPH_CACHE_KEYS = [
   "graph_html",
   "graph_timestamp",
@@ -153,6 +159,8 @@ const Combobox = ({
   );
 };
 
+const NEW_TRIPLE_KEY = "__new__";
+
 const buildEditState = (triple: Triple): TripleEditState => ({
   headSelection: triple.head.id,
   tailSelection: triple.tail.id,
@@ -167,6 +175,21 @@ const buildEditState = (triple: Triple): TripleEditState => ({
   saving: false,
   deleting: false,
 });
+
+const initialNewTripleState: TripleEditState = {
+  headSelection: "",
+  tailSelection: "",
+  headLabelSelection: "unknown_entity",
+  tailLabelSelection: "unknown_entity",
+  newHeadName: "",
+  newHeadLabel: "unknown_entity",
+  newTailName: "",
+  newTailLabel: "unknown_entity",
+  relationSelection: "",
+  newRelation: "",
+  saving: false,
+  deleting: false,
+};
 
 const clearGraphCache = () => {
   if (typeof window === "undefined") return;
@@ -238,10 +261,11 @@ export default function EditPage() {
     });
   }, [triples, searchTerm]);
 
-  const loadTriples = async () => {
+  const loadTriples = async (options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading !== false;
     const previousScrollTop = listRef.current?.scrollTop ?? 0;
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       setError("");
       const response = await fetch("/api/triples", { cache: "no-store" });
       const data = await response.json();
@@ -255,15 +279,17 @@ export default function EditPage() {
         nextStates[String(triple.index)] = buildEditState(triple);
       });
       setEditStates(nextStates);
-      requestAnimationFrame(() => {
-        if (listRef.current) {
-          listRef.current.scrollTop = previousScrollTop;
-        }
-      });
+      if (showLoading) {
+        requestAnimationFrame(() => {
+          if (listRef.current) {
+            listRef.current.scrollTop = previousScrollTop;
+          }
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load triples");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -281,17 +307,17 @@ export default function EditPage() {
     initialize();
   }, []);
 
-  const updateEditState = (index: number, updates: Partial<TripleEditState>) => {
+  const updateEditState = (key: number | string, updates: Partial<TripleEditState>) => {
+    const keyStr = typeof key === "number" ? String(key) : key;
     setEditStates((prev) => {
-      const key = String(index);
-      const fallbackTriple = triples.find((t) => t.index === index);
-      if (!prev[key] && !fallbackTriple) {
-        return prev;
-      }
-      const current = prev[key] || buildEditState(fallbackTriple as Triple);
+      const fallbackTriple = typeof key === "number" ? triples.find((t) => t.index === key) : undefined;
+      const current =
+        prev[keyStr] ||
+        (keyStr === NEW_TRIPLE_KEY ? initialNewTripleState : buildEditState(fallbackTriple as Triple));
+      if (keyStr !== NEW_TRIPLE_KEY && !fallbackTriple && !prev[keyStr]) return prev;
       return {
         ...prev,
-        [key]: {
+        [keyStr]: {
           ...current,
           ...updates,
         },
@@ -379,7 +405,7 @@ export default function EditPage() {
         messageType: "success",
       });
       clearGraphCache();
-      await loadTriples();
+      await loadTriples({ showLoading: false });
     } catch (err) {
       updateEditState(triple.index, {
         message: err instanceof Error ? err.message : "Failed to update triple",
@@ -413,7 +439,7 @@ export default function EditPage() {
         messageType: "success",
       });
       clearGraphCache();
-      await loadTriples();
+      await loadTriples({ showLoading: false });
     } catch (err) {
       updateEditState(triple.index, {
         message: err instanceof Error ? err.message : "Failed to delete triple",
@@ -421,6 +447,95 @@ export default function EditPage() {
       });
     } finally {
       updateEditState(triple.index, { deleting: false });
+    }
+  };
+
+  const handleAddTriple = async () => {
+    const state = editStates[NEW_TRIPLE_KEY] ?? initialNewTripleState;
+    if (state.saving) return;
+
+    const payload: Record<string, unknown> = {};
+
+    if (state.headSelection === NEW_ENTITY_VALUE) {
+      if (!state.newHeadName.trim()) {
+        updateEditState(NEW_TRIPLE_KEY, {
+          message: "Head name is required for a new entity.",
+          messageType: "error",
+        });
+        return;
+      }
+      payload.create_head = true;
+      payload.head_name = state.newHeadName.trim();
+      payload.head_label = state.newHeadLabel.trim() || "unknown_entity";
+    } else if (state.headSelection) {
+      payload.head_id = state.headSelection;
+    } else {
+      updateEditState(NEW_TRIPLE_KEY, {
+        message: "Select or create a head entity.",
+        messageType: "error",
+      });
+      return;
+    }
+
+    if (state.tailSelection === NEW_ENTITY_VALUE) {
+      if (!state.newTailName.trim()) {
+        updateEditState(NEW_TRIPLE_KEY, {
+          message: "Tail name is required for a new entity.",
+          messageType: "error",
+        });
+        return;
+      }
+      payload.create_tail = true;
+      payload.tail_name = state.newTailName.trim();
+      payload.tail_label = state.newTailLabel.trim() || "unknown_entity";
+    } else if (state.tailSelection) {
+      payload.tail_id = state.tailSelection;
+    } else {
+      updateEditState(NEW_TRIPLE_KEY, {
+        message: "Select or create a tail entity.",
+        messageType: "error",
+      });
+      return;
+    }
+
+    const relation =
+      state.relationSelection === NEW_RELATION_VALUE
+        ? state.newRelation.trim()
+        : (state.relationSelection || "").trim();
+    if (!relation) {
+      updateEditState(NEW_TRIPLE_KEY, {
+        message: "Select or enter a relation.",
+        messageType: "error",
+      });
+      return;
+    }
+    payload.relation = relation;
+
+    updateEditState(NEW_TRIPLE_KEY, { saving: true, message: undefined, messageType: undefined });
+    try {
+      const response = await fetch("/api/triples/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) {
+        throw new Error(data.error || "Failed to add triple");
+      }
+      updateEditState(NEW_TRIPLE_KEY, {
+        message: "Triple added.",
+        messageType: "success",
+      });
+      clearGraphCache();
+      await loadTriples({ showLoading: false });
+      setEditStates((prev) => ({ ...prev, [NEW_TRIPLE_KEY]: initialNewTripleState }));
+    } catch (err) {
+      updateEditState(NEW_TRIPLE_KEY, {
+        message: err instanceof Error ? err.message : "Failed to add triple",
+        messageType: "error",
+      });
+    } finally {
+      updateEditState(NEW_TRIPLE_KEY, { saving: false });
     }
   };
 
@@ -448,7 +563,7 @@ export default function EditPage() {
         message: "Label updated.",
         messageType: "success",
       });
-      await loadTriples();
+      await loadTriples({ showLoading: false });
     } catch (err) {
       updateEditState(tripleIndex, {
         message: err instanceof Error ? err.message : "Failed to update label",
@@ -481,13 +596,16 @@ export default function EditPage() {
         const batch = filteredTriples.slice(i, i + batchSize);
         const indices = batch.map((t) => t.index);
         const results = await fetchSuggestions(indices);
-        results.forEach((item: any) => {
+        results.forEach((item: { index?: number; action?: string; suggestion?: string; reason?: string }) => {
           if (item && typeof item.index === "number") {
-            nextSuggestions[String(item.index)] = {
-              action: String(item.action || "KEEP"),
-              suggestion: String(item.suggestion || "Keep as-is."),
-              reason: item.reason ? String(item.reason) : "",
-            };
+            const triple = batch.find((t) => t.index === item.index);
+            if (triple) {
+              nextSuggestions[tripleKey(triple)] = {
+                action: String(item.action || "KEEP"),
+                suggestion: String(item.suggestion || "Keep as-is."),
+                reason: item.reason ? String(item.reason) : "",
+              };
+            }
           }
         });
       }
@@ -542,6 +660,485 @@ export default function EditPage() {
 
         {error && <div className={styles.pipelineNotice}>{error}</div>}
 
+        {!loading && !error && (
+          <div className={styles.list} ref={listRef}>
+            <Card className={styles.tripleCard}>
+              <CardHeader>
+                <CardTitle className={styles.tripleTitle}>
+                  <span>New triple</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const state = editStates[NEW_TRIPLE_KEY] ?? initialNewTripleState;
+                  const selectedHead = state.headSelection ? entitiesById.get(state.headSelection) : undefined;
+                  const selectedTail = state.tailSelection ? entitiesById.get(state.tailSelection) : undefined;
+                  const headDisplay =
+                    state.headSelection === NEW_ENTITY_VALUE
+                      ? state.newHeadName || "New entity"
+                      : selectedHead?.name || "Select head";
+                  const tailDisplay =
+                    state.tailSelection === NEW_ENTITY_VALUE
+                      ? state.newTailName || "New entity"
+                      : selectedTail?.name || "Select tail";
+                  const relationDisplay =
+                    state.relationSelection === NEW_RELATION_VALUE
+                      ? state.newRelation || "New relation"
+                      : state.relationSelection || "Select relation";
+
+                  return (
+                    <>
+                      <div className={styles.tripleRow}>
+                        <div className={styles.entityColumn}>
+                          <span className={styles.entityLabel}>Head</span>
+                          <Combobox
+                            valueLabel={headDisplay}
+                            selectedValue={state.headSelection}
+                            inputValue={state.newHeadName}
+                            onInputChange={(value) =>
+                              updateEditState(NEW_TRIPLE_KEY, {
+                                newHeadName: value,
+                                message: undefined,
+                                messageType: undefined,
+                              })
+                            }
+                            options={entities.map((entity) => ({ value: entity.id, label: entity.name }))}
+                            onSelect={(value) =>
+                              updateEditState(NEW_TRIPLE_KEY, {
+                                headSelection: value,
+                                headLabelSelection: entitiesById.get(value)?.label || "unknown_entity",
+                                newHeadName: "",
+                              })
+                            }
+                            onCreate={(value) =>
+                              updateEditState(NEW_TRIPLE_KEY, {
+                                headSelection: NEW_ENTITY_VALUE,
+                                newHeadName: value,
+                              })
+                            }
+                            placeholder="Search or add entity..."
+                            createLabel="Create"
+                          />
+                          {state.headSelection === NEW_ENTITY_VALUE && (
+                            <div className={styles.newEntityRow}>
+                              <select
+                                className={styles.labelSelect}
+                                value={state.newHeadLabel}
+                                onChange={(e) =>
+                                  updateEditState(NEW_TRIPLE_KEY, {
+                                    newHeadLabel: e.target.value,
+                                    message: undefined,
+                                    messageType: undefined,
+                                  })
+                                }
+                              >
+                                {labelOptions.map((label) => (
+                                  <option key={label} value={label}>
+                                    {label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {state.headSelection && state.headSelection !== NEW_ENTITY_VALUE && selectedHead && (
+                            <select
+                              className={styles.labelSelect}
+                              value={state.headLabelSelection}
+                              onChange={(e) =>
+                                updateEditState(NEW_TRIPLE_KEY, { headLabelSelection: e.target.value })
+                              }
+                            >
+                              {labelOptions.map((label) => (
+                                <option key={label} value={label}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        <div className={styles.relationColumn}>
+                          <span className={styles.entityLabel}>Relation</span>
+                          <Combobox
+                            valueLabel={relationDisplay}
+                            selectedValue={state.relationSelection}
+                            inputValue={state.newRelation}
+                            onInputChange={(value) =>
+                              updateEditState(NEW_TRIPLE_KEY, {
+                                newRelation: value,
+                                message: undefined,
+                                messageType: undefined,
+                              })
+                            }
+                            options={relationOptions.map((r) => ({ value: r, label: r }))}
+                            onSelect={(value) =>
+                              updateEditState(NEW_TRIPLE_KEY, {
+                                relationSelection: value,
+                                newRelation: "",
+                              })
+                            }
+                            onCreate={(value) =>
+                              updateEditState(NEW_TRIPLE_KEY, {
+                                relationSelection: NEW_RELATION_VALUE,
+                                newRelation: value,
+                              })
+                            }
+                            placeholder="Search or add relation..."
+                            createLabel="Create"
+                          />
+                        </div>
+
+                        <div className={styles.entityColumn}>
+                          <span className={styles.entityLabel}>Tail</span>
+                          <Combobox
+                            valueLabel={tailDisplay}
+                            selectedValue={state.tailSelection}
+                            inputValue={state.newTailName}
+                            onInputChange={(value) =>
+                              updateEditState(NEW_TRIPLE_KEY, {
+                                newTailName: value,
+                                message: undefined,
+                                messageType: undefined,
+                              })
+                            }
+                            options={entities.map((entity) => ({ value: entity.id, label: entity.name }))}
+                            onSelect={(value) =>
+                              updateEditState(NEW_TRIPLE_KEY, {
+                                tailSelection: value,
+                                tailLabelSelection: entitiesById.get(value)?.label || "unknown_entity",
+                                newTailName: "",
+                              })
+                            }
+                            onCreate={(value) =>
+                              updateEditState(NEW_TRIPLE_KEY, {
+                                tailSelection: NEW_ENTITY_VALUE,
+                                newTailName: value,
+                              })
+                            }
+                            placeholder="Search or add entity..."
+                            createLabel="Create"
+                          />
+                          {state.tailSelection === NEW_ENTITY_VALUE && (
+                            <div className={styles.newEntityRow}>
+                              <select
+                                className={styles.labelSelect}
+                                value={state.newTailLabel}
+                                onChange={(e) =>
+                                  updateEditState(NEW_TRIPLE_KEY, {
+                                    newTailLabel: e.target.value,
+                                    message: undefined,
+                                    messageType: undefined,
+                                  })
+                                }
+                              >
+                                {labelOptions.map((label) => (
+                                  <option key={label} value={label}>
+                                    {label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {state.tailSelection && state.tailSelection !== NEW_ENTITY_VALUE && selectedTail && (
+                            <select
+                              className={styles.labelSelect}
+                              value={state.tailLabelSelection}
+                              onChange={(e) =>
+                                updateEditState(NEW_TRIPLE_KEY, { tailLabelSelection: e.target.value })
+                              }
+                            >
+                              {labelOptions.map((label) => (
+                                <option key={label} value={label}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className={styles.tripleActions}>
+                        <Button
+                          size="sm"
+                          onClick={handleAddTriple}
+                          disabled={state.saving}
+                        >
+                          {state.saving ? "Adding..." : "Add triple"}
+                        </Button>
+                        {state.message && (
+                          <span
+                            className={`${styles.statusMessage} ${
+                              state.messageType === "error"
+                                ? styles.statusError
+                                : state.messageType === "success"
+                                ? styles.statusSuccess
+                                : ""
+                            }`}
+                          >
+                            {state.message}
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+
+            {filteredTriples.length > 0 &&
+              filteredTriples.map((triple) => {
+                const state = editStates[String(triple.index)] || buildEditState(triple);
+                const selectedHead = entitiesById.get(state.headSelection);
+                const selectedTail = entitiesById.get(state.tailSelection);
+                const headDisplay =
+                  state.headSelection === NEW_ENTITY_VALUE
+                    ? state.newHeadName || "New entity"
+                    : selectedHead?.name || "Select head";
+                const tailDisplay =
+                  state.tailSelection === NEW_ENTITY_VALUE
+                    ? state.newTailName || "New entity"
+                    : selectedTail?.name || "Select tail";
+                const relationDisplay =
+                  state.relationSelection === NEW_RELATION_VALUE
+                    ? state.newRelation || "New relation"
+                    : state.relationSelection || "Select relation";
+
+                return (
+                  <Card key={triple.index} className={styles.tripleCard}>
+                    <CardHeader>
+                      <CardTitle className={styles.tripleTitle}>
+                        <span>Triple #{triple.index + 1}</span>
+                        {suggestions[tripleKey(triple)] && (
+                          <span className={styles.suggestionNote}>
+                            AI: {suggestions[tripleKey(triple)].suggestion}
+                            {suggestions[tripleKey(triple)].action !== "KEEP" &&
+                            suggestions[tripleKey(triple)].reason
+                              ? ` — ${suggestions[tripleKey(triple)].reason}`
+                              : ""}
+                          </span>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className={styles.tripleRow}>
+                        <div className={styles.entityColumn}>
+                          <span className={styles.entityLabel}>Head</span>
+                          <Combobox
+                            valueLabel={headDisplay}
+                            selectedValue={state.headSelection}
+                            inputValue={state.newHeadName}
+                            onInputChange={(value) =>
+                              updateEditState(triple.index, {
+                                newHeadName: value,
+                                message: undefined,
+                                messageType: undefined,
+                              })
+                            }
+                            options={entities.map((entity) => ({
+                              value: entity.id,
+                              label: entity.name,
+                            }))}
+                            onSelect={(value) =>
+                              updateEditState(triple.index, {
+                                headSelection: value,
+                                headLabelSelection: entitiesById.get(value)?.label || "unknown_entity",
+                                newHeadName: "",
+                              })
+                            }
+                            onCreate={(value) =>
+                              updateEditState(triple.index, {
+                                headSelection: NEW_ENTITY_VALUE,
+                                newHeadName: value,
+                              })
+                            }
+                            placeholder="Search or add entity..."
+                            createLabel="Create"
+                          />
+                          {state.headSelection === NEW_ENTITY_VALUE && (
+                            <div className={styles.newEntityRow}>
+                              <select
+                                className={styles.labelSelect}
+                                value={state.newHeadLabel}
+                                onChange={(event) =>
+                                  updateEditState(triple.index, {
+                                    newHeadLabel: event.target.value,
+                                    message: undefined,
+                                    messageType: undefined,
+                                  })
+                                }
+                              >
+                                {labelOptions.map((label) => (
+                                  <option key={label} value={label}>
+                                    {label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {state.headSelection !== NEW_ENTITY_VALUE && selectedHead && (
+                            <select
+                              className={styles.labelSelect}
+                              value={state.headLabelSelection}
+                              onChange={(event) => {
+                                const nextLabel = event.target.value;
+                                updateEditState(triple.index, { headLabelSelection: nextLabel });
+                                void handleLabelChange(selectedHead.id, nextLabel, triple.index);
+                              }}
+                            >
+                              {labelOptions.map((label) => (
+                                <option key={label} value={label}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        <div className={styles.relationColumn}>
+                          <span className={styles.entityLabel}>Relation</span>
+                          <Combobox
+                            valueLabel={relationDisplay}
+                            selectedValue={state.relationSelection}
+                            inputValue={state.newRelation}
+                            onInputChange={(value) =>
+                              updateEditState(triple.index, {
+                                newRelation: value,
+                                message: undefined,
+                                messageType: undefined,
+                              })
+                            }
+                            options={relationOptions.map((relation) => ({
+                              value: relation,
+                              label: relation,
+                            }))}
+                            onSelect={(value) =>
+                              updateEditState(triple.index, {
+                                relationSelection: value,
+                                newRelation: "",
+                              })
+                            }
+                            onCreate={(value) =>
+                              updateEditState(triple.index, {
+                                relationSelection: NEW_RELATION_VALUE,
+                                newRelation: value,
+                              })
+                            }
+                            placeholder="Search or add relation..."
+                            createLabel="Create"
+                          />
+                        </div>
+
+                        <div className={styles.entityColumn}>
+                          <span className={styles.entityLabel}>Tail</span>
+                          <Combobox
+                            valueLabel={tailDisplay}
+                            selectedValue={state.tailSelection}
+                            inputValue={state.newTailName}
+                            onInputChange={(value) =>
+                              updateEditState(triple.index, {
+                                newTailName: value,
+                                message: undefined,
+                                messageType: undefined,
+                              })
+                            }
+                            options={entities.map((entity) => ({
+                              value: entity.id,
+                              label: entity.name,
+                            }))}
+                            onSelect={(value) =>
+                              updateEditState(triple.index, {
+                                tailSelection: value,
+                                tailLabelSelection: entitiesById.get(value)?.label || "unknown_entity",
+                                newTailName: "",
+                              })
+                            }
+                            onCreate={(value) =>
+                              updateEditState(triple.index, {
+                                tailSelection: NEW_ENTITY_VALUE,
+                                newTailName: value,
+                              })
+                            }
+                            placeholder="Search or add entity..."
+                            createLabel="Create"
+                          />
+                          {state.tailSelection === NEW_ENTITY_VALUE && (
+                            <div className={styles.newEntityRow}>
+                              <select
+                                className={styles.labelSelect}
+                                value={state.newTailLabel}
+                                onChange={(event) =>
+                                  updateEditState(triple.index, {
+                                    newTailLabel: event.target.value,
+                                    message: undefined,
+                                    messageType: undefined,
+                                  })
+                                }
+                              >
+                                {labelOptions.map((label) => (
+                                  <option key={label} value={label}>
+                                    {label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {state.tailSelection !== NEW_ENTITY_VALUE && selectedTail && (
+                            <select
+                              className={styles.labelSelect}
+                              value={state.tailLabelSelection}
+                              onChange={(event) => {
+                                const nextLabel = event.target.value;
+                                updateEditState(triple.index, { tailLabelSelection: nextLabel });
+                                void handleLabelChange(selectedTail.id, nextLabel, triple.index);
+                              }}
+                            >
+                              {labelOptions.map((label) => (
+                                <option key={label} value={label}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className={styles.tripleActions}>
+                        <Button
+                          size="sm"
+                          onClick={() => handleApply(triple)}
+                          disabled={state.saving || state.deleting}
+                        >
+                          {state.saving ? "Saving..." : "Apply changes"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDeleteTriple(triple)}
+                          disabled={state.saving || state.deleting}
+                        >
+                          {state.deleting ? "Deleting..." : "Delete"}
+                        </Button>
+                        {state.message && (
+                          <span
+                            className={`${styles.statusMessage} ${
+                              state.messageType === "error"
+                                ? styles.statusError
+                                : state.messageType === "success"
+                                ? styles.statusSuccess
+                                : ""
+                            }`}
+                          >
+                            {state.message}
+                          </span>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+          </div>
+        )}
+
         {loading && !error && (
           <div className={styles.emptyState}>
             <p>Loading triples...</p>
@@ -552,261 +1149,6 @@ export default function EditPage() {
           <div className={styles.emptyState}>
             <p>No triples found.</p>
             <p>Try adjusting the search or upload a new document.</p>
-          </div>
-        )}
-
-        {!loading && !error && filteredTriples.length > 0 && (
-          <div className={styles.list} ref={listRef}>
-            {filteredTriples.map((triple) => {
-              const state = editStates[String(triple.index)] || buildEditState(triple);
-              const selectedHead = entitiesById.get(state.headSelection);
-              const selectedTail = entitiesById.get(state.tailSelection);
-              const headDisplay =
-                state.headSelection === NEW_ENTITY_VALUE
-                  ? state.newHeadName || "New entity"
-                  : selectedHead?.name || "Select head";
-              const tailDisplay =
-                state.tailSelection === NEW_ENTITY_VALUE
-                  ? state.newTailName || "New entity"
-                  : selectedTail?.name || "Select tail";
-              const relationDisplay =
-                state.relationSelection === NEW_RELATION_VALUE
-                  ? state.newRelation || "New relation"
-                  : state.relationSelection || "Select relation";
-
-              return (
-                <Card key={triple.index} className={styles.tripleCard}>
-                  <CardHeader>
-                    <CardTitle className={styles.tripleTitle}>
-                      <span>Triple #{triple.index + 1}</span>
-                      {suggestions[String(triple.index)] && (
-                        <span className={styles.suggestionNote}>
-                          AI: {suggestions[String(triple.index)].suggestion}
-                          {suggestions[String(triple.index)].action !== "KEEP" &&
-                          suggestions[String(triple.index)].reason
-                            ? ` — ${suggestions[String(triple.index)].reason}`
-                            : ""}
-                        </span>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className={styles.tripleRow}>
-                      <div className={styles.entityColumn}>
-                        <span className={styles.entityLabel}>Head</span>
-                        <Combobox
-                          valueLabel={headDisplay}
-                          selectedValue={state.headSelection}
-                          inputValue={state.newHeadName}
-                          onInputChange={(value) =>
-                            updateEditState(triple.index, {
-                              newHeadName: value,
-                              message: undefined,
-                              messageType: undefined,
-                            })
-                          }
-                          options={entities.map((entity) => ({
-                            value: entity.id,
-                            label: entity.name,
-                          }))}
-                          onSelect={(value) =>
-                            updateEditState(triple.index, {
-                              headSelection: value,
-                              headLabelSelection: entitiesById.get(value)?.label || "unknown_entity",
-                              newHeadName: "",
-                            })
-                          }
-                          onCreate={(value) =>
-                            updateEditState(triple.index, {
-                              headSelection: NEW_ENTITY_VALUE,
-                              newHeadName: value,
-                            })
-                          }
-                          placeholder="Search or add entity..."
-                          createLabel="Create"
-                        />
-                        {state.headSelection === NEW_ENTITY_VALUE && (
-                          <div className={styles.newEntityRow}>
-                            <select
-                              className={styles.labelSelect}
-                              value={state.newHeadLabel}
-                              onChange={(event) =>
-                                updateEditState(triple.index, {
-                                  newHeadLabel: event.target.value,
-                                  message: undefined,
-                                  messageType: undefined,
-                                })
-                              }
-                            >
-                              {labelOptions.map((label) => (
-                                <option key={label} value={label}>
-                                  {label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                        {state.headSelection !== NEW_ENTITY_VALUE && selectedHead && (
-                          <select
-                            className={styles.labelSelect}
-                            value={state.headLabelSelection}
-                            onChange={(event) => {
-                              const nextLabel = event.target.value;
-                              updateEditState(triple.index, { headLabelSelection: nextLabel });
-                              void handleLabelChange(selectedHead.id, nextLabel, triple.index);
-                            }}
-                          >
-                            {labelOptions.map((label) => (
-                              <option key={label} value={label}>
-                                {label}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-
-                      <div className={styles.relationColumn}>
-                        <span className={styles.entityLabel}>Relation</span>
-                        <Combobox
-                          valueLabel={relationDisplay}
-                          selectedValue={state.relationSelection}
-                          inputValue={state.newRelation}
-                          onInputChange={(value) =>
-                            updateEditState(triple.index, {
-                              newRelation: value,
-                              message: undefined,
-                              messageType: undefined,
-                            })
-                          }
-                          options={relationOptions.map((relation) => ({
-                            value: relation,
-                            label: relation,
-                          }))}
-                          onSelect={(value) =>
-                            updateEditState(triple.index, {
-                              relationSelection: value,
-                              newRelation: "",
-                            })
-                          }
-                          onCreate={(value) =>
-                            updateEditState(triple.index, {
-                              relationSelection: NEW_RELATION_VALUE,
-                              newRelation: value,
-                            })
-                          }
-                          placeholder="Search or add relation..."
-                          createLabel="Create"
-                        />
-                      </div>
-
-                      <div className={styles.entityColumn}>
-                        <span className={styles.entityLabel}>Tail</span>
-                        <Combobox
-                          valueLabel={tailDisplay}
-                          selectedValue={state.tailSelection}
-                          inputValue={state.newTailName}
-                          onInputChange={(value) =>
-                            updateEditState(triple.index, {
-                              newTailName: value,
-                              message: undefined,
-                              messageType: undefined,
-                            })
-                          }
-                          options={entities.map((entity) => ({
-                            value: entity.id,
-                            label: entity.name,
-                          }))}
-                          onSelect={(value) =>
-                            updateEditState(triple.index, {
-                              tailSelection: value,
-                              tailLabelSelection: entitiesById.get(value)?.label || "unknown_entity",
-                              newTailName: "",
-                            })
-                          }
-                          onCreate={(value) =>
-                            updateEditState(triple.index, {
-                              tailSelection: NEW_ENTITY_VALUE,
-                              newTailName: value,
-                            })
-                          }
-                          placeholder="Search or add entity..."
-                          createLabel="Create"
-                        />
-                        {state.tailSelection === NEW_ENTITY_VALUE && (
-                          <div className={styles.newEntityRow}>
-                            <select
-                              className={styles.labelSelect}
-                              value={state.newTailLabel}
-                              onChange={(event) =>
-                                updateEditState(triple.index, {
-                                  newTailLabel: event.target.value,
-                                  message: undefined,
-                                  messageType: undefined,
-                                })
-                              }
-                            >
-                              {labelOptions.map((label) => (
-                                <option key={label} value={label}>
-                                  {label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                        {state.tailSelection !== NEW_ENTITY_VALUE && selectedTail && (
-                          <select
-                            className={styles.labelSelect}
-                            value={state.tailLabelSelection}
-                            onChange={(event) => {
-                              const nextLabel = event.target.value;
-                              updateEditState(triple.index, { tailLabelSelection: nextLabel });
-                              void handleLabelChange(selectedTail.id, nextLabel, triple.index);
-                            }}
-                          >
-                            {labelOptions.map((label) => (
-                              <option key={label} value={label}>
-                                {label}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className={styles.tripleActions}>
-                      <Button
-                        size="sm"
-                        onClick={() => handleApply(triple)}
-                        disabled={state.saving || state.deleting}
-                      >
-                        {state.saving ? "Saving..." : "Apply changes"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleDeleteTriple(triple)}
-                        disabled={state.saving || state.deleting}
-                      >
-                        {state.deleting ? "Deleting..." : "Delete"}
-                      </Button>
-                      {state.message && (
-                        <span
-                          className={`${styles.statusMessage} ${
-                            state.messageType === "error"
-                              ? styles.statusError
-                              : state.messageType === "success"
-                              ? styles.statusSuccess
-                              : ""
-                          }`}
-                        >
-                          {state.message}
-                        </span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
           </div>
         )}
         </main>

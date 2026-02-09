@@ -57,6 +57,16 @@
   gap: 10px;
 }
 
+.outdatedTag {
+  padding: 4px 10px;
+  background: rgba(234, 179, 8, 0.18);
+  color: #854d0e;
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .refreshButton {
   padding: 8px 16px;
   background: rgba(55, 53, 47, 0.06);

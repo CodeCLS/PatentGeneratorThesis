@@ -30,8 +30,38 @@ export default function EditorPage() {
   const [expandedPromptClaim, setExpandedPromptClaim] = useState<number | null>(null);
   const [similarityThreshold, setSimilarityThreshold] = useState<number>(0.3);
   const [pipelineBootstrapError, setPipelineBootstrapError] = useState<string>('');
+  const [claimsDisplayNumbers, setClaimsDisplayNumbers] = useState<Record<number, string>>({});
+  const [sourceInfo, setSourceInfo] = useState<{ source_label?: string; short_abstract?: string } | null>(null);
   const progressCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRegeneratingRef = useRef<boolean>(false);
+
+  // Auto-dismiss "Successfully generated N claims" notification after 5 seconds
+  useEffect(() => {
+    if (progress?.stage === 'complete') {
+      const timeoutId = setTimeout(() => setProgress(null), 5000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [progress?.stage]);
+
+  useEffect(() => {
+    const loadSource = async () => {
+      try {
+        const res = await fetch('/api/source');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && (data.source_label || data.short_abstract)) {
+            setSourceInfo({
+              source_label: data.source_label ?? undefined,
+              short_abstract: data.short_abstract ?? undefined,
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+    loadSource();
+  }, []);
 
   useEffect(() => {
     const ensurePipeline = async () => {
@@ -320,28 +350,31 @@ export default function EditorPage() {
     let html = '<div style="font-family: Georgia, serif; line-height: 1.8; padding: 20px; max-width: 100%; background-color: white; padding-bottom: 200px; display: block;">';
     html += '<h1 style="margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; font-size: 28px;">Patent Claims</h1>';
     
+    // Algorithmic display numbers: independents 1, 2, 3...; dependents 1.1, 1.2, 2.1...
+    const displayMap: Record<number, string> = {};
+
     // Display independent claims with their dependent claims grouped underneath
-    independentClaims.forEach((independentClaim: any) => {
-      // Independent claim - make it clickable
+    independentClaims.forEach((independentClaim: any, indIndex: number) => {
       const claimNum = independentClaim.claim_number;
+      const displayNum = String(indIndex + 1);
+      displayMap[claimNum] = displayNum;
+
       const claimText = (independentClaim.claim_text || '').trim();
-      // Replace claim number in text with formatted number (e.g., "1." stays "1.")
-      const formattedClaimText = claimText.replace(/^\d+\./, `${claimNum}.`);
+      const formattedClaimText = claimText.replace(/^\d+(\.\d+)?\.?\s*/, `${displayNum}. `);
       
       html += `<div class="claim-item" data-claim-number="${claimNum}" style="margin-bottom: 24px; padding-left: 0; cursor: pointer; padding: 8px; border-radius: 4px; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#f5f5f5'" onmouseout="this.style.backgroundColor='transparent'">`;
       html += `<p style="text-indent: 0; margin: 0 0 12px 0; line-height: 1.8; font-size: 16px;">${escapeHtml(formattedClaimText)}</p>`;
       html += `</div>`;
       
-      // Dependent claims for this independent claim
-      const dependents = dependentByParent[independentClaim.claim_number] || [];
+      const dependents = dependentByParent[claimNum] || [];
       if (dependents.length > 0) {
         dependents.forEach((dependentClaim: any, depIndex: number) => {
           const depClaimNum = dependentClaim.claim_number;
+          const depDisplayNum = `${displayNum}.${depIndex + 1}`;
+          displayMap[depClaimNum] = depDisplayNum;
+
           const depClaimText = (dependentClaim.claim_text || '').trim();
-          // Format as x.1, x.2, etc. where x is the parent claim number
-          const displayNumber = `${claimNum}.${depIndex + 1}`;
-          // Replace the claim number in the text with the formatted number
-          const formattedDepClaimText = depClaimText.replace(/^\d+\./, `${displayNumber}.`);
+          const formattedDepClaimText = depClaimText.replace(/^\d+(\.\d+)?\.?\s*/, `${depDisplayNum}. `);
           
           html += `<div class="claim-item" data-claim-number="${depClaimNum}" style="margin-bottom: 24px; padding-left: 20px; margin-top: 12px; cursor: pointer; padding: 8px; border-radius: 4px; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#f5f5f5'" onmouseout="this.style.backgroundColor='transparent'">`;
           html += `<p style="text-indent: 0; margin: 0 0 12px 0; line-height: 1.8; font-size: 16px;">${escapeHtml(formattedDepClaimText)}</p>`;
@@ -349,14 +382,15 @@ export default function EditorPage() {
         });
       }
     });
-    
-    // Handle any orphaned dependent claims (no parent found)
+
+    // Orphaned dependent claims (parent not in list): show with original number
     Object.keys(dependentByParent).forEach((parentNumStr) => {
       const parentNum = parseInt(parentNumStr);
       if (!independentClaims.find((ic: any) => ic.claim_number === parentNum)) {
         const orphanedDependents = dependentByParent[parentNum];
-        orphanedDependents.forEach((dependentClaim: any) => {
+        orphanedDependents.forEach((dependentClaim: any, idx: number) => {
           const depClaimNum = dependentClaim.claim_number;
+          displayMap[depClaimNum] = String(depClaimNum);
           html += `<div class="claim-item" data-claim-number="${depClaimNum}" style="margin-bottom: 24px; padding-left: 0; cursor: pointer; padding: 8px; border-radius: 4px; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#f5f5f5'" onmouseout="this.style.backgroundColor='transparent'">`;
           const depClaimText = (dependentClaim.claim_text || '').trim();
           html += `<p style="text-indent: 0; margin: 0 0 12px 0; line-height: 1.8; font-size: 16px;">${escapeHtml(depClaimText)}</p>`;
@@ -364,6 +398,8 @@ export default function EditorPage() {
         });
       }
     });
+
+    setClaimsDisplayNumbers(displayMap);
     
     html += '</div>';
     
@@ -624,6 +660,18 @@ export default function EditorPage() {
         </div>
         
         <div className={styles.toolbarSeparator} />
+
+        <div className={styles.toolbarGroup}>
+          <button
+            className={styles.toolbarButton}
+            onClick={() => window.print()}
+            title="Open print dialog to save as PDF"
+          >
+            Download as PDF
+          </button>
+        </div>
+        
+        <div className={styles.toolbarSeparator} />
         
         <div className={styles.toolbarGroup}>
           <label className={styles.similarityLabel} title="Cosine Similarity Threshold">
@@ -650,18 +698,32 @@ export default function EditorPage() {
       </div>
 
       <div className={styles.editorWrapper}>
-        <div className={`${styles.editorContainer} ${showTriplesPanel ? styles.editorWithPanel : ''}`}>
-          <div
-            ref={editorRef}
-            className={styles.editor}
+        <div className={`${styles.editorColumn} ${showTriplesPanel ? styles.editorColumnWithPanel : ''}`}>
+          {(sourceInfo?.source_label || sourceInfo?.short_abstract) && (
+            <div className={styles.sourceHeader}>
+              {sourceInfo.source_label && (
+                <div className={styles.sourceLabel}>{sourceInfo.source_label}</div>
+              )}
+              {sourceInfo.short_abstract && (
+                <div className={styles.sourceAbstract}>
+                  <strong>Abstract:</strong> {sourceInfo.short_abstract}
+                </div>
+              )}
+            </div>
+          )}
+          <div className={styles.editorContainer}>
+            <div
+              ref={editorRef}
+              className={styles.editor}
             contentEditable
             onInput={handleInput}
             onKeyDown={handleKeyDown}
             suppressContentEditableWarning
             data-placeholder="Start typing..."
-          />
+            />
+          </div>
         </div>
-        
+
         {/* Triples Side Panel */}
         {showTriplesPanel && (
           <div className={styles.triplesPanel}>
@@ -679,12 +741,15 @@ export default function EditorPage() {
               {selectedClaimNumber ? (
                 (() => {
                   const selectedClaim = claims.find((c: any) => c.claim_number === selectedClaimNumber);
-                  if (selectedClaim && selectedClaim.used_triples && selectedClaim.used_triples.length > 0) {
+                  const usedTriples = selectedClaim?.used_triples ?? [];
+                  const hasTriples = Array.isArray(usedTriples) && usedTriples.length > 0;
+                  const promptText = selectedClaim?.prompt ?? '';
+                  if (selectedClaim) {
                     return (
                       <div>
                         <div className={styles.claimInfo}>
-                          <strong>Claim {selectedClaimNumber}</strong>
-                          <span className={styles.claimType}>{selectedClaim.claim_type.toUpperCase()}</span>
+                          <strong>Claim {claimsDisplayNumbers[selectedClaimNumber] ?? selectedClaimNumber}</strong>
+                          <span className={styles.claimType}>{(selectedClaim.claim_type || '').toUpperCase()}</span>
                         </div>
                         {selectedClaim.focus && (
                           <div className={styles.claimFocus}>
@@ -692,7 +757,7 @@ export default function EditorPage() {
                             <div className={styles.claimFocusText}>{selectedClaim.focus}</div>
                           </div>
                         )}
-                        {selectedClaim.prompt && (
+                        {promptText && (
                           <div className={styles.promptDropdown}>
                             <button
                               className={styles.promptDropdownButton}
@@ -707,50 +772,62 @@ export default function EditorPage() {
                             </button>
                             {expandedPromptClaim === selectedClaimNumber && (
                               <div className={styles.promptContent}>
-                                <pre className={styles.promptText}>{selectedClaim.prompt}</pre>
+                                <pre className={styles.promptText}>{promptText}</pre>
                               </div>
                             )}
                           </div>
                         )}
-                        <div className={styles.triplesList}>
-                          {selectedClaim.used_triples.map((triple: any, idx: number) => (
-                            <div key={idx} className={styles.tripleItem}>
-                              <div className={styles.tripleHead}>{triple.head || 'N/A'}</div>
-                              <div className={styles.tripleRelation}>— {triple.relation || 'N/A'} —</div>
-                              <div className={styles.tripleTail}>{triple.tail || 'N/A'}</div>
-                              {triple.similarity !== undefined && (
-                                <div className={styles.tripleSimilarity}>
-                                  Similarity: {(triple.similarity * 100).toFixed(1)}%
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  } else {
-                    return (
-                      <div className={styles.noTriples}>
-                        <p>No triples recorded for Claim {selectedClaimNumber}</p>
-                        <p className={styles.hint}>Click on a claim to see its facts</p>
+                        {hasTriples ? (
+                          <div className={styles.triplesList}>
+                            {usedTriples.map((triple: any, idx: number) => (
+                              <div key={idx} className={styles.tripleItem}>
+                                <div className={styles.tripleHead}>{triple.head || 'N/A'}</div>
+                                <div className={styles.tripleRelation}>— {triple.relation || 'N/A'} —</div>
+                                <div className={styles.tripleTail}>{triple.tail || 'N/A'}</div>
+                                {triple.similarity !== undefined && (
+                                  <div className={styles.tripleSimilarity}>
+                                    Similarity: {(triple.similarity * 100).toFixed(1)}%
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className={styles.noTriples}>
+                            <p>No triples recorded for Claim {claimsDisplayNumbers[selectedClaimNumber] ?? selectedClaimNumber}</p>
+                            <p className={styles.hint}>Threshold may be high or no matching facts in the graph.</p>
+                          </div>
+                        )}
                       </div>
                     );
                   }
+                  return (
+                    <div className={styles.noTriples}>
+                      <p>No triples recorded for Claim {claimsDisplayNumbers[selectedClaimNumber] ?? selectedClaimNumber}</p>
+                      <p className={styles.hint}>Click on a claim to see its facts</p>
+                    </div>
+                  );
                 })()
               ) : (
                 <div className={styles.noSelection}>
                   <p>Click on a claim to see which facts were used</p>
                   <div className={styles.claimsList}>
-                    {claims.map((claim: any) => (
+                    {[...claims]
+                      .sort((a: any, b: any) => {
+                        const da = claimsDisplayNumbers[a.claim_number] ?? String(a.claim_number);
+                        const db = claimsDisplayNumbers[b.claim_number] ?? String(b.claim_number);
+                        return da.localeCompare(db, undefined, { numeric: true });
+                      })
+                      .map((claim: any) => (
                       <div
                         key={claim.claim_number}
                         className={styles.claimListItem}
                         onClick={() => setSelectedClaimNumber(claim.claim_number)}
                       >
-                        <span className={styles.claimNumber}>Claim {claim.claim_number}</span>
+                        <span className={styles.claimNumber}>Claim {claimsDisplayNumbers[claim.claim_number] ?? claim.claim_number}</span>
                         <span className={styles.claimTypeBadge}>{claim.claim_type}</span>
-                        {claim.used_triples && claim.used_triples.length > 0 && (
-                          <span className={styles.tripleCount}>{claim.used_triples.length} facts</span>
+                        {(claim.used_triples ?? []).length > 0 && (
+                          <span className={styles.tripleCount}>{(claim.used_triples ?? []).length} facts</span>
                         )}
                       </div>
                     ))}

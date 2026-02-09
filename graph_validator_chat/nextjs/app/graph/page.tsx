@@ -8,13 +8,16 @@ import { injectGraphClickHandler } from '@/lib/graph-interactions';
 import { bootstrapPipelineIfNeeded } from '@/lib/pipeline-bootstrap';
 import SideNav from '@/components/SideNav';
 
-const STORAGE_KEY_GRAPH_HTML = 'graph_html';
-const STORAGE_KEY_GRAPH_TIMESTAMP = 'graph_timestamp';
-const STORAGE_KEY_GRAPH_TRIPLES_COUNT = 'graph_triples_count';
 const STORAGE_KEY_GRAPH_LAYOUT = 'graph_layout';
-const GRAPH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const GRAPH_HTML_ENDPOINT = process.env.NEXT_PUBLIC_GRAPH_ENDPOINT || '/api/graph/html';
 const USE_NEO4J_GRAPH = GRAPH_HTML_ENDPOINT.includes('/api/graph/neo4j');
+
+interface GraphStatus {
+  hasGraph: boolean;
+  outdated: boolean;
+  triplesCount: number;
+  graphTriplesCount?: number;
+}
 
 type LayoutMode = 'chaotic' | 'tree';
 
@@ -59,11 +62,10 @@ export default function GraphPage() {
   const [localStatsLoading, setLocalStatsLoading] = useState(false);
   const [pipelineBootstrapping, setPipelineBootstrapping] = useState(false);
   const [pipelineBootstrapError, setPipelineBootstrapError] = useState<string>('');
+  const [graphStatus, setGraphStatus] = useState<GraphStatus | null>(null);
   const hasLoadedRef = useRef(false);
   const layoutInitializedRef = useRef(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  const cacheKey = (base: string, layout: LayoutMode) => `${base}_${layout}`;
 
   const loadTriples = useCallback(async (): Promise<number | null> => {
     try {
@@ -95,82 +97,76 @@ export default function GraphPage() {
     return null;
   }, []);
 
-  const loadGraph = useCallback(async (force = false) => {
-    const htmlKey = cacheKey(STORAGE_KEY_GRAPH_HTML, layoutMode);
-    const timestampKey = cacheKey(STORAGE_KEY_GRAPH_TIMESTAMP, layoutMode);
-    const countKey = cacheKey(STORAGE_KEY_GRAPH_TRIPLES_COUNT, layoutMode);
-    // Check cache first unless forcing a reload
-    if (!force && typeof window !== 'undefined') {
-      try {
-        const storedHtml = localStorage.getItem(htmlKey);
-        const storedTimestamp = localStorage.getItem(timestampKey);
-        const storedTriplesCount = localStorage.getItem(countKey);
-        if (storedHtml && storedTimestamp && storedHtml.length > 0) {
-          const timestamp = parseInt(storedTimestamp, 10);
-          const now = Date.now();
-          if (!isNaN(timestamp) && now - timestamp < GRAPH_CACHE_DURATION) {
-            console.log('Using cached graph');
-            setGraphHtml(storedHtml);
-            setLoading(false);
-            const latestCount = await loadTriples();
-            const cachedCount = storedTriplesCount ? parseInt(storedTriplesCount, 10) : null;
-            if (latestCount !== null && cachedCount !== null && latestCount !== cachedCount) {
-              console.log('Cached graph is stale, refetching');
-              localStorage.removeItem(htmlKey);
-              localStorage.removeItem(timestampKey);
-              localStorage.removeItem(countKey);
-              await loadGraph(true);
-            }
-            return; // Use cached version - don't fetch
-          } else {
-            console.log('Cache expired, clearing');
-            localStorage.removeItem(htmlKey);
-            localStorage.removeItem(timestampKey);
-            localStorage.removeItem(countKey);
-          }
-        }
-      } catch (e) {
-        console.error('Failed to check cache:', e);
-      }
+  const loadGraphStatus = useCallback(async (): Promise<GraphStatus | null> => {
+    if (USE_NEO4J_GRAPH) return null;
+    try {
+      const response = await fetch('/api/graph/status', { cache: 'no-store' });
+      if (!response.ok) return null;
+      const data = await response.json();
+      const status: GraphStatus = {
+        hasGraph: !!data.hasGraph,
+        outdated: !!data.outdated,
+        triplesCount: typeof data.triplesCount === 'number' ? data.triplesCount : 0,
+        graphTriplesCount: typeof data.graphTriplesCount === 'number' ? data.graphTriplesCount : undefined,
+      };
+      setGraphStatus(status);
+      return status;
+    } catch (err) {
+      console.error('Failed to load graph status:', err);
+      return null;
     }
-    
-    // Only fetch if cache check failed or force is true
-    console.log('Fetching graph from API', force ? '(forced)' : '');
+  }, []);
+
+  const loadGraph = useCallback(async (force = false) => {
+    if (USE_NEO4J_GRAPH) {
+      try {
+        setLoading(true);
+        setError('');
+        const graphUrl = GRAPH_HTML_ENDPOINT.includes('?')
+          ? `${GRAPH_HTML_ENDPOINT}&layout=${layoutMode}`
+          : `${GRAPH_HTML_ENDPOINT}?layout=${layoutMode}`;
+        const response = await fetch(graphUrl, { cache: 'no-store' });
+        if (!response.ok) throw new Error('Failed to load graph');
+        const data = await response.json();
+        if (data.error) setError(data.error);
+        else if (data.html) {
+          setGraphHtml(data.html);
+          setGraphKey(prev => prev + 1);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load graph');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
-      const graphUrl = GRAPH_HTML_ENDPOINT.includes('?')
-        ? `${GRAPH_HTML_ENDPOINT}&layout=${layoutMode}`
-        : `${GRAPH_HTML_ENDPOINT}?layout=${layoutMode}`;
+      const sep = GRAPH_HTML_ENDPOINT.includes('?') ? '&' : '?';
+      const graphUrl = `${GRAPH_HTML_ENDPOINT}${sep}layout=${layoutMode}${force ? '&refresh=1' : ''}`;
       const response = await fetch(graphUrl, { cache: 'no-store' });
-      if (!response.ok) {
-        throw new Error('Failed to load graph');
-      }
+      if (!response.ok) throw new Error('Failed to load graph');
       const data = await response.json();
-      if (data.error) {
+      if (data.error && !data.html) {
         setError(data.error);
+        setGraphHtml('');
       } else {
-        const html = data.html || '';
-        if (html) {
-          setGraphHtml(html);
+        setError('');
+        if (data.html) {
+          setGraphHtml(data.html);
           setGraphKey(prev => prev + 1);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(htmlKey, html);
-            localStorage.setItem(timestampKey, Date.now().toString());
-            console.log('Graph cached');
-          }
-          const latestCount = await loadTriples();
-          if (typeof window !== 'undefined' && latestCount !== null) {
-            localStorage.setItem(countKey, latestCount.toString());
-          }
         }
       }
+      await loadTriples();
+      await loadGraphStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load graph');
     } finally {
       setLoading(false);
     }
-  }, [layoutMode, loadTriples]);
+  }, [layoutMode, loadTriples, loadGraphStatus]);
 
   const loadNeo4jStats = useCallback(async () => {
     try {
@@ -426,7 +422,7 @@ export default function GraphPage() {
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY_GRAPH_LAYOUT, layoutMode);
     }
-    void loadGraph(true);
+    void loadGraph(false);
   }, [layoutMode, loadGraph, mounted]);
 
   const handleGenerateClaims = async () => {
@@ -558,6 +554,11 @@ export default function GraphPage() {
                   )}
                   {!localStatsLoading && !localStatsError && !localStats && 'Local: no data'}
                 </div>
+              )}
+              {!USE_NEO4J_GRAPH && graphStatus?.outdated && graphStatus?.hasGraph && (
+                <span className={styles.outdatedTag} title="Triples were changed on the Edit page. Press Refresh to regenerate the graph.">
+                  Graph outdated
+                </span>
               )}
               <button
                 className={`${styles.toggleButton} ${
