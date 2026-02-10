@@ -443,7 +443,7 @@ export default function GraphPage() {
 
       // Get stored similarity threshold or use default
       const storedThreshold = localStorage.getItem('similarity_threshold');
-      const similarityThreshold = storedThreshold ? parseFloat(storedThreshold) : 0.3;
+      const similarityThreshold = storedThreshold ? parseFloat(storedThreshold) : 0.45;
 
       // Start generation in background
       const response = await fetch('/api/claims/generate', {

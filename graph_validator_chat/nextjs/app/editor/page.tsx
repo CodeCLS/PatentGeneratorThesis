@@ -28,7 +28,7 @@ export default function EditorPage() {
   const [selectedClaimNumber, setSelectedClaimNumber] = useState<number | null>(null);
   const [showTriplesPanel, setShowTriplesPanel] = useState<boolean>(true);
   const [expandedPromptClaim, setExpandedPromptClaim] = useState<number | null>(null);
-  const [similarityThreshold, setSimilarityThreshold] = useState<number>(0.3);
+  const [similarityThreshold, setSimilarityThreshold] = useState<number>(0.45);
   const [pipelineBootstrapError, setPipelineBootstrapError] = useState<string>('');
   const [claimsDisplayNumbers, setClaimsDisplayNumbers] = useState<Record<number, string>>({});
   const [sourceInfo, setSourceInfo] = useState<{ source_label?: string; short_abstract?: string } | null>(null);
@@ -84,13 +84,13 @@ export default function EditorPage() {
         setSimilarityThreshold(threshold);
       } else {
         // Invalid or 0 value - set default and save it
-        setSimilarityThreshold(0.3);
-        localStorage.setItem(STORAGE_KEY_SIMILARITY_THRESHOLD, '0.3');
+        setSimilarityThreshold(0.45);
+        localStorage.setItem(STORAGE_KEY_SIMILARITY_THRESHOLD, '0.45');
       }
     } else {
       // No stored value - set default and save it
-      setSimilarityThreshold(0.3);
-      localStorage.setItem(STORAGE_KEY_SIMILARITY_THRESHOLD, '0.3');
+      setSimilarityThreshold(0.45);
+      localStorage.setItem(STORAGE_KEY_SIMILARITY_THRESHOLD, '0.45');
     }
     
     // Check for progress updates
