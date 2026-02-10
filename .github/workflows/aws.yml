@@ -9,8 +9,8 @@ env:
   ECS_SERVICE: ThesisTask-service-ikwow7aw
   ECS_CLUSTER: decent-bee-um0zik
   ECS_TASK_DEFINITION: .aws/task-definition.json
-  ECR_REPOSITORY_FRONTEND: cls-frontend
-  ECR_REPOSITORY_BACKEND: cls-backend
+  ECR_REPOSITORY_BACKEND: patent_thesis/backend
+  ECR_REPOSITORY_FRONTEND: patent_thesis/frontend
   CONTAINER_NAME_FRONTEND: frontend
   CONTAINER_NAME_BACKEND: backend
 permissions:
