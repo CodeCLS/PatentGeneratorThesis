@@ -2,28 +2,35 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies needed for some ML packages and epo-ops
 RUN apt-get update && apt-get install -y \
     build-essential \
     gcc \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install AWS CLI v2 (reliable on slim)
+RUN curl -sSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+ && apt-get update && apt-get install -y unzip \
+ && unzip awscliv2.zip \
+ && ./aws/install \
+ && rm -rf awscliv2.zip aws
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     API_HOST=0.0.0.0 \
-    API_PORT=5000
+    API_PORT=5000 \
+    TRAINING_DIR=/app/training
 
 COPY requirements.txt ./
-
-# Upgrade pip first, then install requirements
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt
 
 RUN python -m spacy download en_core_web_sm
-# ... after pip install ...
 
-# Copy the specific folders to ensure structure
 COPY graph_validator_chat/ ./graph_validator_chat/
 
+# On container start: download training artifacts, then start API
+# You will set TRAINING_S3_URI in the task definition later, e.g. s3://my-bucket/patent-thesis/training
+CMD ["sh", "-c", "if [ -n \"$TRAINING_S3_URI\" ]; then aws s3 sync \"$TRAINING_S3_URI\" \"$TRAINING_DIR\"; fi; python -m graph_validator_chat.api_server"]
+
 EXPOSE 5000
-CMD ["python", "-m", "graph_validator_chat.api_server"]
