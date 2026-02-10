@@ -13,17 +13,18 @@ env:
   ECR_REPOSITORY_BACKEND: cls-backend
   CONTAINER_NAME_FRONTEND: frontend
   CONTAINER_NAME_BACKEND: backend
-
 permissions:
   contents: read
 
 jobs:
   deploy:
+    name: Deploy
     runs-on: ubuntu-latest
     environment: production
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -36,27 +37,27 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & push backend
+      - name: Build, tag, and push BACKEND image to Amazon ECR
         id: build-backend
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY_BACKEND }}:$IMAGE_TAG ./backend
+          docker build -f Dockerfile.backend -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY_BACKEND }}:$IMAGE_TAG .
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY_BACKEND }}:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/${{ env.ECR_REPOSITORY_BACKEND }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Build & push frontend
+      - name: Build, tag, and push FRONTEND image to Amazon ECR
         id: build-frontend
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY_FRONTEND }}:$IMAGE_TAG ./frontend
+          docker build -f Dockerfile.frontend -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY_FRONTEND }}:$IMAGE_TAG .
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY_FRONTEND }}:$IMAGE_TAG
           echo "image=$ECR_REGISTRY/${{ env.ECR_REPOSITORY_FRONTEND }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Render task definition (backend image)
+      - name: Fill in the new BACKEND image ID in the Amazon ECS task definition
         id: task-def-backend
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -64,7 +65,7 @@ jobs:
           container-name: ${{ env.CONTAINER_NAME_BACKEND }}
           image: ${{ steps.build-backend.outputs.image }}
 
-      - name: Render task definition (frontend image)
+      - name: Fill in the new FRONTEND image ID in the Amazon ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
