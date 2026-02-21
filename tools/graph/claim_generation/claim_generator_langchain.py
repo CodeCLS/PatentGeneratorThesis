@@ -12,7 +12,9 @@ from typing import Dict, List, Optional, Any, Callable, TypedDict
 from dataclasses import dataclass, field
 import json
 import re
+from collections import Counter
 
+import numpy as np
 from tools.graph.rag.graph_rag import GraphRAG
 from tools.graph.data.Triple import Triple
 from tools.api.llm_api_repo import LLmApi_Repo
@@ -93,18 +95,16 @@ class ClaimGeneratorLangChain:
         self,
         patent_description: str,
         num_independent: int = 3,
-        num_dependent_per_independent: int = 2,
     ) -> List[PlannedClaim]:
         """
-        Plan the claim structure from patent description.
+        Plan the independent claim structure from patent description.
         
         Args:
             patent_description: The patent description text
             num_independent: Number of independent claims to plan
-            num_dependent_per_independent: Number of dependent claims per independent
             
         Returns:
-            List of PlannedClaim objects
+            List of PlannedClaim objects (independents only)
         """
         # Get prioritized entities from GraphRAG if available
         entities_context = ""
@@ -116,28 +116,25 @@ class ClaimGeneratorLangChain:
             except Exception as e:
                 print(f"[DEBUG] plan_claims: Error getting entities from GraphRAG: {e}")
         
-        prompt = f"""You are a patent claim planning expert. Analyze the following patent description and plan a structured set of patent claims that will be defensible, internally consistent, and commercially meaningful.
+        prompt = f"""You are a patent claim planning expert. Analyze the following patent description and plan a set of independent patent claims that will be defensible, internally consistent, and commercially meaningful.
 
 Patent Description:
 {patent_description[:3000]}  # Limit to avoid token limits{entities_context}
 
-Based on the patent description, plan an appropriate number of independent and dependent claims.
-- Aim for approximately {num_independent} independent claims (but adjust if the invention requires more or fewer)
-- For each independent claim, plan approximately {num_dependent_per_independent} dependent claims (but adjust based on what makes sense for that particular independent claim)
-- The total number of claims should be reasonable and comprehensive, covering all major aspects of the invention
-- You may have different numbers of dependent claims for different independent claims if that better reflects the invention
+Based on the patent description, plan a set of independent claims.
+- Typically, you should aim for {num_independent} independent claims to cover different embodiments or aspects of the invention, unless there is a strong reason the invention warrants significantly more or fewer.
+- Each independent claim should define a distinct, defensible scope that could be commercially enforced.
 
 Planning principles:
 - Plan so that the resulting claims read as proper patent claims (clear legal scope, consistent terminology), not as engineering specifications or implementation details.
-- Each independent claim should define a distinct, defensible scope that could be commercially enforced; avoid planning claims that are so narrow they cover only one trivial implementation.
-- Ensure the plan supports internal consistency: the same concepts should be referred to with the same terms across claims, and dependents should logically narrow their parent without contradicting it.
+- Each independent claim should define a distinct, defensible scope; avoid planning claims that are so narrow they cover only one trivial implementation.
 - Extract real components and features from the description, but frame the focus in terms of what the claim should protect (inventive concept and scope), not just a list of technical details.
 
 For each claim, provide:
-- claim_number: Sequential number (1, 2, 3...)
-- claim_type: "independent" or "dependent"
-- focus: A clear description (2-4 sentences) of what this claim should focus on, using actual components/features from the patent description. For independent claims: the main inventive concept and key elements that define a defensible scope. For dependent claims: a specific limitation that narrows the parent in a consistent way. Be concrete but avoid encouraging over-specification or spec-style drafting.
-- parent_claim_number: For dependent claims, the number of the parent independent claim (null for independent claims)
+- claim_number: Use integers (1, 2, 3...).
+- claim_type: Always "independent"
+- focus: A clear description (2-4 sentences) of what this claim should focus on, using actual components/features from the patent description. Define the main inventive concept and key elements that define a defensible scope. Be concrete but avoid encouraging over-specification or spec-style drafting.
+- parent_claim_number: Always null for independent claims
 - keywords: List of key terms relevant to this claim (extract actual terms from the description)
 - entities: List of entity names/components relevant to this claim (extract actual component names from the description)
 
@@ -153,9 +150,9 @@ Return ONLY a JSON array of claim plans. Example structure:
   }},
   {{
     "claim_number": 2,
-    "claim_type": "dependent",
-    "focus": "This is a dependent claim of claim 1. Focus specifically on [ACTUAL FEATURE/DETAIL FROM DESCRIPTION] - [the specific aspect mentioned in the patent]. Detail [how it works/where it's located/its characteristics as described].",
-    "parent_claim_number": 1,
+    "claim_type": "independent",
+    "focus": "Focus on [ANOTHER EMBODIMENT OR ASPECT]. Detail [how it works/where it's located/its characteristics as described].",
+    "parent_claim_number": null,
     "keywords": ["actual", "feature", "terms"],
     "entities": ["Actual Feature Name"]
   }}
@@ -249,16 +246,16 @@ Return ONLY the JSON array, no other text."""
                 
                 if plans_data is None:
                     print(f"[DEBUG] plan_claims: Could not extract valid JSON, using fallback plan")
-                    return self._default_plan(num_independent, num_dependent_per_independent)
+                    return self._default_plan(num_independent)
             print(f"[DEBUG] plan_claims: JSON parse successful! Type: {type(plans_data)}, Length: {len(plans_data) if isinstance(plans_data, list) else 'N/A'}")
             
             if not isinstance(plans_data, list):
                 print(f"⚠️  Response is not a list: {type(plans_data)}")
-                return self._default_plan(num_independent, num_dependent_per_independent)
+                return self._default_plan(num_independent)
             
             if len(plans_data) == 0:
                 print(f"⚠️  Response is an empty list, using default plan")
-                return self._default_plan(num_independent, num_dependent_per_independent)
+                return self._default_plan(num_independent)
             
             # Convert to PlannedClaim objects
             print(f"[DEBUG] plan_claims: Converting {len(plans_data)} plan items to PlannedClaim objects...")
@@ -287,7 +284,7 @@ Return ONLY the JSON array, no other text."""
             
             if len(planned_claims) == 0:
                 print(f"[DEBUG] plan_claims: ⚠️  No valid planned claims after parsing, using default plan")
-                return self._default_plan(num_independent, num_dependent_per_independent)
+                return self._default_plan(num_independent)
             
             print(f"[DEBUG] plan_claims: ✅ Successfully parsed {len(planned_claims)} planned claims")
             for pc in planned_claims:
@@ -305,7 +302,7 @@ Return ONLY the JSON array, no other text."""
             traceback.print_exc()
             # Return default plan if planning fails
             print(f"[DEBUG] plan_claims: Falling back to default plan due to JSON error")
-            return self._default_plan(num_independent, num_dependent_per_independent)
+            return self._default_plan(num_independent)
         except Exception as e:
             print(f"[DEBUG] plan_claims: ⚠️  Error in claim planning: {type(e).__name__}: {e}")
             print(f"[DEBUG] plan_claims: Exception args: {e.args}")
@@ -314,40 +311,25 @@ Return ONLY the JSON array, no other text."""
             traceback.print_exc()
             # Return default plan if planning fails
             print(f"[DEBUG] plan_claims: Falling back to default plan due to exception")
-            return self._default_plan(num_independent, num_dependent_per_independent)
+            return self._default_plan(num_independent)
     
-    def _default_plan(self, num_independent: int, num_dependent_per_independent: int = 2) -> List[PlannedClaim]:
-        """Generate a default plan if planning fails."""
-        print(f"[DEBUG] _default_plan: Called with num_independent={num_independent}, num_dependent_per_independent={num_dependent_per_independent}")
+    def _default_plan(self, num_independent: int) -> List[PlannedClaim]:
+        """Generate a default plan of independent claims if planning fails."""
+        print(f"[DEBUG] _default_plan: Called with num_independent={num_independent}")
         print(f"[DEBUG] _default_plan: Using default plan: {num_independent} independent claims")
         plans = []
-        claim_num = 1
         
         # Add independent claims
         print(f"[DEBUG] _default_plan: Creating {num_independent} independent claims...")
         for i in range(1, num_independent + 1):
-            print(f"[DEBUG] _default_plan: Creating independent claim {i} (claim_number={claim_num})")
+            print(f"[DEBUG] _default_plan: Creating independent claim {i}")
             plans.append(PlannedClaim(
-                claim_number=claim_num,
+                claim_number=i,
                 claim_type="independent",
                 focus=f"Focus on a main component or system from the patent description. Describe its structure, function, and key features as mentioned in the description.",
             ))
-            claim_num += 1
-            
-            # Add dependent claims for this independent claim
-            print(f"[DEBUG] _default_plan: Creating {num_dependent_per_independent} dependent claims for independent {i}...")
-            for j in range(1, num_dependent_per_independent + 1):
-                print(f"[DEBUG] _default_plan: Creating dependent claim {j} for parent {i} (claim_number={claim_num})")
-                plans.append(PlannedClaim(
-                    claim_number=claim_num,
-                    claim_type="dependent",
-                    focus=f"This is a dependent claim of claim {i}. Focus on a specific feature, detail, or variation of the component from claim {i} as described in the patent. Add concrete details about a particular aspect or implementation.",
-                    parent_claim_number=i,
-                ))
-                claim_num += 1
         
-        print(f"[DEBUG] _default_plan: ✅ Default plan created: {len(plans)} claims ({num_independent} independent, {len(plans) - num_independent} dependent)")
-        print(f"[DEBUG] _default_plan: Returning plans: {plans}")
+        print(f"[DEBUG] _default_plan: ✅ Default plan created: {len(plans)} independent claims")
         return plans
     
     def generate_claim(
@@ -450,7 +432,8 @@ Instructions:
 4. For independent claims: Start with "A [system/method/apparatus] comprising:" and define elements that together express the inventive concept without unnecessary implementation detail.
 5. For dependent claims: Start with "The [system/method/apparatus] of claim {planned_claim.parent_claim_number}, wherein..." and add a clear limitation that is internally consistent with the parent.
 6. Ensure all mentioned components/features correspond to entities and relations in the knowledge graph. Keep the claim internally consistent (no contradictory or redundant phrasing).
-7. Number the claim as "{planned_claim.claim_number}."
+7. Number the claim as "{planned_claim.claim_number}.
+8"
 
 Return ONLY the claim text, numbered as "{planned_claim.claim_number}." No additional explanation."""
 
@@ -561,7 +544,7 @@ Claims:
 Evaluate:
 1. Unity: Do all claims relate to a single inventive concept? Score 0-100.
 2. Quality and clarity: Are claims well-drafted, clear, and properly structured? Do they read as patent claims rather than engineering specifications? Score 0-100.
-3. Defensibility and scope: Is the scope clear and legally defensible? Are claims overly narrow (e.g., tied to one implementation) so that commercial enforceability is weak? Flag if claims read like specs or are over-engineered.
+3. Defensibility and scope: Is the scope clear (not obvious) and legally defensible? Are claims overly narrow (e.g., tied to one implementation) so that commercial enforceability is weak? Flag if claims read like specs or are over-engineered.
 4. Internal consistency: Is terminology consistent across claims? Do dependents align with their parents without contradiction or redundancy?
 5. Improvements: For each claim, identify specific improvements needed (e.g., clarify scope, fix inconsistency, reduce over-specification, strengthen defensibility).
 
@@ -774,7 +757,7 @@ Claim Plan:
 
 Instructions:
 1. Address the criticism and incorporate the required improvements.
-2. Keep the good parts of the original claim. Improve clarity, defensibility, and internal consistency; avoid adding implementation detail that makes the claim read like a spec or overly narrow.
+2. Keep the good parts of the original claim. Improve clarity, obviousness, defensibility, and internal consistency; avoid adding implementation detail that makes the claim read like a spec or overly narrow.
 3. Maintain proper patent claim format and claim-style language. Use consistent terminology with the patent description and, where relevant, with other claims.
 4. Ensure the refined claim remains supported by the triples and description. Do not introduce contradictions or redundant limitations.
 5. Number the claim as "{planned_claim.claim_number}."
@@ -1068,17 +1051,20 @@ Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." 
                     # Update progress during workflow
                     if progress_callback and final_state:
                         current_iter = final_state.get('iteration', 0)
+                        # Distributed over 70% to 90% range
+                        base_progress = 70 + int((claim_idx / len(claims)) * 20)
+                        step_progress = min(2, (iteration_count % 4)) 
                         if node_name == 'judge':
                             progress_callback({
-                                "stage": "refining",
-                                "message": f"Evaluating claim {claim.claim_number} (iteration {current_iter + 1}/{max_iterations})...",
-                                "progress": 80 + min(15, current_iter * 5),
+                                "stage": "quality_assessment",
+                                "message": f"Quality check: Claim {claim.claim_number} (iteration {current_iter + 1}/{max_iterations})...",
+                                "progress": base_progress + step_progress,
                             })
                         elif node_name == 'refine':
                             progress_callback({
-                                "stage": "refining",
+                                "stage": "quality_assessment",
                                 "message": f"Refining claim {claim.claim_number} (iteration {current_iter}/{max_iterations})...",
-                                "progress": 84 + min(11, current_iter * 5),
+                                "progress": base_progress + step_progress + 1,
                             })
                 
                 print(f"[Refinement] LangGraph workflow completed after {iteration_count} steps")
@@ -1099,6 +1085,244 @@ Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." 
         
         return refined_claims
     
+    def legal_refinement(
+        self,
+        claims: List[GeneratedClaim],
+        planned_claims: List[PlannedClaim],
+        patent_description: str,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> List[GeneratedClaim]:
+        """
+        Perform a legal review of the claims for §101, §102, §103, and §112 hurdles.
+        One-pass refinement for speed.
+        """
+        print(f"⚖️ Starting legal refinement for {len(claims)} claims...")
+        refined_claims = []
+        planned_map = {pc.claim_number: pc for pc in planned_claims}
+
+        for idx, claim in enumerate(claims):
+            if progress_callback:
+                # Range: 90% to 95% (leaving room for final polish)
+                progress = 90 + int((idx / len(claims)) * 5)
+                progress_callback({
+                    "stage": "legal_check",
+                    "message": f"Legal check: Claim {claim.claim_number} (§101, §102, §103, §112)...",
+                    "progress": progress,
+                })
+
+            planned_claim = planned_map.get(claim.claim_number)
+            
+            prompt = f"""You are a patent attorney expert. Review and refine the following patent claim to ensure it overcomes critical legal hurdles. 
+
+### Legal Hurdles & Quality Tests to Address:
+1. **§101 – Abstract Detector Test**: Delete hardware nouns temporarily. If the claim still reads like "Collect data, analyze data, output result," it's abstract. Ensure it collapses if physical components are removed. It must describe a technical improvement, not just an abstract process.
+2. **§102 – Single Reference Kill Shot Test**: Ask: could one reasonably detailed prior art paper include everything here? If yes, you need a tighter distinguishing feature. (e.g., your protection might be a specific correlation mechanism rather than just "event camera" + "rotation").
+3. **§103 – Obvious Lego Test**: Can an examiner describe the claim as "Take known A + add known B + process with known C"? If so, it's too modular. Fix by adding a non-trivial interaction. 
+   *Example: Instead of just "rotation + event camera," use "correlating pixel events with angular position."*
+4. **§112(a) – Spec Support Test**: Ensure every technical phrase (e.g., "spatiotemporal pattern", "angular correlation", "reflectance characteristic", "geometry data") is clearly supported by the patent description.
+5. **§112(b) – Definiteness & Correlation Vagueness Test**: Ensure all terms have proper antecedent basis. If using words like "correlation", "processing", or "determine", tie them to a specific technical mechanism. 
+   *Better: "Correlating pixel events with angular positions" instead of a broad "determine characteristic."*
+6. **Causation Chain Test**: The claim should clearly show a physical chain: Physical action → physical signal → defined processing → technical output. 
+   *Example: Rotation → brightness change → asynchronous events → reflectance.*
+7. **"What Actually Makes This New?" Test**: Force a one-sentence answer. If the answer is "Because it uses machine learning," it is weak. If the answer is "Because it correlates asynchronous event-camera brightness changes with angular position to derive reflectance," it is strong. The claim must visibly express this strength.
+8. **Litigator Attack Test**: Imagine a defense attorney saying: "This is just using a camera and AI to analyze a rotating object." The claim should make that simplification obviously wrong.
+
+### Patent Description (Context):
+{patent_description[:3000]}
+
+### Current Claim {claim.claim_number}:
+{claim.claim_text}
+
+### Instructions:
+- Refine the claim to be more legally robust while maintaining its core technical focus.
+- **Medium changes per claim are encouraged** to address the tests above.
+- Do NOT make it an engineering spec; keep it in proper patent claim format.
+- Ensure consistent terminology.
+- Fix any vague language or modularity issues.
+
+Return ONLY the refined claim text, numbered as "{claim.claim_number}." No commentary."""
+
+            try:
+                response = self.api_repo.chat(prompt)
+                response_text = str(response.get("content", response)) if isinstance(response, dict) else str(response)
+                
+                # Clean up response
+                response_text = response_text.strip()
+                if "```" in response_text:
+                    lines = response_text.split("\n")
+                    response_text = "\n".join([l for l in lines if not l.strip().startswith("```")])
+                
+                if not response_text.startswith(f"{claim.claim_number}."):
+                    response_text = f"{claim.claim_number}. {response_text}"
+
+                # Update the claim text
+                claim.claim_text = response_text
+                refined_claims.append(claim)
+                print(f"⚖️ Legal review complete for Claim {claim.claim_number}")
+            except Exception as e:
+                print(f"⚠️ Legal review failed for claim {claim.claim_number}: {e}")
+                refined_claims.append(claim)
+
+        return refined_claims
+
+    def final_legal_alignment(
+        self,
+        claims: List[GeneratedClaim],
+        patent_description: str,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> List[GeneratedClaim]:
+        """
+        Final minimal polish of all claims together for legal consistency and redundancy.
+        """
+        if not claims:
+            return claims
+
+        print(f"⚖️ Starting final legal alignment for {len(claims)} claims...")
+        if progress_callback:
+            progress_callback({
+                "stage": "final_alignment",
+                "message": "Final legal alignment and consistency check...",
+                "progress": 95,
+            })
+
+        claims_text = "\n\n".join([f"Claim {c.claim_number}:\n{c.claim_text}" for c in claims])
+        
+        prompt = f"""You are a patent attorney expert. Perform a final, **very minimal** polish on the following set of patent claims to ensure total output consistency and address final legal requirements.
+
+### Final Legal Checks:
+1. **Redundant Dependent Test**: Look at dependent claims. If you can swap their wording and nothing changes legally, they are redundant. 
+   *Bad Dependents: "using ML", "using ANN", "trained ML model".*
+   *Good Dependents: "Add encoder synchronization", "Add polarity analysis", "Add angular binning".*
+   Ensure each dependent claim adds a distinct, technical limitation.
+2. **Fallback Ladder Test**: For each independent claim, ensure there is a clear "ladder" of increasingly narrow, defensible dependent claims. If an examiner rejects an independent claim, there should be a clear, strong limitation to add next.
+3. **Internal Consistency**: Ensure terminology is perfectly consistent across the entire set.
+
+### Patent Description (Context):
+{patent_description[:2000]}
+
+### Current Claims:
+{claims_text}
+
+### Instructions:
+- Perform **ONLY very minimal changes** to the total output.
+- Focus on fixing redundancies in dependent claims and ensuring a consistent fallback ladder.
+- Maintain proper patent claim format.
+- Do NOT rewrite the claims; only tweak for consistency and to remove redundant dependents.
+
+Return ONLY the final set of claims in a JSON array of strings, where each string is a full claim (e.g. ["1. A system...", "1.1. The system..."]). 
+Return ONLY the JSON array, no other text."""
+
+        try:
+            response = self.api_repo.chat(prompt)
+            response_text = str(response.get("content", response)) if isinstance(response, dict) else str(response)
+            
+            # Clean up response
+            response_text = response_text.strip()
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in response_text:
+                response_text = response_text.split("```")[1].split("```")[0].strip()
+            
+            # Extract JSON array
+            if "[" in response_text:
+                start_idx = response_text.find("[")
+                end_idx = response_text.rfind("]") + 1
+                if start_idx >= 0 and end_idx > start_idx:
+                    response_text = response_text[start_idx:end_idx]
+            
+            final_claims_list = json.loads(response_text)
+            
+            if isinstance(final_claims_list, list) and len(final_claims_list) == len(claims):
+                for idx, new_text in enumerate(final_claims_list):
+                    claims[idx].claim_text = new_text
+                print(f"⚖️ Final legal alignment complete")
+            else:
+                print(f"⚠️ Final legal alignment returned unexpected count: {len(final_claims_list) if isinstance(final_claims_list, list) else 'not a list'}")
+        except Exception as e:
+            print(f"⚠️ Final legal alignment failed: {e}")
+            
+        return claims
+
+    def draft_independent_claims(
+        self,
+        planned_claims: List[PlannedClaim],
+        patent_description: str,
+        similarity_threshold: float,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> List[GeneratedClaim]:
+        """Phase 1: Draft initial independent claims."""
+        independents = [pc for pc in planned_claims if pc.claim_type == "independent"]
+        generated_independents = []
+        total = len(independents)
+        
+        print(f"✍️ Drafting {total} Independent Claims...")
+        for idx, pc in enumerate(independents):
+            if progress_callback:
+                progress = 20 + int((idx / total) * 20) # 20% -> 40%
+                progress_callback({
+                    "stage": "drafting_independents",
+                    "message": f"Drafting Independent Claim {pc.claim_number}...",
+                    "progress": progress,
+                })
+            
+            claim = self.generate_claim(pc, patent_description, similarity_threshold=similarity_threshold)
+            generated_independents.append(claim)
+            
+        return generated_independents
+
+    def draft_dependent_claims(
+        self,
+        independent_claims: List[GeneratedClaim],
+        patent_description: str,
+        num_dependent_per_independent: int,
+        similarity_threshold: float,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> List[GeneratedClaim]:
+        """Phase 2: Draft dependent claims (fallbacks) for each independent claim."""
+        all_claims = list(independent_claims)
+        total_dependents = len(independent_claims) * num_dependent_per_independent
+        
+        if total_dependents == 0:
+            return all_claims
+
+        print(f"✍️ Drafting {total_dependents} Dependent Claims (Fallbacks & Limitations)...")
+        
+        count = 0
+        for parent_claim in independent_claims:
+            for j in range(1, num_dependent_per_independent + 1):
+                count += 1
+                # Use decimal notation: 1.1, 1.2, etc.
+                claim_number_str = f"{parent_claim.claim_number}.{j}"
+                
+                if progress_callback:
+                    progress = 40 + int((count / total_dependents) * 30) # 40% -> 70%
+                    progress_callback({
+                        "stage": "drafting_dependents",
+                        "message": f"Drafting Dependent Claim {claim_number_str} (fallback)...",
+                        "progress": progress,
+                    })
+                
+                # Create a planned claim for this dependent on-the-fly
+                pc = PlannedClaim(
+                    claim_number=0,  # Will be set in GeneratedClaim anyway
+                    claim_type="dependent",
+                    focus=f"This is a dependent claim that narrows claim {parent_claim.claim_number}. Provide a meaningful fallback limitation or variation based on concrete physical embodiments or technical constraints described in the patent.",
+                    parent_claim_number=parent_claim.claim_number,
+                )
+                # Overwrite claim_number with our string representation for generate_claim
+                pc.claim_number = claim_number_str
+                
+                claim = self.generate_claim(
+                    pc, 
+                    patent_description, 
+                    previous_claims=all_claims, 
+                    similarity_threshold=similarity_threshold
+                )
+                
+                all_claims.append(claim)
+                
+        return all_claims
+
     def generate_all_claims(
         self,
         patent_description: str,
@@ -1109,6 +1333,7 @@ Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." 
         num_dependent_per_independent: int = 2,
         progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         similarity_threshold: float = 0.3,
+        drop_duplicates: bool = False,
     ) -> List[GeneratedClaim]:
         """
         Generate all claims: plan structure, then generate each claim.
@@ -1120,6 +1345,9 @@ Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." 
             id_to_name: Optional mapping from entity ID to name
             num_independent: Number of independent claims
             num_dependent_per_independent: Number of dependent claims per independent
+            progress_callback: Optional callback for progress updates
+            similarity_threshold: Cosine similarity threshold for RAG retrieval
+            drop_duplicates: Whether to remove near-duplicate claims after generation
             
         Returns:
             List of GeneratedClaim objects (guaranteed to have at least 1 claim)
@@ -1150,155 +1378,65 @@ Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." 
             print(f"[DEBUG] generate_all_claims: Calling plan_claims()...")
             print(f"[DEBUG] generate_all_claims: Parameters - patent_description length: {len(patent_description) if patent_description else 0}")
             print(f"[DEBUG] generate_all_claims: Parameters - num_independent: {num_independent}")
-            print(f"[DEBUG] generate_all_claims: Parameters - num_dependent_per_independent: {num_dependent_per_independent}")
             
             planned_claims = self.plan_claims(
                 patent_description=patent_description,
                 num_independent=num_independent,
-                num_dependent_per_independent=num_dependent_per_independent,
             )
             
-            print(f"[DEBUG] generate_all_claims: plan_claims() returned")
-            print(f"[DEBUG] generate_all_claims:   - Value: {planned_claims}")
-            print(f"[DEBUG] generate_all_claims:   - Type: {type(planned_claims)}")
-            print(f"[DEBUG] generate_all_claims:   - Is None: {planned_claims is None}")
-            print(f"[DEBUG] generate_all_claims:   - Length: {len(planned_claims) if planned_claims else 'N/A'}")
-            if planned_claims and len(planned_claims) > 0:
-                print(f"[DEBUG] generate_all_claims:   - First planned claim: {planned_claims[0]}")
-            else:
-                print(f"[DEBUG] generate_all_claims:   - ⚠️  planned_claims is empty or None!")
+            print(f"[DEBUG] generate_all_claims: plan_claims() returned {len(planned_claims) if planned_claims else 0} claims")
         except Exception as e:
             print(f"[DEBUG] generate_all_claims: ⚠️  Exception during planning: {type(e).__name__}: {e}")
             import traceback
-            print(f"[DEBUG] generate_all_claims: Full traceback:")
             traceback.print_exc()
             planned_claims = []
-            print(f"[DEBUG] generate_all_claims: Set planned_claims to empty list after exception")
         
-        print(f"[DEBUG] generate_all_claims: Checking if planned_claims is empty...")
-        print(f"[DEBUG] generate_all_claims:   - planned_claims: {planned_claims}")
-        print(f"[DEBUG] generate_all_claims:   - planned_claims is None: {planned_claims is None}")
-        print(f"[DEBUG] generate_all_claims:   - planned_claims == []: {planned_claims == []}")
-        print(f"[DEBUG] generate_all_claims:   - len(planned_claims) if exists: {len(planned_claims) if planned_claims else 'N/A'}")
-        print(f"[DEBUG] generate_all_claims:   - bool(planned_claims): {bool(planned_claims)}")
+        if not planned_claims:
+            print(f"[DEBUG] generate_all_claims: ⚠️  No claims planned! Using default plan.")
+            planned_claims = self._default_plan(num_independent)
         
-        if not planned_claims or len(planned_claims) == 0:
-            print(f"[DEBUG] generate_all_claims: ⚠️  WARNING: No claims planned! Using default plan.")
-            print(f"[DEBUG] generate_all_claims: planned_claims value: {planned_claims}")
-            print(f"[DEBUG] generate_all_claims: planned_claims is None: {planned_claims is None}")
-            print(f"[DEBUG] generate_all_claims: len(planned_claims): {len(planned_claims) if planned_claims else 'N/A'}")
-            try:
-                print(f"[DEBUG] generate_all_claims: Calling _default_plan({num_independent}, {num_dependent_per_independent})...")
-                default_result = self._default_plan(num_independent, num_dependent_per_independent)
-                print(f"[DEBUG] generate_all_claims: _default_plan returned: {default_result}")
-                print(f"[DEBUG] generate_all_claims: _default_plan type: {type(default_result)}")
-                print(f"[DEBUG] generate_all_claims: _default_plan length: {len(default_result) if default_result else 'N/A'}")
-                planned_claims = default_result
-                print(f"[DEBUG] generate_all_claims: Assigned default_result to planned_claims")
-                print(f"[DEBUG] generate_all_claims: planned_claims now: {planned_claims}")
-                print(f"[DEBUG] generate_all_claims: len(planned_claims): {len(planned_claims) if planned_claims else 'N/A'}")
-            except Exception as e:
-                print(f"[DEBUG] generate_all_claims: ❌ ERROR: Default plan failed: {type(e).__name__}: {e}")
-                import traceback
-                traceback.print_exc()
-                # Force create at least one claim
-                print(f"[DEBUG] generate_all_claims: Creating emergency fallback PlannedClaim...")
-                planned_claims = [PlannedClaim(
-                    claim_number=1,
-                    claim_type="independent",
-                    focus="Main invention",
-                )]
-                print(f"[DEBUG] generate_all_claims: Created emergency fallback plan: 1 claim")
-                print(f"[DEBUG] generate_all_claims: planned_claims after emergency: {planned_claims}")
+        # 1. PLAN RE-NUMBERING & NORMALIZATION (Independents only: 1, 2, 3...)
+        independents = [pc for pc in planned_claims if pc.claim_type == "independent"]
         
-        print(f"[DEBUG] generate_all_claims: Final check before proceeding...")
-        print(f"[DEBUG] generate_all_claims:   - planned_claims: {planned_claims}")
-        print(f"[DEBUG] generate_all_claims:   - planned_claims is None: {planned_claims is None}")
-        print(f"[DEBUG] generate_all_claims:   - len(planned_claims): {len(planned_claims) if planned_claims else 'N/A'}")
-        
-        if not planned_claims or len(planned_claims) == 0:
-            print(f"[DEBUG] generate_all_claims: ❌ ERROR: Even emergency fallback failed! Creating minimal claim.")
-            # Last resort - create a single claim manually
-            planned_claims = [PlannedClaim(
-                claim_number=1,
-                claim_type="independent",
-                focus="Main invention",
-            )]
-            print(f"[DEBUG] generate_all_claims: Created minimal fallback plan")
-            print(f"[DEBUG] generate_all_claims: planned_claims after minimal: {planned_claims}")
-        
-        print(f"[DEBUG] generate_all_claims: ✅ Planned {len(planned_claims)} claims")
-        print(f"[DEBUG] generate_all_claims: planned_claims type: {type(planned_claims)}")
-        print(f"[DEBUG] generate_all_claims: planned_claims is None: {planned_claims is None}")
-        print(f"[DEBUG] generate_all_claims: len(planned_claims): {len(planned_claims) if planned_claims else 'N/A'}")
-        if planned_claims:
-            print(f"[DEBUG] generate_all_claims: First planned claim: {planned_claims[0]}")
-            print(f"[DEBUG] generate_all_claims: All planned claims:")
-            for pc in planned_claims:
-                print(f"[DEBUG] generate_all_claims:   - {pc}")
-        
+        new_planned_claims = []
+        for idx, pc in enumerate(independents, 1):
+            pc.claim_number = idx
+            new_planned_claims.append(pc)
+            
+        planned_claims = new_planned_claims
+        print(f"✅ Normalized {len(planned_claims)} independent claims")
+
         if progress_callback:
-            print(f"[DEBUG] generate_all_claims: Calling progress_callback with planning_complete, num_claims={len(planned_claims)}")
             progress_callback({
                 "stage": "planning_complete",
-                "message": f"Planned {len(planned_claims)} claims",
+                "message": f"Planned {len(planned_claims)} independent claims",
                 "progress": 20,
                 "num_claims": len(planned_claims),
             })
         
-        # Generate claims in order
-        generated_claims = []
-        total_claims = len(planned_claims)
+        # 2. DRAFTING PHASE
+        # 2a. Independent Claim Drafter
+        generated_independents = self.draft_independent_claims(
+            planned_claims=planned_claims,
+            patent_description=patent_description,
+            similarity_threshold=similarity_threshold,
+            progress_callback=progress_callback
+        )
         
-        if total_claims == 0:
-            print(f"❌ ERROR: No planned claims to generate!")
-            raise ValueError("No planned claims available for generation")
+        # 2b. Dependent Claim Drafter (Systematically adds fallbacks for each independent)
+        generated_claims = self.draft_dependent_claims(
+            independent_claims=generated_independents,
+            patent_description=patent_description,
+            num_dependent_per_independent=num_dependent_per_independent,
+            similarity_threshold=similarity_threshold,
+            progress_callback=progress_callback
+        )
         
-        print(f"🔄 Starting generation of {total_claims} claims...")
-        
-        for idx, planned_claim in enumerate(planned_claims):
-            if progress_callback:
-                progress = 20 + int((idx / total_claims) * 80)
-                progress_callback({
-                    "stage": "generating",
-                    "message": f"Generating claim {planned_claim.claim_number} ({planned_claim.claim_type})...",
-                    "progress": progress,
-                    "current_claim": planned_claim.claim_number,
-                    "total_claims": total_claims,
-                })
-            
-            print(f"✍️  Generating claim {planned_claim.claim_number} ({planned_claim.claim_type})...")
-            
-            try:
-                generated_claim = self.generate_claim(
-                    planned_claim=planned_claim,
-                    patent_description=patent_description,
-                    previous_claims=generated_claims,
-                    similarity_threshold=similarity_threshold,
-                )
-                
-                if generated_claim:
-                    generated_claims.append(generated_claim)
-                    print(f"✅ Generated claim {planned_claim.claim_number}: {generated_claim.claim_text[:100] if generated_claim.claim_text else 'NO TEXT'}...")
-                else:
-                    print(f"⚠️  Claim {planned_claim.claim_number} generation returned None")
-            except Exception as e:
-                print(f"[DEBUG] generate_all_claims: ⚠️  Error generating claim {planned_claim.claim_number}: {type(e).__name__}: {e}")
-                print(f"[DEBUG] generate_all_claims: Exception args: {e.args}")
-                import traceback
-                print(f"[DEBUG] generate_all_claims: Full traceback:")
-                traceback.print_exc()
-                # Continue with next claim even if one fails
-                print(f"[DEBUG] generate_all_claims: Continuing with next claim...")
-                continue
-        
-        print(f"✅ Finished generating {len(generated_claims)} out of {total_claims} planned claims")
+        print(f"✅ Finished drafting {len(generated_claims)} total claims")
         
         # CRITICAL: Ensure we always return at least one claim
-        print(f"[DEBUG] generate_all_claims: Final check - generated_claims count: {len(generated_claims)}")
         if len(generated_claims) == 0:
             print(f"[DEBUG] generate_all_claims: ⚠️  WARNING: No claims were generated! Creating emergency fallback claim.")
-            print(f"[DEBUG] generate_all_claims: total_claims was: {total_claims}")
             print(f"[DEBUG] generate_all_claims: planned_claims count: {len(planned_claims) if planned_claims else 0}")
             # Create a minimal fallback claim
             fallback_claim = GeneratedClaim(
@@ -1310,18 +1448,91 @@ Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." 
             )
             generated_claims = [fallback_claim]
             print(f"[DEBUG] generate_all_claims: ✅ Created emergency fallback claim")
+
+        # Final pass before refinement: remove near-duplicate claims (very similar content)
+        def _normalize_claim_text(text: str) -> str:
+            """Normalize claim text for similarity comparison (strip numbers, lowercase, remove punctuation)."""
+            if not text:
+                return ""
+            # Remove leading claim numbering like '1.', '1.1.', '2 '
+            cleaned = re.sub(r"^\s*\d+(\.\d+)?\.?\s*", "", text.strip())
+            # Lowercase and keep only word characters and spaces
+            cleaned = re.sub(r"[^\w\s]", " ", cleaned.lower())
+            cleaned = re.sub(r"\s+", " ", cleaned).strip()
+            return cleaned
+
+        def _cosine_similarity(a: str, b: str) -> float:
+            """Calculate cosine similarity based on word counts."""
+            if not a or not b:
+                return 0.0
+            
+            # Tokenize and count
+            words_a = a.split()
+            words_b = b.split()
+            
+            if not words_a or not words_b:
+                return 0.0
+
+            counts_a = Counter(words_a)
+            counts_b = Counter(words_b)
+            
+            # Get unique words
+            all_words = set(counts_a.keys()) | set(counts_b.keys())
+            
+            # Create frequency vectors
+            v_a = np.array([counts_a.get(w, 0) for w in all_words])
+            v_b = np.array([counts_b.get(w, 0) for w in all_words])
+            
+            # Calculate cosine similarity: (A . B) / (||A|| * ||B||)
+            dot_product = np.dot(v_a, v_b)
+            norm_a = np.linalg.norm(v_a)
+            norm_b = np.linalg.norm(v_b)
+            
+            if norm_a == 0 or norm_b == 0:
+                return 0.0
+                
+                return float(dot_product / (norm_a * norm_b))
+
+        if drop_duplicates and generated_claims:
+            print(f"[Dedup] Starting duplicate check for {len(generated_claims)} claims using cosine similarity")
+            unique_claims: List[GeneratedClaim] = []
+            normalized_texts: List[str] = []
+            for claim in generated_claims:
+                norm = _normalize_claim_text(claim.claim_text or "")
+                is_duplicate = False
+                for prev_norm in normalized_texts:
+                    try:
+                        sim = _cosine_similarity(norm, prev_norm)
+                        if sim >= 0.8:
+                            is_duplicate = True
+                            break
+                    except Exception as e:
+                        print(f"[Dedup] Warning: Error comparing claims: {e}")
+                        continue
+                if not is_duplicate:
+                    unique_claims.append(claim)
+                    normalized_texts.append(norm)
+                else:
+                    # 'sim' is guaranteed to be set if is_duplicate is True
+                    print(f"[Dedup] Dropping near-duplicate claim {claim.claim_number} (sim: {sim:.2f})")
+            if len(unique_claims) < len(generated_claims):
+                print(f"[Dedup] Removed {len(generated_claims) - len(unique_claims)} near-duplicate claims")
+            generated_claims = unique_claims
+        elif not drop_duplicates:
+            print(f"[Dedup] Skipping duplicate check (drop_duplicates=False)")
         
-        # Refine claims using judging agent and LangGraph loop
+        # Phase 2: Quality Assessment (Unity & Quality)
         if LANGGRAPH_AVAILABLE and len(generated_claims) > 0:
-            print(f"🔍 Starting claim refinement with judging agent...")
+            print(f"🔍 Starting quality assessment...")
             if progress_callback:
                 progress_callback({
-                    "stage": "refining",
-                    "message": "Evaluating and refining claims...",
-                    "progress": 90,
+                    "stage": "quality_assessment",
+                    "message": "Performing Quality Assessment (consistency check)...",
+                    "progress": 70,
                 })
             
             try:
+                # Range within LangGraph refinement is adjusted to 70% -> 90%
                 refined_claims = self.refine_claims_with_langgraph(
                     claims=generated_claims,
                     planned_claims=planned_claims,
@@ -1332,12 +1543,32 @@ Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." 
                     min_score=90.0,
                 )
                 generated_claims = refined_claims
-                print(f"✨ Refined {len(generated_claims)} claims")
+                print(f"✨ Quality assessment complete: {len(generated_claims)} claims")
             except Exception as e:
-                print(f"[DEBUG] generate_all_claims: Error during refinement: {e}")
+                print(f"[DEBUG] generate_all_claims: Error during quality assessment: {e}")
                 import traceback
                 traceback.print_exc()
                 print(f"[DEBUG] generate_all_claims: Continuing with unrefined claims")
+
+        # Phase 3: Legal Requirements Check (§101, §102, §103, §112)
+        if len(generated_claims) > 0:
+            try:
+                # Per-claim legal refinement (medium changes)
+                generated_claims = self.legal_refinement(
+                    claims=generated_claims,
+                    planned_claims=planned_claims,
+                    patent_description=patent_description,
+                    progress_callback=progress_callback
+                )
+                
+                # Final total output alignment (very minimal changes)
+                generated_claims = self.final_legal_alignment(
+                    claims=generated_claims,
+                    patent_description=patent_description,
+                    progress_callback=progress_callback
+                )
+            except Exception as e:
+                print(f"[DEBUG] generate_all_claims: Error during legal check: {e}")
         
         if progress_callback:
             progress_callback({

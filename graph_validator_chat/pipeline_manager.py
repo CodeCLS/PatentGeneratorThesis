@@ -48,14 +48,14 @@ class PipelineManager:
         self,
         *,
         use_gpu: bool = True,
-        cuda_memory_fraction: float = 0.7,
+        cuda_memory_fraction: float = 0.6,
         torch_num_threads: int = 4,
         torch_num_interop_threads: int = 1,
         formatting_workers: int = 8,
         formatting_split_workers: int = 12,
         classifier_model_path: str = "training/info/done/hf/sentence_classifier_model",
         classifier_batch_size: int = 32,
-        triple_max_workers: int = 10,
+        triple_max_workers: int = 5,
         triple_rate_limit_per_minute: int = 900,
         merge_sim_threshold: float = 0.8,
         merge_embed_dim: int = 256,
@@ -65,6 +65,9 @@ class PipelineManager:
         simplify_workers: int = 8,
         split_chunk_size: int = 1000,
         keep_labels: Optional[List[str]] = None,
+        node_size: int = 25,
+        edge_width: float = 1.2,
+        font_size: int = 14,
     ) -> None:
         if use_gpu and torch.cuda.is_available():
             torch.cuda.set_per_process_memory_fraction(cuda_memory_fraction)
@@ -105,7 +108,11 @@ class PipelineManager:
             verbose=True,
             num_workers=simplify_workers,
         )
-        self.visualizer = GraphVisualizer()
+        self.visualizer = GraphVisualizer(
+            node_size=node_size,
+            edge_width=edge_width,
+            font_size=font_size
+        )
         self.split_chunk_size = split_chunk_size
         self.keep_labels = keep_labels or ["INFORMATIVE"]
 
@@ -141,6 +148,11 @@ class PipelineManager:
         emit("ner", "Running NER pipeline", 40)
         joined = join_sentences(sentence_split, sep=" ")
         doc = self.pipeline_builder.nlp(joined.text)
+        
+        # Clear GPU cache after heavy spaCy/Transformer processing
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         emit("coref", "Mapping entities / coreference", 50)
         self.entity_mapper.map_to_sentences(doc, sentence_split, joined)
 
@@ -160,6 +172,10 @@ class PipelineManager:
         )
         emit("triple_generation", "Generating triples", 65)
         triples = generator.generate(sentence_split)
+
+        # Clear GPU cache after triple generation
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         emit("merge_relations", "Cleaning graph: merging relations", 80)
         triples, merge_stats = self.merger.merge_relations(triples)

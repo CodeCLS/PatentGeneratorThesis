@@ -651,6 +651,77 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
+.evaluationActions {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  z-index: 50;
+}
+
+.modelSelect {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(55, 53, 47, 0.16);
+  background: white;
+  font-size: 14px;
+  color: rgb(55, 53, 47);
+  cursor: pointer;
+  outline: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.compareButton {
+  padding: 10px 20px;
+  background: #f8f9fa;
+  color: #2c3e50;
+  border: 1px solid #2c3e50;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compareButton:hover {
+  background: #e9ecef;
+  transform: translateY(-2px);
+}
+
+.evaluateButton {
+  padding: 10px 20px;
+  background: #2c3e50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.evaluateButton:hover {
+  background: #34495e;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.evaluateButton:disabled, .compareButton:disabled {
+  background: #95a5a6;
+  border-color: #95a5a6;
+  color: #ecf0f1;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Print / Save as PDF: show only editor content, centered, no cutoff */
 @media print {
   @page {

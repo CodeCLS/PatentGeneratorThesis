@@ -43,6 +43,7 @@ from tools.graph.langgraph.question import Question
 from tools.graph.claim_generation.claim_generator_langchain import ClaimGeneratorLangChain
 from tools.graph.rag.graph_rag import GraphRAG
 from tools.graph.visualizer import GraphVisualizer
+from tools.graph.evaluation.claim_evaluator import ClaimEvaluator
 from tools.api.llm_api_repo import LLmApi_Repo
 from tools.helper.json_helper import JsonHelper
 from PatentProvider import PatentProvider
@@ -66,6 +67,7 @@ _neo4j_manager: Optional[Neo4jManager] = None
 _pipeline_manager: Optional[PipelineManager] = None
 _pipeline_lock = threading.Lock()
 _pipeline_thread: Optional[threading.Thread] = None
+_claim_generation_thread: Optional[threading.Thread] = None
 _persist_path = Path(__file__).parent / "persisted_validator.pkl"
 _server_session_id = str(uuid.uuid4())
 
@@ -84,6 +86,11 @@ _cached_graph_layout: Optional[str] = None
 _source_patent_id: Optional[str] = None
 _source_filename: Optional[str] = None
 _source_type: Optional[str] = None  # "patent_id" | "pdf" | "text"
+
+# Visual configuration for graph
+_graph_node_size = 25
+_graph_edge_width = 1.2
+_graph_font_size = 14
 
 
 def _invalidate_graph_cache() -> None:
@@ -236,7 +243,11 @@ def _get_pipeline_manager() -> PipelineManager:
     """Lazy-load PipelineManager."""
     global _pipeline_manager
     if _pipeline_manager is None:
-        _pipeline_manager = PipelineManager()
+        _pipeline_manager = PipelineManager(
+            node_size=_graph_node_size,
+            edge_width=_graph_edge_width,
+            font_size=_graph_font_size
+        )
     return _pipeline_manager
 
 
@@ -327,6 +338,12 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         elif path == '/api/claims/progress':
             # GET endpoint to retrieve claim generation progress
             self._send_json(self._get_claim_progress())
+        elif path == '/api/claims/evaluate':
+            # GET endpoint to evaluate generated claims
+            self._send_json(self._evaluate_claims())
+        elif path == '/api/claims/models':
+            # GET endpoint to list available LLM models
+            self._send_json({"success": True, "models": LLmApi_Repo.get_available_models()})
         elif path == '/api/pipeline/progress':
             # GET endpoint to retrieve pipeline progress
             self._send_json(self._get_pipeline_progress())
@@ -386,6 +403,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             elif path == '/api/triples/suggest':
                 print("[API] Routing to _handle_triple_suggest")
                 self._handle_triple_suggest()
+            elif path == '/api/claims/compare':
+                print("[API] Routing to _handle_compare_claims")
+                self._handle_compare_claims()
             else:
                 print(f"[API] POST 404: Path not found: {path}")
                 self._send_error("Not found", 404)
@@ -717,7 +737,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
 
             graph = validator.graph
             if graph is None:
-                visualizer = GraphVisualizer()
+                visualizer = GraphVisualizer(
+                    node_size=_graph_node_size,
+                    edge_width=_graph_edge_width,
+                    font_size=_graph_font_size
+                )
                 graph = visualizer.build_graph(validator.triples)
                 validator.graph = graph
 
@@ -1456,7 +1480,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             if not triples:
                 return {"error": "No graph or triples available", "html": ""}
 
-            visualizer = GraphVisualizer()
+            visualizer = GraphVisualizer(
+                node_size=_graph_node_size,
+                edge_width=_graph_edge_width,
+                font_size=_graph_font_size
+            )
             graph = visualizer.build_graph(triples)
             validator.graph = graph
 
@@ -1701,17 +1729,14 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
         return entities
     
     def _handle_generate_claims(self):
-        """Handle claim generation request."""
+        """Handle claim generation request (asynchronous)."""
         if not validator:
             self._send_error("Validator not initialized")
             return
         
         try:
-            patent_description = ""
-            num_independent = 3
-            num_dependent_per_independent = 2
-            similarity_threshold = 0.3
             content_length = int(self.headers.get('Content-Length', 0))
+            data = {}
             if content_length > 0:
                 try:
                     raw = self.rfile.read(content_length)
@@ -1719,223 +1744,146 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                     data = json.loads(body) if body and body.strip() else {}
                 except (json.JSONDecodeError, UnicodeDecodeError) as e:
                     print(f"[API] _handle_generate_claims: Body parse failed (using defaults): {e}")
-                    data = {}
-                patent_description = data.get("patent_description") or ""
-                num_independent = data.get("num_independent", 3)
-                num_dependent_per_independent = data.get("num_dependent_per_independent", 2)
-                similarity_threshold = data.get("similarity_threshold", 0.3)
             
-            patent_description = (patent_description or "").strip() if patent_description is not None else ""
+            patent_description = (data.get("patent_description") or "").strip()
+            num_independent = data.get("num_independent", 3)
+            num_dependent_per_independent = data.get("num_dependent_per_independent", 2)
+            similarity_threshold = data.get("similarity_threshold", 0.3)
+            drop_duplicates = data.get("drop_duplicates", False)
+            
             # Get patent description from validator state if not provided
-            print(f"[DEBUG] _handle_generate_claims: Initial patent_description: '{patent_description[:100] if patent_description else 'EMPTY'}...'")
-            print(f"[DEBUG] _handle_generate_claims: patent_description is None: {patent_description is None}")
-            print(f"[DEBUG] _handle_generate_claims: patent_description.strip() == '': {(patent_description or '').strip() == ''}")
-            
             if not patent_description:
-                print(f"[DEBUG] _handle_generate_claims: Patent description empty, trying to extract from sentence_split...")
-                # First try to get from sentence_split (global variable)
+                print(f"[DEBUG] _handle_generate_claims: Patent description empty, extracting from sentence_split...")
                 global _sentence_split
                 if _sentence_split and len(_sentence_split) > 0:
-                    print(f"[DEBUG] _handle_generate_claims: Found sentence_split with {len(_sentence_split)} sentences")
-                    try:
-                        # Extract text from Sentence objects
-                        description_parts = []
-                        for idx, sentence in enumerate(_sentence_split):
-                            if hasattr(sentence, 'text'):
-                                text = sentence.text
-                                if text and text.strip():
-                                    description_parts.append(text.strip())
-                            elif isinstance(sentence, str):
-                                if sentence.strip():
-                                    description_parts.append(sentence.strip())
-                        
-                        if description_parts:
-                            patent_description = "\n".join(description_parts)
-                            print(f"[DEBUG] _handle_generate_claims: Extracted patent description from sentence_split ({len(patent_description)} chars)")
-                        else:
-                            print(f"[DEBUG] _handle_generate_claims: sentence_split has no valid text content")
-                    except Exception as e:
-                        print(f"[DEBUG] _handle_generate_claims: Error extracting from sentence_split: {e}")
-                        import traceback
-                        traceback.print_exc()
+                    description_parts = []
+                    for sentence in _sentence_split:
+                        text = getattr(sentence, 'text', str(sentence)).strip()
+                        if text: description_parts.append(text)
+                    patent_description = "\n".join(description_parts)
                 
-                # Fallback: Try to get from validator state (chat messages)
-                if not patent_description:
-                    print(f"[DEBUG] _handle_generate_claims: Trying to extract from validator state...")
-                    if hasattr(validator, '_current_state') and validator._current_state:
-                        print(f"[DEBUG] _handle_generate_claims: Validator has _current_state")
-                        messages = validator._current_state.get("messages", [])
-                        print(f"[DEBUG] _handle_generate_claims: Found {len(messages)} messages in state")
-                        # Extract text from messages to build description
-                        description_parts = []
-                        for idx, msg in enumerate(messages):
-                            print(f"[DEBUG] _handle_generate_claims: Message {idx}: type={type(msg)}")
-                            if isinstance(msg, dict):
-                                content = msg.get("content", msg.get("text", ""))
-                                role = msg.get("role", "")
-                                print(f"[DEBUG] _handle_generate_claims:   Dict message - role={role}, content_length={len(content) if content else 0}")
-                                if role == "user" and content:
-                                    description_parts.append(content)
-                            elif hasattr(msg, "content"):
-                                if hasattr(msg, "role") and msg.role == "user":
-                                    description_parts.append(str(msg.content))
-                        
-                        if description_parts:
-                            patent_description = "\n\n".join(description_parts)
-                            print(f"[DEBUG] _handle_generate_claims: Extracted patent description from chat messages ({len(patent_description)} chars)")
-                        else:
-                            patent_description = "Patent invention description not provided. Please provide a description of the invention."
-                            print(f"[DEBUG] _handle_generate_claims: No user messages found, using placeholder")
-                    else:
-                        patent_description = "Patent invention description not provided. Please provide a description of the invention."
-                        print(f"[DEBUG] _handle_generate_claims: No validator state, using placeholder")
+                if not patent_description and hasattr(validator, '_current_state') and validator._current_state:
+                    messages = validator._current_state.get("messages", [])
+                    description_parts = [msg.get("content", msg.get("text", "")) for msg in messages if isinstance(msg, dict) and msg.get("role") == "user"]
+                    if description_parts:
+                        patent_description = "\n\n".join(description_parts)
             
-            print(f"[DEBUG] _handle_generate_claims: Final patent_description length: {len(patent_description)} chars")
-            print(f"[DEBUG] _handle_generate_claims: Final patent_description preview: {patent_description[:200] if patent_description else 'EMPTY'}...")
-            print(f"[DEBUG] _handle_generate_claims: num_independent={num_independent}, num_dependent_per_independent={num_dependent_per_independent}")
-            
+            if not patent_description:
+                patent_description = "Patent invention description not provided."
+
             if not validator.graph or not validator.triples:
-                self._send_error(
-                    "Graph or triples not ready. Run the pipeline (upload/analyze) first, then generate claims.",
-                    400,
-                )
+                self._send_error("Graph or triples not ready.", 400)
                 return
             
-            # Declare globals at the start of the function
-            global _claim_generation_progress, _cached_claims
+            global _claim_generation_progress, _claim_generation_thread
             
-            # Set initial progress BEFORE starting generation
+            # Check if already running
+            if _claim_generation_thread and _claim_generation_thread.is_alive():
+                self._send_json({
+                    "success": True,
+                    "started": False,
+                    "message": "Generation already in progress",
+                    "progress": _claim_generation_progress
+                })
+                return
+
+            def claim_task() -> None:
+                global _claim_generation_progress, _cached_claims, _claim_generation_thread
+                try:
+                    # Initialize GraphRAG
+                    graph_rag = GraphRAG(
+                        G=validator.graph,
+                        triples=validator.triples,
+                        id_to_name=validator.id_to_name,
+                    )
+                    
+                    # Initialize claim generator
+                    claim_generator = ClaimGeneratorLangChain(graph_rag=graph_rag)
+                    
+                    def progress_callback(update):
+                        global _claim_generation_progress
+                        _claim_generation_progress = update
+                        print(f"[API] Progress: {update.get('stage')} - {update.get('message')} ({update.get('progress', 0)}%)")
+                    
+                    print(f"[API] Starting background claim generation...")
+                    generated_claims = claim_generator.generate_all_claims(
+                        patent_description=patent_description,
+                        triples=validator.triples,
+                        graph=validator.graph,
+                        id_to_name=validator.id_to_name,
+                        num_independent=num_independent,
+                        num_dependent_per_independent=num_dependent_per_independent,
+                        progress_callback=progress_callback,
+                        similarity_threshold=similarity_threshold,
+                        drop_duplicates=drop_duplicates,
+                    )
+                    
+                    # Convert to JSON format
+                    claims_data = []
+                    for claim in generated_claims:
+                        raw_triples = getattr(claim, "used_triples", []) or []
+                        used_triples = []
+                        for t in raw_triples:
+                            if isinstance(t, dict):
+                                used_triples.append({
+                                    "head": str(t.get("head", "")),
+                                    "relation": str(t.get("relation", "")),
+                                    "tail": str(t.get("tail", "")),
+                                    "similarity": float(t.get("similarity", 0.0)) if t.get("similarity") is not None else 0.0,
+                                })
+                        
+                        claims_data.append({
+                            "claim_number": claim.claim_number,
+                            "claim_text": claim.claim_text,
+                            "claim_type": claim.claim_type,
+                            "parent_claim_number": getattr(claim, "parent_claim_number", None),
+                            "focus": getattr(claim, "focus", ""),
+                            "used_triples": used_triples,
+                            "prompt": str(getattr(claim, "prompt", "")),
+                            "refinement_iterations": getattr(claim, "refinement_iterations", 0),
+                            "final_score": float(getattr(claim, "final_score", 0.0)),
+                        })
+                    
+                    _cached_claims = claims_data
+                    _claim_generation_progress = {
+                        "stage": "complete",
+                        "message": f"Successfully generated {len(claims_data)} claims!",
+                        "progress": 100,
+                        "num_claims": len(claims_data),
+                    }
+                    print(f"[API] Claim generation background task complete.")
+                except Exception as e:
+                    import traceback
+                    print(f"[API] ERROR in claim generation task: {e}")
+                    print(traceback.format_exc())
+                    _claim_generation_progress = {
+                        "stage": "error",
+                        "message": f"Generation failed: {str(e)}",
+                        "progress": 0,
+                    }
+                finally:
+                    _claim_generation_thread = None
+
             _claim_generation_progress = {
                 "stage": "planning",
-                "message": "Planning claim structure...",
-                "progress": 0,
+                "message": "Initializing generator...",
+                "progress": 1,
             }
-            print(f"[API] Initial progress set: {_claim_generation_progress}")
-            print(f"[API] Progress stage: {_claim_generation_progress.get('stage')}")
-            
-            # Initialize GraphRAG
-            graph_rag = GraphRAG(
-                G=validator.graph,
-                triples=validator.triples,
-                id_to_name=validator.id_to_name,
-            )
-            
-            # Initialize claim generator
-            claim_generator = ClaimGeneratorLangChain(
-                graph_rag=graph_rag,
-            )
-            
-            # Progress tracking
-            progress_updates = []
-            
-            def progress_callback(update):
-                """Store progress updates."""
-                # Need global here too since it's a nested function
-                global _claim_generation_progress
-                progress_updates.append(update)
-                # Store in global variable for GET requests
-                _claim_generation_progress = update
-                print(f"[API] Progress: {update.get('stage')} - {update.get('message')} ({update.get('progress', 0)}%)")
-            
-            # Generate claims with progress tracking
-            print(f"[API] Starting claim generation...")
-            print(f"[API] Triples count: {len(validator.triples)}")
-            print(f"[API] Graph nodes: {validator.graph.number_of_nodes() if validator.graph else 0}")
-            print(f"[API] Patent description: {patent_description[:200] if patent_description else 'EMPTY'}...")
-            
-            generated_claims = []
-            try:
-                generated_claims = claim_generator.generate_all_claims(
-                    patent_description=patent_description,
-                    triples=validator.triples,
-                    graph=validator.graph,
-                    id_to_name=validator.id_to_name,
-                    num_independent=num_independent,
-                    num_dependent_per_independent=num_dependent_per_independent,
-                    progress_callback=progress_callback,
-                    similarity_threshold=similarity_threshold,
-                )
-                print(f"[API] generate_all_claims returned {len(generated_claims) if generated_claims else 0} claims")
-            except Exception as e:
-                import traceback
-                print(f"[API] ERROR in generate_all_claims: {e}")
-                print(f"[API] Traceback: {traceback.format_exc()}")
-                # Create emergency fallback claim
-                from tools.graph.claim_generation.claim_generator_langchain import GeneratedClaim
-                generated_claims = [GeneratedClaim(
-                    claim_number=1,
-                    claim_text="1. A system comprising components as described in the patent description.",
-                    claim_type="independent",
-                    focus="Main invention",
-                )]
-                print(f"[API] Created emergency fallback claim")
-            
-            # CRITICAL: Ensure we always have at least one claim
-            if not generated_claims or len(generated_claims) == 0:
-                print(f"[API] CRITICAL: No claims generated! Creating emergency fallback.")
-                from tools.graph.claim_generation.claim_generator_langchain import GeneratedClaim
-                generated_claims = [GeneratedClaim(
-                    claim_number=1,
-                    claim_text="1. A system comprising components as described in the patent description.",
-                    claim_type="independent",
-                    focus="Main invention",
-                )]
-            
-            # Convert to JSON-serializable format (ensure used_triples and prompt always present)
-            claims_data = []
-            for claim in generated_claims:
-                raw_triples = getattr(claim, "used_triples", None)
-                if not isinstance(raw_triples, list):
-                    raw_triples = []
-                # Ensure each triple is a plain dict for JSON
-                used_triples = []
-                for t in raw_triples:
-                    if isinstance(t, dict):
-                        used_triples.append({
-                            "head": str(t.get("head", "")),
-                            "relation": str(t.get("relation", "")),
-                            "tail": str(t.get("tail", "")),
-                            "similarity": float(t.get("similarity", 0.0)) if t.get("similarity") is not None else 0.0,
-                        })
-                raw_prompt = getattr(claim, "prompt", None)
-                prompt = str(raw_prompt) if raw_prompt else ""
-                claims_data.append({
-                    "claim_number": claim.claim_number,
-                    "claim_text": claim.claim_text,
-                    "claim_type": claim.claim_type,
-                    "parent_claim_number": getattr(claim, "parent_claim_number", None),
-                    "focus": getattr(claim, "focus", "") or "",
-                    "used_triples": used_triples,
-                    "prompt": prompt,
-                    "refinement_iterations": getattr(claim, "refinement_iterations", 0) or 0,
-                    "final_score": float(getattr(claim, "final_score", 0.0) or 0.0),
-                })
-            
-            print(f"[API] Final claims_data: {len(claims_data)} claims")
-            
-            # Cache the generated claims globally
-            _cached_claims = claims_data
-            
-            # Set final progress
-            _claim_generation_progress = {
-                "stage": "complete",
-                "message": f"Successfully generated {len(claims_data)} claims!",
-                "progress": 100,
-                "num_claims": len(claims_data),
-            }
-            
+            _claim_generation_thread = threading.Thread(target=claim_task, daemon=True)
+            _claim_generation_thread.start()
+
             self._send_json({
                 "success": True,
-                "claims": claims_data,
-                "num_claims": len(claims_data),
+                "started": True,
+                "message": "Claim generation started in background",
                 "progress": _claim_generation_progress,
             })
             
         except Exception as e:
             import traceback
-            print(f"[API] Error generating claims: {type(e).__name__}: {str(e)}")
-            print(f"[API] Traceback: {traceback.format_exc()}")
-            self._send_error(f"Error generating claims: {str(e)}", 500)
+            print(f"[API] Error in _handle_generate_claims: {e}")
+            print(traceback.format_exc())
+            self._send_error(f"Error: {str(e)}", 500)
     
     def _get_generated_claims(self) -> Dict[str, Any]:
         """Get previously generated claims from storage."""
@@ -1990,6 +1938,123 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             "source_label": source_label,
             "short_abstract": short_abstract,
         }
+    
+    def _evaluate_claims(self) -> Dict[str, Any]:
+        """Evaluate generated claims against original patent claims if patent_id is available."""
+        global _source_type, _source_patent_id, _cached_claims
+        
+        if _source_type != "patent_id" or not _source_patent_id:
+            return {"success": False, "error": "Evaluation only available for patent_id source"}
+        
+        if not _cached_claims:
+            return {"success": False, "error": "No generated claims to evaluate"}
+        
+        try:
+            provider = PatentProvider()
+            original_claims = provider.getClaims(_source_patent_id)
+            
+            if not original_claims:
+                return {"success": False, "error": f"Could not fetch original claims for {_source_patent_id}"}
+            
+            # Extract text from generated claims
+            gen_claims_text = []
+            for c in _cached_claims:
+                if isinstance(c, dict) and "claim_text" in c:
+                    gen_claims_text.append(c["claim_text"])
+                elif isinstance(c, str):
+                    gen_claims_text.append(c)
+            
+            evaluator = ClaimEvaluator()
+            metrics = evaluator.evaluate(original_claims, gen_claims_text)
+            
+            return {
+                "success": True,
+                "metrics": metrics,
+                "num_original_claims": len(original_claims),
+                "num_generated_claims": len(gen_claims_text)
+            }
+        except Exception as e:
+            print(f"Evaluation error: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _handle_compare_claims(self):
+        """Handle claim comparison request: compare KG claims vs non-KG claims from selected model."""
+        global _source_type, _source_patent_id, _cached_claims, _sentence_split
+        
+        if _source_type != "patent_id" or not _source_patent_id:
+            self._send_error("Comparison only available for patent_id source")
+            return
+            
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+            model_name = data.get("model_name", "deepseek")
+            
+            # 1. Get original claims from provider
+            provider = PatentProvider()
+            original_claims = provider.getClaims(_source_patent_id)
+            if not original_claims:
+                self._send_error(f"Could not fetch original claims for {_source_patent_id}")
+                return
+            
+            # 2. Get patent description
+            patent_description = ""
+            if _sentence_split:
+                patent_description = "\n".join([getattr(s, 'text', str(s)) for s in _sentence_split])
+            
+            if not patent_description:
+                self._send_error("Patent description not available")
+                return
+
+            # 3. Generate claims WITHOUT KG using the selected model
+            # Setup API repo with selected model
+            api_repo = LLmApi_Repo()
+            api_repo.set_model(model_name)
+            
+            # Generator with no GraphRAG
+            generator = ClaimGeneratorLangChain(api_repo=api_repo)
+            
+            # Using defaults for comparison
+            num_independent = data.get("num_independent", 3)
+            num_dependent = data.get("num_dependent_per_independent", 2)
+            
+            print(f"[API] Comparing: Generating {num_independent} independent claims with {model_name} (NO KG)...")
+            
+            # Pass empty list of triples to bypass GraphRAG logic
+            non_kg_claims = generator.generate_all_claims(
+                patent_description=patent_description,
+                triples=[],
+                num_independent=num_independent,
+                num_dependent_per_independent=num_dependent,
+            )
+            
+            # 4. Evaluate both sets of claims
+            evaluator = ClaimEvaluator()
+            
+            # Original KG-based claims (cached)
+            kg_claims_text = [c.get("claim_text", str(c)) if isinstance(c, dict) else str(c) for c in _cached_claims]
+            kg_metrics = evaluator.evaluate(original_claims, kg_claims_text)
+            
+            # New model-based claims (no KG)
+            non_kg_claims_text = [c.claim_text for c in non_kg_claims]
+            non_kg_metrics = evaluator.evaluate(original_claims, non_kg_claims_text)
+            
+            self._send_json({
+                "success": True,
+                "model_name": model_name,
+                "kg_metrics": kg_metrics,
+                "non_kg_metrics": non_kg_metrics,
+                "num_original_claims": len(original_claims),
+                "num_kg_claims": len(kg_claims_text),
+                "num_non_kg_claims": len(non_kg_claims_text),
+                "non_kg_claims": non_kg_claims_text
+            })
+            
+        except Exception as e:
+            print(f"Comparison error: {e}")
+            import traceback
+            traceback.print_exc()
+            self._send_error(str(e))
     
     def _get_claim_progress(self) -> Dict[str, Any]:
 
@@ -2088,7 +2153,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 
                 # 3. SYNC GRAPH: Rebuild graph from updated triples
                 if validator.graph is not None:
-                    visualizer = GraphVisualizer()
+                    visualizer = GraphVisualizer(
+                        node_size=_graph_node_size,
+                        edge_width=_graph_edge_width,
+                        font_size=_graph_font_size
+                    )
                     validator.graph = visualizer.build_graph(validator.triples)
                 
                 _save_persisted_validator(
@@ -2128,7 +2197,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 
                 # 2. SYNC GRAPH: Rebuild graph from updated triples
                 if validator.graph is not None:
-                    visualizer = GraphVisualizer()
+                    visualizer = GraphVisualizer(
+                        node_size=_graph_node_size,
+                        edge_width=_graph_edge_width,
+                        font_size=_graph_font_size
+                    )
                     validator.graph = visualizer.build_graph(validator.triples)
                 
                 _save_persisted_validator(
@@ -2252,7 +2325,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
                 updated = True
 
             if validator.graph is not None and updated:
-                visualizer = GraphVisualizer()
+                visualizer = GraphVisualizer(
+                    node_size=_graph_node_size,
+                    edge_width=_graph_edge_width,
+                    font_size=_graph_font_size
+                )
                 validator.graph = visualizer.build_graph(validator.triples)
 
             _save_persisted_validator(
@@ -2363,7 +2440,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             validator.triples.append(new_triple)
 
             if validator.graph is not None:
-                visualizer = GraphVisualizer()
+                visualizer = GraphVisualizer(
+                    node_size=_graph_node_size,
+                    edge_width=_graph_edge_width,
+                    font_size=_graph_font_size
+                )
                 validator.graph = visualizer.build_graph(validator.triples)
 
             _save_persisted_validator(
@@ -2461,7 +2542,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             
             # 3. SYNC GRAPH: Rebuild graph from updated triples
             if validator.graph is not None:
-                visualizer = GraphVisualizer()
+                visualizer = GraphVisualizer(
+                    node_size=_graph_node_size,
+                    edge_width=_graph_edge_width,
+                    font_size=_graph_font_size
+                )
                 validator.graph = visualizer.build_graph(validator.triples)
 
             _save_persisted_validator(
@@ -2527,7 +2612,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             # 3. SYNC GRAPH: Rebuild graph from updated triples
             if validator.graph is not None:
                 print(f"[API] Rebuilding graph after entity delete (triples: {len(validator.triples)})...")
-                visualizer = GraphVisualizer()
+                visualizer = GraphVisualizer(
+                    node_size=_graph_node_size,
+                    edge_width=_graph_edge_width,
+                    font_size=_graph_font_size
+                )
                 validator.graph = visualizer.build_graph(validator.triples)
                 print("[API] Graph rebuild complete")
 
@@ -2589,7 +2678,11 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             # 3. SYNC GRAPH: Rebuild graph from updated triples
             if validator.graph is not None:
                 print(f"[API] Rebuilding graph after triple delete (triples: {len(validator.triples)})...")
-                visualizer = GraphVisualizer()
+                visualizer = GraphVisualizer(
+                    node_size=_graph_node_size,
+                    edge_width=_graph_edge_width,
+                    font_size=_graph_font_size
+                )
                 validator.graph = visualizer.build_graph(validator.triples)
                 print("[API] Graph rebuild complete")
 
@@ -2684,6 +2777,9 @@ def start_validator_chat(
     port: int = 5000,
     open_browser: bool = True,
     debug: bool = False,
+    node_size: int = 25,
+    edge_width: float = 1.2,
+    font_size: int = 14,
 ) -> None:
     """
     Start the validator chat interface.
@@ -2697,9 +2793,18 @@ def start_validator_chat(
         port: Port number for the API server
         open_browser: Whether to automatically open browser
         debug: Enable debug mode
+        node_size: Size of nodes in the graph
+        edge_width: Width of lines in the graph
+        font_size: Size of text in the graph
     """
     global validator, _server_running, _api_server, _api_thread, _nextjs_process, _nextjs_thread
     global _source_patent_id, _source_filename, _source_type
+    global _graph_node_size, _graph_edge_width, _graph_font_size
+
+    # Set visual configuration
+    _graph_node_size = node_size
+    _graph_edge_width = edge_width
+    _graph_font_size = font_size
     if graph is None and triples is None and id_to_name is None and sentence_split is None:
         persisted = _load_persisted_validator()
         if persisted:

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -22,6 +22,7 @@ const fraunces = Fraunces({
 });
 
 const PIPELINE_PROGRESS_KEY = "pipeline_progress";
+const PIPELINE_REDIRECT_FLAG_KEY = "pipeline_redirect_needed";
 const GRAPH_CACHE_KEYS = [
   "graph_html",
   "graph_timestamp",
@@ -113,7 +114,13 @@ export default function UploadPage() {
         if (data.progress.stage === "complete") {
           stopProgressPolling();
           setSubmitting(false);
-          router.push("/analyze");
+          if (typeof window !== "undefined") {
+            const shouldRedirect = localStorage.getItem(PIPELINE_REDIRECT_FLAG_KEY) === "1";
+            if (shouldRedirect) {
+              localStorage.removeItem(PIPELINE_REDIRECT_FLAG_KEY);
+              router.push("/analyze");
+            }
+          }
         }
         if (data.progress.stage === "error") {
           stopProgressPolling();
@@ -160,24 +167,27 @@ export default function UploadPage() {
 
     verifySession().finally(() => {
       const stored = localStorage.getItem(PIPELINE_PROGRESS_KEY);
+      const redirectFlag = localStorage.getItem(PIPELINE_REDIRECT_FLAG_KEY) === "1";
       if (stored) {
         try {
           const parsed = JSON.parse(stored) as PipelineProgress;
-            if (parsed?.stage && parsed.stage !== "idle") {
-              setProgress(parsed);
-              setProgressHistory([parsed]);
-              if (parsed.stage === "complete") {
-                router.push("/analyze");
-                return;
-              }
+          if (parsed?.stage && parsed.stage !== "idle") {
+            setProgress(parsed);
+            setProgressHistory([parsed]);
+            if (parsed.stage === "complete" && redirectFlag) {
+              localStorage.removeItem(PIPELINE_REDIRECT_FLAG_KEY);
+              router.push("/analyze");
+              return;
             }
+          }
         } catch {
           // Ignore invalid stored progress.
         }
       }
       try {
         const existingResult = localStorage.getItem("pipeline_result");
-        if (existingResult) {
+        if (existingResult && redirectFlag) {
+          localStorage.removeItem(PIPELINE_REDIRECT_FLAG_KEY);
           router.push("/analyze");
           return;
         }
@@ -198,6 +208,10 @@ export default function UploadPage() {
 
     try {
       setSubmitting(true);
+      if (typeof window !== "undefined") {
+        // Mark that we should auto-redirect to Analyze when this new pipeline run completes
+        localStorage.setItem(PIPELINE_REDIRECT_FLAG_KEY, "1");
+      }
       let payload: Record<string, string> = {};
 
       if (file) {

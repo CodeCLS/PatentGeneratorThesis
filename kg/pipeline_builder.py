@@ -67,8 +67,8 @@ class PipelineBuilder:
             "windowed_fastcoref",
             after="entity_normaliser",
             config={
-                "chunk_chars": 12000,
-                "overlap": 1200,
+                "chunk_chars": 8000,
+                "overlap": 1000,
                 "model_architecture": "LingMessCoref",
                 "model_path": "biu-nlp/lingmess-coref",
                 "device": self.device,  # "cuda" or "cpu"

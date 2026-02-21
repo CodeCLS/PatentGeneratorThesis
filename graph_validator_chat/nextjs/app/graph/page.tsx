@@ -395,8 +395,8 @@ export default function GraphPage() {
     const initialize = async () => {
       const ready = await ensurePipeline();
       if (ready) {
-        // Try to load from cache first - loadGraph will check cache
-        loadGraph(false);
+        // Always rebuild the graph HTML when visiting the page
+        loadGraph(true);
         if (USE_NEO4J_GRAPH) {
           loadNeo4jStats();
         } else {

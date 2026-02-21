@@ -47,6 +47,9 @@ class GraphVisualizer:
         node_type_colors: Optional[Dict[str, str]] = None,
         edge_cluster_colors: Optional[List[str]] = None,
         edge_color_default: str = EDGE_COLOR_DEFAULT,
+        node_size: int = 25,
+        edge_width: float = 1.2,
+        font_size: int = 14,
     ):
         """
         Initialize the visualizer.
@@ -55,10 +58,16 @@ class GraphVisualizer:
             node_type_colors: Mapping from node type to color hex code
             edge_cluster_colors: List of colors for cluster edges
             edge_color_default: Default color for unclustered edges
+            node_size: Default size for nodes
+            edge_width: Default width for edges
+            font_size: Default font size for labels
         """
         self.node_type_colors = node_type_colors or NODE_TYPE_COLORS.copy()
         self.edge_cluster_colors = edge_cluster_colors or EDGE_CLUSTER_COLORS.copy()
         self.edge_color_default = edge_color_default
+        self.node_size = node_size
+        self.edge_width = edge_width
+        self.font_size = font_size
 
     @staticmethod
     def infer_type_from_id(x: str) -> str:
@@ -393,6 +402,8 @@ class GraphVisualizer:
                 label=label,
                 color=color,
                 shape="ellipse",
+                size=self.node_size,
+                font={"size": self.font_size},
                 title="<br>".join(title_parts),
             )
 
@@ -404,7 +415,8 @@ class GraphVisualizer:
                 if cid_edge != -1
                 else self.edge_color_default
             )
-            edge_width = 2.2 if cid_edge != -1 else 1.2
+            # Scale edge width based on default self.edge_width
+            edge_width = (self.edge_width * 1.8) if cid_edge != -1 else self.edge_width
 
             title = d.get("label", "")
             if cluster_attr and cid_to_seedtype:
@@ -417,6 +429,7 @@ class GraphVisualizer:
                 arrows="to",
                 color=edge_color,
                 width=edge_width,
+                font={"size": self.font_size, "align": "top"},
                 title=title,
                 index=d.get("index", -1),
             )

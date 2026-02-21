@@ -31,7 +31,11 @@ export default function EditorPage() {
   const [similarityThreshold, setSimilarityThreshold] = useState<number>(0.45);
   const [pipelineBootstrapError, setPipelineBootstrapError] = useState<string>('');
   const [claimsDisplayNumbers, setClaimsDisplayNumbers] = useState<Record<number, string>>({});
-  const [sourceInfo, setSourceInfo] = useState<{ source_label?: string; short_abstract?: string } | null>(null);
+  const [sourceInfo, setSourceInfo] = useState<{ source_label?: string; short_abstract?: string; source?: string } | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("deepseek");
+  const [comparisonResults, setComparisonResults] = useState<any>(null);
   const progressCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isRegeneratingRef = useRef<boolean>(false);
 
@@ -53,6 +57,7 @@ export default function EditorPage() {
             setSourceInfo({
               source_label: data.source_label ?? undefined,
               short_abstract: data.short_abstract ?? undefined,
+              source: data.source ?? undefined,
             });
           }
         }
@@ -61,6 +66,21 @@ export default function EditorPage() {
       }
     };
     loadSource();
+    
+    const loadModels = async () => {
+      try {
+        const res = await fetch('/api/claims/models');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.models) {
+            setAvailableModels(data.models);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load models:', e);
+      }
+    };
+    loadModels();
   }, []);
 
   useEffect(() => {
@@ -305,6 +325,21 @@ export default function EditorPage() {
     }
   };
   
+  const rewriteClaimReferences = (text: string, displayMap: Record<number, string>): string => {
+    let rewritten = text;
+    for (const [rawStr, display] of Object.entries(displayMap)) {
+      const rawNum = Number(rawStr);
+      if (!rawNum || !display) continue;
+      const rawEsc = String(rawNum).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`\\b[Cc]laim\\s+${rawEsc}\\b`, 'g');
+      rewritten = rewritten.replace(re, (match) => {
+        const isCapitalized = match[0] === 'C';
+        return `${isCapitalized ? 'Claim' : 'claim'} ${display}`;
+      });
+    }
+    return rewritten;
+  };
+
   const formatClaimsForEditor = (claimsData: any[]) => {
     if (!claimsData || claimsData.length === 0) {
       console.log('[Editor] Cannot format claims - empty claims data');
@@ -360,7 +395,8 @@ export default function EditorPage() {
       displayMap[claimNum] = displayNum;
 
       const claimText = (independentClaim.claim_text || '').trim();
-      const formattedClaimText = claimText.replace(/^\d+(\.\d+)?\.?\s*/, `${displayNum}. `);
+      let formattedClaimText = claimText.replace(/^\d+(\.\d+)?\.?\s*/, `${displayNum}. `);
+      formattedClaimText = rewriteClaimReferences(formattedClaimText, displayMap);
       
       html += `<div class="claim-item" data-claim-number="${claimNum}" style="margin-bottom: 24px; padding-left: 0; cursor: pointer; padding: 8px; border-radius: 4px; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#f5f5f5'" onmouseout="this.style.backgroundColor='transparent'">`;
       html += `<p style="text-indent: 0; margin: 0 0 12px 0; line-height: 1.8; font-size: 16px;">${escapeHtml(formattedClaimText)}</p>`;
@@ -374,7 +410,8 @@ export default function EditorPage() {
           displayMap[depClaimNum] = depDisplayNum;
 
           const depClaimText = (dependentClaim.claim_text || '').trim();
-          const formattedDepClaimText = depClaimText.replace(/^\d+(\.\d+)?\.?\s*/, `${depDisplayNum}. `);
+          let formattedDepClaimText = depClaimText.replace(/^\d+(\.\d+)?\.?\s*/, `${depDisplayNum}. `);
+          formattedDepClaimText = rewriteClaimReferences(formattedDepClaimText, displayMap);
           
           html += `<div class="claim-item" data-claim-number="${depClaimNum}" style="margin-bottom: 24px; padding-left: 20px; margin-top: 12px; cursor: pointer; padding: 8px; border-radius: 4px; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#f5f5f5'" onmouseout="this.style.backgroundColor='transparent'">`;
           html += `<p style="text-indent: 0; margin: 0 0 12px 0; line-height: 1.8; font-size: 16px;">${escapeHtml(formattedDepClaimText)}</p>`;
@@ -547,6 +584,171 @@ export default function EditorPage() {
     setSimilarityThreshold(value);
     localStorage.setItem(STORAGE_KEY_SIMILARITY_THRESHOLD, value.toString());
     // Don't auto-generate; user must click the button
+  };
+
+  const evaluateClaims = async () => {
+    if (isEvaluating) return;
+    setIsEvaluating(true);
+    try {
+      const response = await fetch('/api/claims/evaluate');
+      const data = await response.json();
+      if (data.success) {
+        const { metrics } = data;
+        const evaluationHtml = `
+          <div class="evaluation-metrics" style="margin-top: 40px; padding: 20px; border-top: 2px solid #333; font-family: Georgia, serif; background-color: #fafafa; border-radius: 8px;">
+            <h2 style="font-size: 22px; margin-bottom: 15px; border-bottom: 1px solid #ddd; padding-bottom: 10px;">Patent Claims Evaluation Metrics</h2>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+              <div style="padding: 12px; background: white; border: 1px solid #eee; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 4px;">BLEU Score</div>
+                <div style="font-size: 20px; font-weight: bold; color: #2c3e50;">${(metrics.bleu * 100).toFixed(2)}%</div>
+              </div>
+              <div style="padding: 12px; background: white; border: 1px solid #eee; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 4px;">ROUGE-1</div>
+                <div style="font-size: 20px; font-weight: bold; color: #2c3e50;">${(metrics.rouge1 * 100).toFixed(2)}%</div>
+              </div>
+              <div style="padding: 12px; background: white; border: 1px solid #eee; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 4px;">ROUGE-2</div>
+                <div style="font-size: 20px; font-weight: bold; color: #2c3e50;">${(metrics.rouge2 * 100).toFixed(2)}%</div>
+              </div>
+              <div style="padding: 12px; background: white; border: 1px solid #eee; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 4px;">ROUGE-L</div>
+                <div style="font-size: 20px; font-weight: bold; color: #2c3e50;">${(metrics.rougeL * 100).toFixed(2)}%</div>
+              </div>
+            </div>
+            <p style="margin-top: 15px; font-size: 14px; color: #7f8c8d; font-style: italic;">
+              Evaluation: Compared ${data.num_generated_claims} generated claims against ${data.num_original_claims} original patent claims.
+            </p>
+          </div>
+        `;
+        
+        if (editorRef.current) {
+          const currentHtml = editorRef.current.innerHTML;
+          // Check if evaluation-metrics already exist and replace or append
+          const metricsSelector = '.evaluation-metrics';
+          const existingMetrics = editorRef.current.querySelector(metricsSelector);
+          
+          if (existingMetrics) {
+            existingMetrics.outerHTML = evaluationHtml;
+          } else {
+            // Append metrics before the final padding if exists, or at the end
+            editorRef.current.innerHTML = currentHtml + evaluationHtml;
+          }
+          
+          handleInput();
+          
+          // Scroll to the metrics
+          setTimeout(() => {
+            const newMetrics = editorRef.current?.querySelector(metricsSelector);
+            if (newMetrics) {
+              newMetrics.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }
+          }, 100);
+        }
+      } else {
+        alert(`Evaluation failed: ${data.error}`);
+      }
+    } catch (e) {
+      console.error('Failed to evaluate claims:', e);
+      alert('Error evaluating claims. Please ensure the server is running and BLEU/ROUGE libraries are installed.');
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
+  const compareClaims = async (modelName: string) => {
+    if (isEvaluating) return;
+    setIsEvaluating(true);
+    try {
+      const response = await fetch('/api/claims/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model_name: modelName,
+          num_independent: 3,
+          num_dependent_per_independent: 2,
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        const { kg_metrics, non_kg_metrics, model_name } = data;
+        const comparisonHtml = `
+          <div class="comparison-metrics" style="margin-top: 40px; padding: 25px; border: 2px solid #2c3e50; font-family: Georgia, serif; background-color: #f8f9fa; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+            <h2 style="font-size: 24px; margin-bottom: 20px; border-bottom: 2px solid #2c3e50; padding-bottom: 12px; color: #2c3e50;">A/B Comparison: Graph-Augmented vs Baseline</h2>
+            
+            <div style="margin-bottom: 20px; padding: 10px; background: #e3f2fd; border-radius: 6px; font-size: 14px; color: #0d47a1;">
+              <strong>Model Tested:</strong> ${model_name.toUpperCase()} (No Knowledge Graph vs KG-Augmented)
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+              <!-- Baseline Model Section -->
+              <div style="padding: 15px; background: #fff; border: 1px solid #dee2e6; border-radius: 8px;">
+                <h3 style="font-size: 16px; margin-top: 0; margin-bottom: 15px; color: #6c757d; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 8px;">Baseline (No KG)</h3>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <div style="display: flex; justify-content: space-between;"><span>BLEU:</span> <strong style="color: #6c757d;">${(non_kg_metrics.bleu * 100).toFixed(2)}%</strong></div>
+                  <div style="display: flex; justify-content: space-between;"><span>ROUGE-1:</span> <strong style="color: #6c757d;">${(non_kg_metrics.rouge1 * 100).toFixed(2)}%</strong></div>
+                  <div style="display: flex; justify-content: space-between;"><span>ROUGE-L:</span> <strong style="color: #6c757d;">${(non_kg_metrics.rougeL * 100).toFixed(2)}%</strong></div>
+                </div>
+              </div>
+
+              <!-- KG-Augmented Section -->
+              <div style="padding: 15px; background: #f1f8e9; border: 1px solid #c5e1a5; border-radius: 8px;">
+                <h3 style="font-size: 16px; margin-top: 0; margin-bottom: 15px; color: #2e7d32; text-transform: uppercase; border-bottom: 1px solid #c5e1a5; padding-bottom: 8px;">Graph-Augmented</h3>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <div style="display: flex; justify-content: space-between;"><span>BLEU:</span> <strong style="color: #2e7d32;">${(kg_metrics.bleu * 100).toFixed(2)}%</strong></div>
+                  <div style="display: flex; justify-content: space-between;"><span>ROUGE-1:</span> <strong style="color: #2e7d32;">${(kg_metrics.rouge1 * 100).toFixed(2)}%</strong></div>
+                  <div style="display: flex; justify-content: space-between;"><span>ROUGE-L:</span> <strong style="color: #2e7d32;">${(kg_metrics.rougeL * 100).toFixed(2)}%</strong></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Performance Lift -->
+            <div style="margin-top: 20px; padding: 15px; background: #fff; border: 1px solid #2c3e50; border-radius: 8px; text-align: center;">
+              <span style="font-size: 18px; color: #2c3e50;">
+                <strong>Performance Lift:</strong> 
+                <span style="color: #2e7d32; font-weight: bold; margin-left: 10px;">
+                  +${((kg_metrics.bleu - non_kg_metrics.bleu) * 100).toFixed(2)}% (BLEU)
+                </span>
+                <span style="color: #2e7d32; font-weight: bold; margin-left: 15px;">
+                  +${((kg_metrics.rougeL - non_kg_metrics.rougeL) * 100).toFixed(2)}% (ROUGE-L)
+                </span>
+              </span>
+            </div>
+            
+            <p style="margin-top: 15px; font-size: 13px; color: #7f8c8d; font-style: italic;">
+              A/B Comparison: Comparing ${data.num_non_kg_claims} baseline claims vs ${data.num_kg_claims} graph-augmented claims against ${data.num_original_claims} reference patent claims.
+            </p>
+          </div>
+        `;
+        
+        if (editorRef.current) {
+          // Check if comparison-metrics or evaluation-metrics already exist
+          const metricsSelector = '.comparison-metrics, .evaluation-metrics';
+          const existingMetrics = editorRef.current.querySelector(metricsSelector);
+          
+          if (existingMetrics) {
+            existingMetrics.outerHTML = comparisonHtml;
+          } else {
+            editorRef.current.innerHTML += comparisonHtml;
+          }
+          
+          handleInput();
+          
+          setTimeout(() => {
+            const newMetrics = editorRef.current?.querySelector('.comparison-metrics');
+            if (newMetrics) {
+              newMetrics.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }
+          }, 100);
+        }
+      } else {
+        alert(`Comparison failed: ${data.error}`);
+      }
+    } catch (e) {
+      console.error('Failed to compare claims:', e);
+      alert('Error comparing claims. Check server logs.');
+    } finally {
+      setIsEvaluating(false);
+    }
   };
 
   return (
@@ -722,6 +924,36 @@ export default function EditorPage() {
             data-placeholder="Start typing..."
             />
           </div>
+          {sourceInfo?.source === 'patent_id' && claims.length > 0 && (
+            <div className={styles.evaluationActions}>
+              <select
+                className={styles.modelSelect}
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                title="Select baseline model for comparison"
+              >
+                {availableModels.map(model => (
+                  <option key={model} value={model}>{model}</option>
+                ))}
+              </select>
+              <button
+                className={styles.compareButton}
+                onClick={() => compareClaims(selectedModel)}
+                disabled={isEvaluating}
+                title={`Compare KG claims vs ${selectedModel} (No KG)`}
+              >
+                {isEvaluating ? 'Comparing...' : '⚖️ Compare vs Baseline'}
+              </button>
+              <button
+                className={styles.evaluateButton}
+                onClick={evaluateClaims}
+                disabled={isEvaluating}
+                title="Evaluate current claims"
+              >
+                {isEvaluating ? 'Evaluating...' : '📊 Evaluate'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Triples Side Panel */}
