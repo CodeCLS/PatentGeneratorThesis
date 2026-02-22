@@ -91,6 +91,65 @@ class ClaimGeneratorLangChain:
         self.graph_rag = graph_rag
         self.api_repo = api_repo or LLmApi_Repo()
     
+    def _extract_json(self, text: str) -> Optional[Any]:
+        """Robustly extract JSON from LLM response."""
+        if not text:
+            return None
+            
+        text = text.strip()
+        # Remove markdown code blocks
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0].strip()
+            
+        # Find first { or [ and last } or ]
+        start_brace = text.find("{")
+        start_bracket = text.find("[")
+        
+        if start_brace == -1 and start_bracket == -1:
+            return None
+            
+        if start_brace != -1 and (start_bracket == -1 or start_brace < start_bracket):
+            # Probably an object
+            start_idx = start_brace
+            end_idx = text.rfind("}") + 1
+        else:
+            # Probably an array
+            start_idx = start_bracket
+            end_idx = text.rfind("]") + 1
+            
+        if start_idx == -1 or end_idx <= start_idx:
+            return None
+            
+        json_text = text[start_idx:end_idx]
+        
+        try:
+            return json.loads(json_text)
+        except json.JSONDecodeError:
+            # Try basic fixes for common LLM JSON errors
+            try:
+                # Fix trailing commas before } or ]
+                fixed_text = re.sub(r',\s*}', '}', json_text)
+                fixed_text = re.sub(r',\s*]', ']', fixed_text)
+                # Remove unescaped newlines in strings (very common)
+                # This is a bit aggressive but often works for LLM output
+                return json.loads(fixed_text)
+            except Exception:
+                # Last resort: try to find a valid JSON object by counting braces
+                brace_count = 0
+                for i in range(start_idx, len(text)):
+                    if text[i] == "{" or text[i] == "[":
+                        brace_count += 1
+                    elif text[i] == "}" or text[i] == "]":
+                        brace_count -= 1
+                        if brace_count == 0:
+                            try:
+                                return json.loads(text[start_idx:i+1])
+                            except:
+                                continue
+                return None
+
     def plan_claims(
         self,
         patent_description: str,
@@ -568,77 +627,24 @@ Return ONLY the JSON object, no other text."""
             response = self.api_repo.chat(prompt)
             
             # Extract JSON from response
-            if isinstance(response, dict):
-                response_text = response.get("content", response.get("text", ""))
-            else:
-                response_text = str(response)
+            response_text = response.get("content", response.get("text", str(response))) if isinstance(response, dict) else str(response)
+            result = self._extract_json(response_text)
             
-            # Clean response
-            response_text = response_text.strip()
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0].strip()
-            
-            # Extract JSON object
-            if "{" in response_text:
-                start_idx = response_text.find("{")
-                end_idx = response_text.rfind("}") + 1
-                if start_idx >= 0 and end_idx > start_idx:
-                    response_text = response_text[start_idx:end_idx]
-            
-            # Try to parse JSON, with fallback for malformed JSON
-            result = None
-            try:
-                result = json.loads(response_text)
-            except json.JSONDecodeError as e:
-                print(f"[DEBUG] judge_claims: JSON parse error: {e}, attempting to fix...")
-                # Try to extract just the JSON part more carefully
-                # Find the first complete JSON object by counting braces
-                brace_count = 0
-                start_pos = response_text.find("{")
-                if start_pos >= 0:
-                    for i in range(start_pos, len(response_text)):
-                        if response_text[i] == "{":
-                            brace_count += 1
-                        elif response_text[i] == "}":
-                            brace_count -= 1
-                            if brace_count == 0:
-                                # Found complete JSON object
-                                extracted_text = response_text[start_pos:i+1]
-                                print(f"[DEBUG] judge_claims: Extracted complete object (length: {len(extracted_text)})")
-                                try:
-                                    result = json.loads(extracted_text)
-                                    print(f"[DEBUG] judge_claims: Successfully parsed JSON after extraction")
-                                except json.JSONDecodeError as e2:
-                                    print(f"[DEBUG] judge_claims: Still can't parse extracted JSON: {e2}")
-                                    # Try to fix common JSON issues
-                                    try:
-                                        # Fix trailing commas
-                                        fixed_text = re.sub(r',\s*}', '}', extracted_text)
-                                        fixed_text = re.sub(r',\s*]', ']', fixed_text)
-                                        result = json.loads(fixed_text)
-                                        print(f"[DEBUG] judge_claims: Successfully parsed JSON after fixing trailing commas")
-                                    except json.JSONDecodeError as e3:
-                                        print(f"[DEBUG] judge_claims: All JSON parsing attempts failed, using default judgment")
-                                        result = None
-                                break
-                
-                if result is None:
-                    print(f"[DEBUG] judge_claims: Could not parse JSON, returning default judgment")
-                    # Return default judgment instead of raising
-                    return {
-                        "unity_score": 50.0,
-                        "unity_feedback": "Unable to parse judgment response. Using default scores.",
-                        "claim_criticisms": [
-                            {
-                                "claim_number": c.claim_number,
-                                "score": 50.0,
-                                "criticism": "Unable to evaluate due to JSON parsing error."
-                            }
-                            for c in claims
-                        ]
-                    }
+            if result is None:
+                print(f"[DEBUG] judge_claims: Could not parse JSON, returning default judgment")
+                # Return default judgment instead of raising
+                return {
+                    "unity_score": 50.0,
+                    "unity_feedback": "Unable to parse judgment response. Using default scores.",
+                    "claim_criticisms": [
+                        {
+                            "claim_number": c.claim_number,
+                            "score": 50.0,
+                            "criticism": "Unable to evaluate due to JSON parsing error."
+                        }
+                        for c in claims
+                    ]
+                }
             
             # Ensure all claims have criticisms
             claim_numbers = {c.claim_number for c in claims}
@@ -1005,10 +1011,23 @@ Return ONLY the refined claim text, numbered as "{planned_claim.claim_number}." 
         
         for claim_idx, claim in enumerate(claims):
             planned_claim = planned_map.get(claim.claim_number)
+            
+            # If no planned claim found (e.g. for dependent claims 1.1, 1.2), create a synthetic one
             if not planned_claim:
-                print(f"[Refinement] No planned claim found for claim {claim.claim_number}, skipping")
-                refined_claims.append(claim)
-                continue
+                print(f"[Refinement] Creating synthetic planned claim for dependent claim {claim.claim_number}")
+                parent_num = None
+                if "." in str(claim.claim_number):
+                    try:
+                        parent_num = int(str(claim.claim_number).split(".")[0])
+                    except:
+                        parent_num = 1
+                
+                planned_claim = PlannedClaim(
+                    claim_number=claim.claim_number,
+                    claim_type=claim.claim_type,
+                    focus=claim.focus or f"Dependent claim narrowing claim {parent_num or 1}",
+                    parent_claim_number=parent_num or claim.parent_claim_number,
+                )
             
             print(f"[Refinement] Starting refinement for claim {claim.claim_number}...")
             
@@ -1214,23 +1233,9 @@ Return ONLY the JSON array, no other text."""
 
         try:
             response = self.api_repo.chat(prompt)
-            response_text = str(response.get("content", response)) if isinstance(response, dict) else str(response)
+            response_text = response.get("content", response.get("text", str(response))) if isinstance(response, dict) else str(response)
             
-            # Clean up response
-            response_text = response_text.strip()
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0].strip()
-            
-            # Extract JSON array
-            if "[" in response_text:
-                start_idx = response_text.find("[")
-                end_idx = response_text.rfind("]") + 1
-                if start_idx >= 0 and end_idx > start_idx:
-                    response_text = response_text[start_idx:end_idx]
-            
-            final_claims_list = json.loads(response_text)
+            final_claims_list = self._extract_json(response_text)
             
             if isinstance(final_claims_list, list) and len(final_claims_list) == len(claims):
                 for idx, new_text in enumerate(final_claims_list):

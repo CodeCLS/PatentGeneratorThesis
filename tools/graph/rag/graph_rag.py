@@ -693,7 +693,9 @@ class GraphRAG:
         triples_to_index = triples if triples is not None else self.triples
         
         if not triples_to_index:
-            print("⚠️  No triples available to index")
+            # Only print warning if we explicitly have triples in the object that aren't being indexed
+            if self.triples:
+                print("⚠️  No triples available to index")
             self._faiss_index = None
             self._faiss_built = False
             return
@@ -766,7 +768,8 @@ class GraphRAG:
             self._build_faiss_index(force_rebuild=rebuild_index)
         
         if self._faiss_index is None or self._faiss_index.ntotal == 0:
-            print("⚠️  Faiss index is empty or not built")
+            if self.triples:
+                print("⚠️  Faiss index is empty or not built")
             return []
         
         # Get embedding for query text

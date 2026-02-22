@@ -614,6 +614,10 @@ export default function EditorPage() {
                 <div style="font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 4px;">ROUGE-L</div>
                 <div style="font-size: 20px; font-weight: bold; color: #2c3e50;">${(metrics.rougeL * 100).toFixed(2)}%</div>
               </div>
+              <div style="padding: 12px; background: white; border: 1px solid #eee; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 4px;">Cosine Similarity</div>
+                <div style="font-size: 20px; font-weight: bold; color: #2c3e50;">${(metrics.cosine * 100).toFixed(2)}%</div>
+              </div>
             </div>
             <p style="margin-top: 15px; font-size: 14px; color: #7f8c8d; font-style: italic;">
               Evaluation: Compared ${data.num_generated_claims} generated claims against ${data.num_original_claims} original patent claims.
@@ -687,6 +691,7 @@ export default function EditorPage() {
                   <div style="display: flex; justify-content: space-between;"><span>BLEU:</span> <strong style="color: #6c757d;">${(non_kg_metrics.bleu * 100).toFixed(2)}%</strong></div>
                   <div style="display: flex; justify-content: space-between;"><span>ROUGE-1:</span> <strong style="color: #6c757d;">${(non_kg_metrics.rouge1 * 100).toFixed(2)}%</strong></div>
                   <div style="display: flex; justify-content: space-between;"><span>ROUGE-L:</span> <strong style="color: #6c757d;">${(non_kg_metrics.rougeL * 100).toFixed(2)}%</strong></div>
+                  <div style="display: flex; justify-content: space-between;"><span>Cosine:</span> <strong style="color: #6c757d;">${(non_kg_metrics.cosine * 100).toFixed(2)}%</strong></div>
                 </div>
               </div>
 
@@ -697,6 +702,7 @@ export default function EditorPage() {
                   <div style="display: flex; justify-content: space-between;"><span>BLEU:</span> <strong style="color: #2e7d32;">${(kg_metrics.bleu * 100).toFixed(2)}%</strong></div>
                   <div style="display: flex; justify-content: space-between;"><span>ROUGE-1:</span> <strong style="color: #2e7d32;">${(kg_metrics.rouge1 * 100).toFixed(2)}%</strong></div>
                   <div style="display: flex; justify-content: space-between;"><span>ROUGE-L:</span> <strong style="color: #2e7d32;">${(kg_metrics.rougeL * 100).toFixed(2)}%</strong></div>
+                  <div style="display: flex; justify-content: space-between;"><span>Cosine:</span> <strong style="color: #2e7d32;">${(kg_metrics.cosine * 100).toFixed(2)}%</strong></div>
                 </div>
               </div>
             </div>
@@ -709,7 +715,7 @@ export default function EditorPage() {
                   +${((kg_metrics.bleu - non_kg_metrics.bleu) * 100).toFixed(2)}% (BLEU)
                 </span>
                 <span style="color: #2e7d32; font-weight: bold; margin-left: 15px;">
-                  +${((kg_metrics.rougeL - non_kg_metrics.rougeL) * 100).toFixed(2)}% (ROUGE-L)
+                  +${((kg_metrics.cosine - non_kg_metrics.cosine) * 100).toFixed(2)}% (Cosine)
                 </span>
               </span>
             </div>
