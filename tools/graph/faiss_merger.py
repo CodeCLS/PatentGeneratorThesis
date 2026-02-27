@@ -5,9 +5,15 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
 import faiss
+
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
 
 from tools.graph.data.Triple import Triple
 from tools.graph.visualizer import GraphVisualizer
@@ -21,7 +27,8 @@ class FAISSEdgeMerger:
     def __init__(
         self,
         sim_threshold: float = 0.8,
-        embed_dim: int = 256,
+        model_name: str = "all-MiniLM-L6-v2",
+        embed_dim: Optional[int] = None,
         ngram: int = 3,
         keep: str = "first",
     ):
@@ -30,8 +37,9 @@ class FAISSEdgeMerger:
 
         Args:
             sim_threshold: Cosine similarity threshold for merging (0.0-1.0)
-            embed_dim: Dimension of relation embeddings
-            ngram: N-gram size for hash embedding
+            model_name: Name of the SentenceTransformer model to use
+            embed_dim: Dimension of relation embeddings (optional, derived from model if not provided)
+            ngram: N-gram size for fallback hash embedding (if neural model not available)
                 - Controls how the relation text is broken into character sequences for embedding
                 - Example: ngram=3 means 3-character sequences ("abc", "bcd", "cde" for "abcde")
                 - Higher values (e.g., 4-5) capture longer patterns, lower values (e.g., 2-3) are more flexible
@@ -42,9 +50,68 @@ class FAISSEdgeMerger:
                 - "longest": Keep the longest relation string (most descriptive)
         """
         self.sim_threshold = sim_threshold
-        self.embed_dim = embed_dim
+        self.model_name = model_name
+        self._model: Optional[Any] = None
+        self._embedding_dim = embed_dim
         self.ngram = ngram
         self.keep = keep
+
+    def _get_model(self):
+        """Lazy-load the sentence transformer model."""
+        if self._model is None and SENTENCE_TRANSFORMERS_AVAILABLE:
+            try:
+                self._model = SentenceTransformer(self.model_name)
+                # If embed_dim not set, derive from model
+                if self._embedding_dim is None:
+                    self._embedding_dim = self._model.get_sentence_embedding_dimension()
+            except Exception as e:
+                print(f"⚠️ Error loading SentenceTransformer '{self.model_name}': {e}")
+                self._model = None
+        
+        # If model loading failed or not available, use fallback dimension
+        if self._embedding_dim is None:
+            self._embedding_dim = 256
+            
+        return self._model
+
+    def _get_embedding(self, text: str) -> np.ndarray:
+        """
+        Create a relation embedding using neural model or bag-of-hashes fallback.
+
+        Args:
+            text: Relation text to embed
+
+        Returns:
+            Normalized embedding vector
+        """
+        model = self._get_model()
+        
+        if model is not None:
+            # Neural embedding
+            v = model.encode(text, normalize_embeddings=True)
+            return np.asarray(v, dtype=np.float32)
+        else:
+            # Fallback to bag-of-hashes
+            return self._hash_embed(text)
+
+    def _hash_embed(self, text: str) -> np.ndarray:
+        """
+        Fallback: Create a relation embedding using a stable bag-of-hashes vector.
+        Used if sentence-transformers is not available.
+        """
+        t = f" {text} "
+        v = np.zeros(self._embedding_dim, dtype=np.float32)
+        if not text:
+            return v
+        for i in range(len(t) - self.ngram + 1):
+            g = t[i:i+self.ngram]
+            h = (hash(g) & 0xFFFFFFFF) % self._embedding_dim
+            v[h] += 1.0
+        # L2 normalize for cosine via inner product
+        n = np.linalg.norm(v)
+        if n > 0:
+            v /= n
+        return v
 
     @staticmethod
     def _entity_key_any(x) -> str:
@@ -67,30 +134,6 @@ class FAISSEdgeMerger:
         s = re.sub(r"\s+", " ", s)
         return s
 
-    def _hash_embed(self, text: str) -> np.ndarray:
-        """
-        Create a relation embedding using a stable bag-of-hashes vector.
-
-        Args:
-            text: Relation text to embed
-
-        Returns:
-            Normalized embedding vector
-        """
-        t = f" {text} "
-        v = np.zeros(self.embed_dim, dtype=np.float32)
-        if not text:
-            return v
-        for i in range(len(t) - self.ngram + 1):
-            g = t[i:i+self.ngram]
-            h = (hash(g) & 0xFFFFFFFF) % self.embed_dim
-            v[h] += 1.0
-        # L2 normalize for cosine via inner product
-        n = np.linalg.norm(v)
-        if n > 0:
-            v /= n
-        return v
-
     def merge_relations(
         self,
         triples: List[Triple],
@@ -111,8 +154,10 @@ class FAISSEdgeMerger:
         Returns:
             Tuple of (merged_triples, stats_dict)
         """
-        # Group triples by (head_id, tail_id) - NOTE: This groups by entity identity,
-        # but does NOT merge or modify the entities themselves. Only relations are merged.
+        # Ensure model is initialized to get embedding dimension
+        self._get_model()
+        
+        # Group triples by (head_id, tail_id)
         by_pair = defaultdict(list)
         for tr in triples or []:
             h = self._entity_key_any(getattr(tr, "head", None))
@@ -143,10 +188,10 @@ class FAISSEdgeMerger:
                 kept_count += 1
                 continue
 
-            # Embed relations
-            X = np.stack([self._hash_embed(r) for r in uniq_rels]).astype(np.float32)
+            # Embed relations using the neural model (or fallback)
+            X = np.stack([self._get_embedding(r) for r in uniq_rels]).astype(np.float32)
             # Already normalized
-            index = faiss.IndexFlatIP(self.embed_dim)
+            index = faiss.IndexFlatIP(self._embedding_dim)
             index.add(X)
 
             # Union-find to cluster relations by similarity >= threshold
@@ -189,8 +234,6 @@ class FAISSEdgeMerger:
                     rep_rel = member_rels[0]
 
                 # Pick a base triple to copy head/tail objects from
-                # NOTE: We preserve the original Entity objects (head and tail) exactly as-is.
-                # Only the relation string is changed to the representative relation.
                 base_tr = rel_to_trs[member_rels[0]][0]
 
                 # Create a merged Triple with the same head/tail entities, but merged relation
@@ -209,8 +252,8 @@ class FAISSEdgeMerger:
             "merged_relations_removed": merged_count,
             "kept_clusters": kept_count,
             "sim_threshold": self.sim_threshold,
-            "embed_dim": self.embed_dim,
-            "ngram": self.ngram,
+            "model_name": self.model_name,
+            "embed_dim": self._embedding_dim,
         }
         return merged_triples, stats
 

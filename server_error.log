@@ -1,0 +1,125 @@
+2026-02-24 14:28:07,809 - ERROR - Failed to read module file 'C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\pydoc_data\topics.py' for module 'pydoc_data.topics': UnicodeDecodeError
+Traceback (most recent call last):
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\core\extensions.py", line 62, in load_extension
+    return self._load_extension(module_str)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\core\extensions.py", line 77, in _load_extension
+    mod = import_module(module_str)
+  File "C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\importlib\__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'autoreload'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\extensions\deduperreload\deduperreload.py", line 219, in update_sources
+    self.source_by_modname[new_modname] = f.read()
+                                          ~~~~~~^^
+  File "C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 23, in decode
+    return codecs.charmap_decode(input,self.errors,decoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x9d in position 3128: character maps to <undefined>
+2026-02-24 14:28:08,433 - ERROR - Failed to read module file 'C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\re\_casefix.py' for module 're._casefix': UnicodeDecodeError
+Traceback (most recent call last):
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\core\extensions.py", line 62, in load_extension
+    return self._load_extension(module_str)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\core\extensions.py", line 77, in _load_extension
+    mod = import_module(module_str)
+  File "C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\importlib\__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'autoreload'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\extensions\deduperreload\deduperreload.py", line 219, in update_sources
+    self.source_by_modname[new_modname] = f.read()
+                                          ~~~~~~^^
+  File "C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 23, in decode
+    return codecs.charmap_decode(input,self.errors,decoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x90 in position 911: character maps to <undefined>
+2026-02-24 14:28:08,489 - ERROR - Failed to read module file 'C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\functools.py' for module 'functools': UnicodeDecodeError
+Traceback (most recent call last):
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\core\extensions.py", line 62, in load_extension
+    return self._load_extension(module_str)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\core\extensions.py", line 77, in _load_extension
+    mod = import_module(module_str)
+  File "C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\importlib\__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'autoreload'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\extensions\deduperreload\deduperreload.py", line 219, in update_sources
+    self.source_by_modname[new_modname] = f.read()
+                                          ~~~~~~^^
+  File "C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 23, in decode
+    return codecs.charmap_decode(input,self.errors,decoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x81 in position 308: character maps to <undefined>
+2026-02-24 14:28:08,963 - ERROR - Failed to read module file 'C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\shlex.py' for module 'shlex': UnicodeDecodeError
+Traceback (most recent call last):
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\core\extensions.py", line 62, in load_extension
+    return self._load_extension(module_str)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\core\extensions.py", line 77, in _load_extension
+    mod = import_module(module_str)
+  File "C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\importlib\__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'autoreload'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\extensions\deduperreload\deduperreload.py", line 219, in update_sources
+    self.source_by_modname[new_modname] = f.read()
+                                          ~~~~~~^^
+  File "C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 23, in decode
+    return codecs.charmap_decode(input,self.errors,decoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x81 in position 1482: character maps to <undefined>
+2026-02-24 14:28:09,153 - ERROR - Failed to read module file 'C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\urllib\parse.py' for module 'urllib.parse': UnicodeDecodeError
+Traceback (most recent call last):
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\core\extensions.py", line 62, in load_extension
+    return self._load_extension(module_str)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\core\extensions.py", line 77, in _load_extension
+    mod = import_module(module_str)
+  File "C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\importlib\__init__.py", line 88, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'autoreload'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "c:\Users\Caleb\Documents\DataBricksChallenge\backend\.venv\Lib\site-packages\IPython\extensions\deduperreload\deduperreload.py", line 219, in update_sources
+    self.source_by_modname[new_modname] = f.read()
+                                          ~~~~~~^^
+  File "C:\Users\Caleb\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 23, in decode
+    return codecs.charmap_decode(input,self.errors,decoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x9d in position 2031: character maps to <undefined>

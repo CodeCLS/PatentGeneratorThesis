@@ -1,7 +1,7 @@
 import Link from "next/link";
 import styles from "./SideNav.module.css";
 
-type NavPage = "upload" | "analyze" | "edit" | "chat" | "graph" | "editor";
+type NavPage = "upload" | "analyze" | "edit" | "chat" | "graph" | "editor" | "evaluation";
 
 const NAV_ITEMS: { key: NavPage; label: string; href: string }[] = [
   { key: "upload", label: "Upload", href: "/upload" },
@@ -10,6 +10,7 @@ const NAV_ITEMS: { key: NavPage; label: string; href: string }[] = [
   { key: "chat", label: "Chat", href: "/chat" },
   { key: "graph", label: "Graph", href: "/graph" },
   { key: "editor", label: "Editor", href: "/editor" },
+  { key: "evaluation", label: "Evaluation", href: "/evaluation" },
 ];
 
 export default function SideNav({ current }: { current: NavPage }) {

@@ -58,7 +58,7 @@ class PipelineManager:
         triple_max_workers: int = 5,
         triple_rate_limit_per_minute: int = 900,
         merge_sim_threshold: float = 0.8,
-        merge_embed_dim: int = 256,
+        merge_embed_dim: Optional[int] = None,
         merge_ngram: int = 3,
         merge_keep: str = "shortest",
         simplify_max_relation_length: int = 4,

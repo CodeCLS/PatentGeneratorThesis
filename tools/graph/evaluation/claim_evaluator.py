@@ -59,6 +59,39 @@ class ClaimEvaluator:
             print(f"Error calculating cosine similarity: {e}")
             return 0.0
 
+    def evaluate_text(self, reference_text: str, generated_text: str) -> Dict[str, float]:
+        """
+        Compares two arbitrary text blocks using BLEU, ROUGE, and Cosine metrics.
+        """
+        if not reference_text.strip() or not generated_text.strip():
+            return {
+                "bleu": 0.0,
+                "rouge1": 0.0,
+                "rouge2": 0.0,
+                "rougeL": 0.0,
+                "cosine": 0.0
+            }
+
+        # BLEU Score
+        ref_tokens = [nltk.word_tokenize(reference_text.lower())]
+        gen_tokens = nltk.word_tokenize(generated_text.lower())
+        
+        bleu_score = sentence_bleu(ref_tokens, gen_tokens, smoothing_function=self.smoothing)
+
+        # ROUGE Scores
+        rouge_scores = self.rouge_scorer.score(reference_text, generated_text)
+        
+        # Cosine Similarity
+        cosine_sim = self.calculate_cosine_similarity(reference_text, generated_text)
+        
+        return {
+            "bleu": float(bleu_score),
+            "rouge1": float(rouge_scores['rouge1'].fmeasure),
+            "rouge2": float(rouge_scores['rouge2'].fmeasure),
+            "rougeL": float(rouge_scores['rougeL'].fmeasure),
+            "cosine": float(cosine_sim)
+        }
+
     def evaluate(self, reference_claims: List[str], generated_claims: List[str]) -> Dict[str, float]:
         """
         Compares reference claims to generated claims using BLEU, ROUGE, and Cosine metrics.

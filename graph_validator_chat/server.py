@@ -406,6 +406,9 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             elif path == '/api/claims/compare':
                 print("[API] Routing to _handle_compare_claims")
                 self._handle_compare_claims()
+            elif path == '/api/evaluate':
+                print("[API] Routing to _handle_evaluate")
+                self._handle_evaluate()
             else:
                 print(f"[API] POST 404: Path not found: {path}")
                 self._send_error("Not found", 404)
@@ -537,6 +540,27 @@ class GraphValidatorHandler(BaseHTTPRequestHandler):
             "changes": changes,
         }
     
+    def _handle_evaluate(self):
+        """Handle manual text evaluation request."""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+            reference_text = data.get("reference_text", "")
+            generated_text = data.get("generated_text", "")
+
+            if not reference_text or not generated_text:
+                self._send_error("Both reference and generated text are required")
+                return
+
+            print(f"[API] Evaluating text: {len(reference_text)} vs {len(generated_text)} chars")
+            evaluator = ClaimEvaluator()
+            results = evaluator.evaluate_text(reference_text, generated_text)
+            
+            self._send_json(results)
+        except Exception as e:
+            print(f"[API] Error in _handle_evaluate: {e}")
+            self._send_error(str(e))
+
     def _handle_chat(self):
         """Handle chat messages."""
         if not validator:
